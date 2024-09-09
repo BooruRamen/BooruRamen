@@ -20,6 +20,7 @@ def process_safebooru_content(content_data):
     return {
         "id": content_data["id"],
         "file_url": content_data["file_url"],
+        "alt_file_url": content_data["file_url"][:21] + "/" + content_data["file_url"][21:],
         "sample_url": content_data.get("sample_url", ""),
         "preview_url": content_data.get("preview_url", ""),
         "tags": content_data["tags"],
