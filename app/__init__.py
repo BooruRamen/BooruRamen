@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
 from flask_cors import CORS
+import os
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -10,6 +11,13 @@ login_manager = LoginManager()
 
 def create_app():
     app = Flask(__name__)
+    
+    # Print the directory where Flask is looking for static files
+    print(f"Default static folder: {app.static_folder}")
+    
+    # Set the static folder explicitly
+    app.static_folder = os.path.join(os.path.dirname(__file__), 'static')
+    print(f"Updated static folder: {app.static_folder}")
     app.config.from_object('config.Config')
 
     db.init_app(app)

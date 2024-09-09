@@ -1,14 +1,12 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_user, logout_user, login_required, current_user
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 from app.models import User
 from app import db
 import jwt
 import datetime
 
 auth = Blueprint('auth', __name__)
-
-SECRET_KEY = 'your_secret_key'  # Replace with a real secret key
 
 @auth.route('/register', methods=['POST'])
 def register():

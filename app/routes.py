@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, render_template, current_app
+from flask import Blueprint, jsonify, request, render_template, current_app, session
 from functools import wraps
 import jwt
 from app.models import User, Content, UserInteraction
@@ -30,10 +30,27 @@ def index():
 @token_required
 def get_feed(current_user):
     page = request.args.get('page', 1, type=int)
-    per_page = 10  # Number of items per page
+    direction = request.args.get('direction', 'next')
     try:
-        recommended_content = recommend_content(current_user.id, page, per_page)
-        return jsonify(recommended_content)
+        if direction == 'prev':
+            content_history = session.get('content_history', [])
+            if len(content_history) > 1:
+                content_history.pop()  # Remove current content
+                previous_content_id = content_history.pop()  # Get previous content
+                content = Content.query.get(previous_content_id)
+                if content:
+                    return jsonify(content.to_dict())
+            # If no previous content, fall through to fetch new content
+
+        recommended_content = recommend_content(current_user.id, page, 1)
+        if recommended_content:
+            content = recommended_content[0]
+            content_history = session.get('content_history', [])
+            content_history.append(content['id'])
+            session['content_history'] = content_history
+            return jsonify(content)
+        else:
+            return jsonify({"message": "No more content available"}), 204
     except Exception as e:
         print(f"Error in get_feed: {str(e)}")
         return jsonify({"error": "An error occurred while fetching the feed"}), 500
@@ -66,15 +83,10 @@ def update_preferences(current_user):
 def get_favorites(current_user):
     favorites = UserInteraction.query.filter_by(user_id=current_user.id, interaction_type='favorite').all()
     favorite_content = [Content.query.get(f.content_id) for f in favorites]
-    return jsonify([{
-        "id": c.id,
-        "url": c.url,
-        "tags": c.tags,
-        "content_type": c.content_type
-    } for c in favorite_content])
+    return jsonify([c.to_dict() for c in favorite_content if c])
 
 @main.route('/reset_feed', methods=['POST'])
 @token_required
 def reset_feed(current_user):
-    session.pop('seen_content', None)
+    session.pop('content_history', None)
     return jsonify({"message": "Feed reset successfully"}), 200

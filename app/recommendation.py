@@ -10,19 +10,23 @@ def get_user_preferences(user_id):
     liked_content = UserInteraction.query.filter_by(user_id=user_id, interaction_type='like').all()
     disliked_content = UserInteraction.query.filter_by(user_id=user_id, interaction_type='dislike').all()
     
-    liked_tags = [Content.query.get(i.content_id).tags for i in liked_content]
-    disliked_tags = [Content.query.get(i.content_id).tags for i in disliked_content]
+    liked_tags = [Content.query.get(i.content_id).tags for i in liked_content if Content.query.get(i.content_id)]
+    disliked_tags = [Content.query.get(i.content_id).tags for i in disliked_content if Content.query.get(i.content_id)]
     
     return user.preferred_tags, user.blacklisted_tags, liked_tags, disliked_tags
 
 def recommend_content(user_id, page, per_page):
+    user = User.query.get(user_id)
+    if not user:
+        return []  # Return empty list if user not found
+
     preferred_tags, blacklisted_tags, liked_tags, disliked_tags = get_user_preferences(user_id)
     
     # Get already seen content
     seen_content = session.get('seen_content', [])
     
     # Fetch new content from Safebooru
-    new_content = fetch_content(preferred_tags, User.query.get(user_id).content_type_preference, limit=100)
+    new_content = fetch_content(preferred_tags, user.content_type_preference, limit=100)
     
     # Filter out blacklisted and seen content
     filtered_content = [c for c in new_content 

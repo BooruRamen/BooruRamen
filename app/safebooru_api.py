@@ -19,7 +19,9 @@ def fetch_content(tags, content_type, limit=100):
 def process_safebooru_content(content_data):
     return {
         "id": content_data["id"],
-        "url": f"https://safebooru.org/images/{content_data['directory']}/{content_data['image']}",
+        "file_url": content_data["file_url"],
+        "sample_url": content_data.get("sample_url", ""),
+        "preview_url": content_data.get("preview_url", ""),
         "tags": content_data["tags"],
-        "content_type": "video" if content_data["image"].endswith((".mp4", ".webm")) else "image"
+        "content_type": "video" if content_data["file_url"].endswith((".mp4", ".webm")) else "image"
     }
