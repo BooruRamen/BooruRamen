@@ -10,7 +10,33 @@ const app = new Vue({
             <button @click="register">Register</button>
         </div>
         <div v-else>
-            <h2>Welcome, {{ username }}!</h2>
+            <div v-if="currentContent" class="content-container">
+                <div class="media-container">
+                    <img v-if="currentContent.content_type === 'image'" 
+                        :src="currentContent.currentUrl" 
+                        @error="handleMediaError" 
+                        @load="resetUrlIndex">
+                    <video v-else-if="currentContent.content_type === 'video'" controls @error="handleMediaError" @loadeddata="resetUrlIndex">
+                        <source :src="currentContent.currentUrl" type="video/mp4">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+                <div class="tags-container">
+                    <p>{{ currentContent.tags }}</p>
+                </div>
+                <div class="button-container">
+                    <button @click="interact('like')">Like</button>
+                    <button @click="interact('dislike')">Dislike</button>
+                    <button @click="interact('favorite')">Favorite</button>
+                </div>
+            </div>
+            <div v-else>
+                <p>No content available.</p>
+            </div>
+            <div class="navigation-container">
+                <button @click="previousContent">Previous</button>
+                <button @click="nextContent">Next</button>
+            </div>
             <button @click="logout">Logout</button>
             
             <h3>Preferences</h3>
@@ -22,28 +48,6 @@ const app = new Vue({
                 <option value="video">Videos Only</option>
             </select>
             <button @click="updatePreferences">Update Preferences</button>
-
-            <h3>Content</h3>
-            <div v-if="currentContent">
-                <img v-if="currentContent.content_type === 'image'" 
-                    :src="currentContent.currentUrl" 
-                    @error="handleMediaError" 
-                    @load="resetUrlIndex">
-                <video v-else-if="currentContent.content_type === 'video'" controls @error="handleMediaError" @loadeddata="resetUrlIndex">
-                    <source :src="currentContent.currentUrl" type="video/mp4">
-                    Your browser does not support the video tag.
-                </video>
-                <p>Tags: {{ currentContent.tags }}</p>
-                <button @click="interact('like')">Like</button>
-                <button @click="interact('dislike')">Dislike</button>
-                <button @click="interact('favorite')">Favorite</button>
-            </div>
-            <div v-else>
-                <p>No content available.</p>
-            </div>
-            <button @click="previousContent">Previous</button>
-            <button @click="nextContent">Next</button>
-
             <h3>Favorites</h3>
             <ul>
                 <li v-for="favorite in favorites" :key="favorite.id">
@@ -241,5 +245,37 @@ const app = new Vue({
                 this.logout();
             });
         }
+    },
+    style: `
+    .content-container {
+        width: 100%;
+        max-width: 1000px;
+        margin: 0 auto;
     }
+    .media-container {
+        width: 100%;
+        height: 1000px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
+        background-color: #f0f0f0;
+    }
+    .media-container img,
+    .media-container video {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+    }
+    .button-container {
+        display: flex;
+        justify-content: space-around;
+        margin-top: 10px;
+    }
+    .navigation-container {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 20px;
+    }
+`
 });

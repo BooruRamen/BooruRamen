@@ -3,78 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BooruRamen</title>
-    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <title>TikTok-like App</title>
     <style>
-        .content-item {
-            max-width: 100%;
-            height: auto;
-            margin-bottom: 20px;
-            border: 1px solid #ccc;
-            padding: 10px;
+        .content-container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
         }
-        .content-item img, .content-item video {
-            max-width: 100%;
-            height: auto;
+        .media-container {
+            width: 100%;
+            height: 400px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            background-color: #f0f0f0;
+            position: relative;
+        }
+        .media-container img,
+        .media-container video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             object-fit: contain;
+        }
+        .tags-container {
+            height: 60px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 5px;
+            margin-top: 10px;
+            background-color: #f9f9f9;
+        }
+        .button-container {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 10px;
+        }
+        .navigation-container {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
         }
     </style>
 </head>
 <body>
     <div id="app"></div>
-
-    <script type="text/x-template" id="app-template">
-        {% raw %}
-        <div>
-            <div v-if="!loggedIn">
-                <h2>Login</h2>
-                <input v-model="username" placeholder="Username">
-                <input v-model="password" type="password" placeholder="Password">
-                <button @click="login">Login</button>
-                <button @click="register">Register</button>
-            </div>
-            <div v-else>
-                <h2>Welcome, {{ username }}!</h2>
-                <button @click="logout">Logout</button>
-                <div>
-                    <h3>Preferences</h3>
-                    <input v-model="preferredTags" placeholder="Preferred tags (comma-separated)">
-                    <input v-model="blacklistedTags" placeholder="Blacklisted tags (comma-separated)">
-                    <select v-model="contentTypePreference">
-                        <option value="both">Both</option>
-                        <option value="image">Images only</option>
-                        <option value="video">Videos only</option>
-                    </select>
-                    <button @click="updatePreferences">Update Preferences</button>
-                </div>
-                <div>
-                    <h3>Content Feed</h3>
-                    <div v-for="item in feed" :key="item.id" class="content-item">
-                        <img v-if="item.content_type === 'image'" :src="item.url" :alt="item.tags">
-                        <video v-else-if="item.content_type === 'video'" :src="item.url" controls></video>
-                        <div v-else>Unsupported content type: {{ item.content_type }}</div>
-                        <div>
-                            <button @click="interact(item.id, 'like')">Like</button>
-                            <button @click="interact(item.id, 'dislike')">Dislike</button>
-                            <button @click="interact(item.id, 'favorite')">Favorite</button>
-                        </div>
-                    </div>
-                    <button @click="loadMoreContent" v-if="hasMoreContent">Load More</button>
-                </div>
-                <div>
-                    <h3>Favorites</h3>
-                    <button @click="loadFavorites">Load Favorites</button>
-                    <div v-for="item in favorites" :key="item.id" class="content-item">
-                        <img v-if="item.content_type === 'image'" :src="item.url" :alt="item.tags">
-                        <video v-else-if="item.content_type === 'video'" :src="item.url" controls></video>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endraw %}
-    </script>
-
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="static/js/app.js"></script>
 </body>
 </html>
