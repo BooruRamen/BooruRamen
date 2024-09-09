@@ -74,7 +74,7 @@ const app = new Vue({
         page: 1,
         hasMoreContent: true,
         urlIndex: 0,
-        urlTypes: ['file_url', 'alt_file_url', 'sample_url', 'preview_url'],
+        urlTypes: ['file_url', 'alt_file_url', 'sample_url'],
     },
     methods: {
         login() {
