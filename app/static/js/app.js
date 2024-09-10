@@ -31,11 +31,11 @@ const app = new Vue({
                 </div>
             </div>
             <div v-else>
-                <p>No content available.</p>
+                <p>Loading content...</p>
             </div>
             <div class="navigation-container">
-                <button @click="previousContent">Previous</button>
-                <button @click="nextContent">Next</button>
+                <button @click="previousContent" :disabled="isLoading">Previous</button>
+                <button @click="nextContent" :disabled="isLoading">Next</button>
             </div>
             <button @click="logout">Logout</button>
             
@@ -70,6 +70,8 @@ const app = new Vue({
         blacklistedTags: '',
         contentTypePreference: 'both',
         currentContent: null,
+        contentQueue: [],
+        isLoading: false,
         favorites: [],
         page: 1,
         hasMoreContent: true,
@@ -137,16 +139,44 @@ const app = new Vue({
                 alert('Failed to update preferences. Please try again.');
             });
         },
+        displayNextContent() {
+            if (this.contentQueue.length > 0) {
+                this.currentContent = this.prepareContentForDisplay(this.contentQueue.shift());
+                this.isLoading = false;
+                if (this.contentQueue.length < 3) {
+                    this.fetchMoreContent();
+                }
+            } else {
+                this.loadContent('next');
+            }
+        },
+        prepareContentForDisplay(content) {
+            content.currentUrl = content.file_url;
+            return content;
+        },
         loadContent(direction) {
             console.log('Loading content...');
+            if (this.isLoading) return;
+            this.isLoading = true;
+            
+            if (direction === 'next' && this.contentQueue.length > 0) {
+                this.displayNextContent();
+                return;
+            }
+
             axios.get(`/feed?page=${this.page}&direction=${direction}`)
             .then(response => {
                 console.log('Feed response:', response.data);
-                if (response.data && Object.keys(response.data).length > 0) {
-                    this.tryLoadImage(response.data, 0);
+                if (response.data && response.data.length > 0) {
                     if (direction === 'next') {
+                        this.contentQueue = response.data;
+                        this.displayNextContent();
                         this.page += 1;
+                    } else {
+                        this.currentContent = this.prepareContentForDisplay(response.data[0]);
+                        this.contentQueue = response.data.slice(1);
                     }
+                    this.preloadMedia();
                 } else {
                     this.hasMoreContent = false;
                     alert('No more content available.');
@@ -159,6 +189,42 @@ const app = new Vue({
                     this.logout();
                 } else {
                     alert('Failed to load content. Please try again.');
+                }
+            })
+            .finally(() => {
+                this.isLoading = false;
+            });
+        },
+        fetchMoreContent() {
+            if (this.isLoading || !this.hasMoreContent) return;
+            this.isLoading = true;
+            
+            axios.get(`/feed?page=${this.page}&direction=next`)
+            .then(response => {
+                if (response.data && response.data.length > 0) {
+                    this.contentQueue = [...this.contentQueue, ...response.data];
+                    this.page += 1;
+                    this.preloadMedia();
+                } else {
+                    this.hasMoreContent = false;
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching more content:', error);
+            })
+            .finally(() => {
+                this.isLoading = false;
+            });
+        },
+        preloadMedia() {
+            this.contentQueue.forEach(content => {
+                if (content.content_type === 'image') {
+                    const img = new Image();
+                    img.src = content.file_url;
+                } else if (content.content_type === 'video') {
+                    const video = document.createElement('video');
+                    video.preload = 'metadata';
+                    video.src = content.file_url;
                 }
             });
         },
@@ -215,8 +281,14 @@ const app = new Vue({
             console.error('Media type:', event.target.tagName);
             console.error('Error details:', event);
             
-            const currentUrlIndex = this.urlTypes.indexOf(this.currentContent.currentUrl);
-            this.tryLoadImage(this.currentContent, currentUrlIndex + 1);
+            const urlTypes = ['file_url', 'alt_file_url', 'sample_url'];
+            const currentUrlIndex = urlTypes.indexOf(this.currentContent.currentUrl);
+            if (currentUrlIndex < urlTypes.length - 1) {
+                this.currentContent.currentUrl = this.currentContent[urlTypes[currentUrlIndex + 1]];
+            } else {
+                console.error('All URL types failed to load');
+                this.nextContent(); // Skip to next content if all URLs fail
+            }
         },
         nextContent() {
             this.loadContent('next');
@@ -225,7 +297,8 @@ const app = new Vue({
             this.loadContent('prev');
         },
         resetUrlIndex() {
-            this.urlIndex = 0;
+            // This method is called when media loads successfully
+            console.log('Media loaded successfully');
         }
     },
     mounted() {
