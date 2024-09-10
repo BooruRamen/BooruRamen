@@ -21,7 +21,7 @@ def process_safebooru_content(content_data):
         "id": content_data["id"],
         "file_url": content_data["file_url"],
         "alt_file_url": content_data["file_url"][:21] + "/" + content_data["file_url"][21:],
-        "sample_url": content_data.get("sample_url", ""),
+        "sample_url": content_data["sample_url"],
         "tags": content_data["tags"],
         "content_type": "video" if content_data["file_url"].endswith((".mp4", ".webm")) else "image"
     }

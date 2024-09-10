@@ -16,8 +16,14 @@ const app = new Vue({
                         :src="currentContent.currentUrl" 
                         @error="handleMediaError" 
                         @load="resetUrlIndex">
-                    <video v-else-if="currentContent.content_type === 'video'" controls @error="handleMediaError" @loadeddata="resetUrlIndex">
-                        <source :src="currentContent.currentUrl" type="video/mp4">
+                    <video v-else-if="currentContent.content_type === 'video'" 
+                        ref="videoPlayer"
+                        loop 
+                        muted 
+                        playsinline
+                        @error="handleMediaError" 
+                        @loadedmetadata="onVideoLoaded">
+                        <source :src="currentContent.file_url" type="video/mp4">
                         Your browser does not support the video tag.
                     </video>
                 </div>
@@ -25,6 +31,7 @@ const app = new Vue({
                     <p>{{ currentContent.tags }}</p>
                 </div>
                 <div class="button-container">
+                    <button @click="toggleMute">{{ isMuted ? 'Unmute' : 'Mute' }}</button>
                     <button @click="interact('like')">Like</button>
                     <button @click="interact('dislike')">Dislike</button>
                     <button @click="interact('favorite')">Favorite</button>
@@ -75,8 +82,8 @@ const app = new Vue({
         favorites: [],
         page: 1,
         hasMoreContent: true,
-        urlIndex: 0,
-        urlTypes: ['file_url', 'alt_file_url', 'sample_url'],
+        urlTypes: ['sample_url', 'file_url', 'alt_file_url'],
+        currentUrlIndex: 0,
     },
     methods: {
         login() {
@@ -151,7 +158,13 @@ const app = new Vue({
             }
         },
         prepareContentForDisplay(content) {
-            content.currentUrl = content.file_url;
+            if (content.content_type === 'image') {
+                this.currentUrlIndex = 0;
+                content.currentUrl = content[this.urlTypes[this.currentUrlIndex]];
+            } else if (content.content_type === 'video') {
+                content.currentUrl = content.file_url;
+                this.isMuted = true;
+            }
             return content;
         },
         loadContent(direction) {
@@ -228,8 +241,8 @@ const app = new Vue({
                 }
             });
         },
-        tryLoadImage(content, urlIndex) {
-            if (urlIndex >= this.urlTypes.length) {
+        tryLoadImage(content, currentUrlIndex) {
+            if (currentUrlIndex >= this.urlTypes.length) {
                 console.error('All URL types failed to load');
                 this.loadContent('next'); // Skip to next content if all URLs fail
                 return;
@@ -237,14 +250,14 @@ const app = new Vue({
         
             const img = new Image();
             img.onload = () => {
-                content.currentUrl = content[this.urlTypes[urlIndex]];
+                content.currentUrl = content[this.urlTypes[currentUrlIndex]];
                 this.currentContent = content;
             };
             img.onerror = () => {
-                console.error(`Failed to load image from ${this.urlTypes[urlIndex]}`);
-                this.tryLoadImage(content, urlIndex + 1);
+                console.error(`Failed to load image from ${this.urlTypes[currentUrlIndex]}`);
+                this.tryLoadImage(content, currentUrlIndex + 1);
             };
-            img.src = content[this.urlTypes[urlIndex]];
+            img.src = content[this.urlTypes[currentUrlIndex]];
         },
         interact(interactionType) {
             if (!this.currentContent) return;
@@ -278,13 +291,30 @@ const app = new Vue({
         },
         handleMediaError(event) {
             console.error('Media failed to load:', event.target.src);
-            console.error('Media type:', event.target.tagName);
-            console.error('Error details:', event);
-            
-            const urlTypes = ['file_url', 'alt_file_url', 'sample_url'];
-            const currentUrlIndex = urlTypes.indexOf(this.currentContent.currentUrl);
-            if (currentUrlIndex < urlTypes.length - 1) {
-                this.currentContent.currentUrl = this.currentContent[urlTypes[currentUrlIndex + 1]];
+            if (this.currentContent.content_type === 'image') {
+                this.tryNextUrl();
+            } else {
+                console.error('Video failed to load');
+                this.nextContent(); // Skip to next content if video fails
+            }
+        },
+        tryNextUrl() {
+            if (this.currentContent.content_type !== 'image') return;
+
+            this.currentUrlIndex++;
+            if (this.currentUrlIndex < this.urlTypes.length) {
+                if (this.currentContent) {
+                    const nextUrl = this.currentContent[this.urlTypes[this.currentUrlIndex]];
+                    if (nextUrl) {
+                        console.log(`Trying next URL: ${this.urlTypes[this.currentUrlIndex]}`);
+                        this.currentContent.currentUrl = nextUrl;
+                        // Force Vue to re-render the media element
+                        this.$forceUpdate();
+                    } else {
+                        console.log(`${this.urlTypes[this.currentUrlIndex]} is not available, trying next`);
+                        this.tryNextUrl();
+                    }
+                }
             } else {
                 console.error('All URL types failed to load');
                 this.nextContent(); // Skip to next content if all URLs fail
@@ -297,8 +327,22 @@ const app = new Vue({
             this.loadContent('prev');
         },
         resetUrlIndex() {
-            // This method is called when media loads successfully
             console.log('Media loaded successfully');
+            this.currentUrlIndex = 0;
+        },
+        onVideoLoaded() {
+            if (this.$refs.videoPlayer) {
+                this.$refs.videoPlayer.play().catch(error => {
+                    console.error('Autoplay failed:', error);
+                    // Optionally, you can show a play button here if autoplay fails
+                });
+            }
+        },
+        toggleMute() {
+            if (this.$refs.videoPlayer) {
+                this.$refs.videoPlayer.muted = !this.$refs.videoPlayer.muted;
+                this.isMuted = this.$refs.videoPlayer.muted;
+            }
         }
     },
     mounted() {
