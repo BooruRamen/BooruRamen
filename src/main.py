@@ -141,9 +141,41 @@ def dislike_post(event=None):
     next_post()
 
 # Function to resize and display the current post without distortion
+def handle_video(media_url, current_index):
+    temp_video_path = media.download_video(media_url, current_index)
+    if temp_video_path:
+        video_thread = threading.Thread(target=media.play_video, args=(temp_video_path, media_label))
+        video_thread.start()
+        return True
+    return False
+
+def handle_image(media_url):
+    response = requests.get(media_url)
+    if response.status_code != 200:
+        return False
+        
+    try:
+        image_data = Image.open(BytesIO(response.content))
+        if fullscreen:
+            img_width, img_height = image_data.size
+            scale_factor = min(screen_width / img_width, screen_height / img_height)
+            new_width = int(img_width * scale_factor)
+            new_height = int(img_height * scale_factor)
+            image_data = image_data.resize((new_width, new_height), Image.LANCZOS)
+        else:
+            image_data.thumbnail((1280, 720), Image.LANCZOS)
+            
+        image = ImageTk.PhotoImage(image_data)
+        media_label.config(image=image)
+        media_label.image = image
+        return True
+    except Exception as e:
+        print(f"Failed to load image: {e}")
+        return False
+
 def show_post(index):
     global current_index
-    stop_playback()  # Stop any ongoing playback
+    stop_playback()
     current_index = index
 
     post = posts[current_index]
@@ -152,58 +184,29 @@ def show_post(index):
     rating = post.get('rating', '')
     database.mark_as_seen(post_id, tags, rating)
 
-    # Predict the likelihood score
     score = user_profile.predict_post_likelihood(post, user_profile.load_profile_from_file())
     print(f"Predicted likelihood score for this post: {score*100:.2f}%")
-
-    media_url = post.get("file_url")
-    file_extension = post.get("file_ext", "")
-
     print(f'Post score: {post.get("score")}')
 
-    # Clear the media label content before loading new media
     clear_media_label()
-
-    # Clean up temp files that are more than 3 posts away
     media.cleanup_old_temp_files(current_index)
 
-    if media_url:
-        if file_extension in ["mp4", "webm"]:  # Video formats
-            temp_video_path = media.download_video(media_url, current_index)
-            if temp_video_path:
-                video_thread = threading.Thread(target=media.play_video, args=(temp_video_path, media_label))
-                video_thread.start()
-            else:
-                print("Failed to download video.")
-                next_post()  # Move to the next post if download fails
-        else:
-            response = requests.get(media_url)
-            if response.status_code == 200:
-                try:
-                    image_data = Image.open(BytesIO(response.content))
-                    
-                    # Calculate aspect-ratio-preserving size
-                    if fullscreen:
-                        img_width, img_height = image_data.size
-                        scale_factor = min(screen_width / img_width, screen_height / img_height)
-                        new_width = int(img_width * scale_factor)
-                        new_height = int(img_height * scale_factor)
-                        image_data = image_data.resize((new_width, new_height), Image.LANCZOS)
-                    else:
-                        image_data.thumbnail((1280, 720), Image.LANCZOS)
-                        
-                    image = ImageTk.PhotoImage(image_data)
-                    media_label.config(image=image)
-                    media_label.image = image
-                except Exception as e:
-                    print(f"Failed to load image: {e}")
-                    next_post()  # Move to the next post if image fails to load
-            else:
-                print("Error: Failed to fetch the image.")
-                next_post()  # Move to the next post if fetch fails
-    else:
+    media_url = post.get("file_url")
+    if not media_url:
         print("Error: No media URL available.")
-        next_post()  # Move to the next post if no media URL
+        next_post()
+        return
+
+    file_extension = post.get("file_ext", "")
+    success = False
+    
+    if file_extension in ["mp4", "webm"]:
+        success = handle_video(media_url, current_index)
+    else:
+        success = handle_image(media_url)
+        
+    if not success:
+        next_post()
 
 # Button functions to navigate posts
 def next_post(event=None):
