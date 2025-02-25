@@ -23,6 +23,8 @@ root.geometry("1280x900")  # Set the overall window size
 
 # Variable to track fullscreen state
 fullscreen = False
+# Variable to track focus mode state
+focus_mode = False
 
 # Store default background colors
 default_bg = root.cget('bg')
@@ -42,6 +44,9 @@ button_frame.pack(fill='x')
 # Media display label with default size
 media_label = tk.Label(media_frame, width=1280, height=720)
 media_label.pack()
+
+# Create a darkening overlay for focus mode (hidden by default)
+overlay_frame = tk.Frame(root, bg='black')
 
 # Store default backgrounds for media_label and media_frame
 default_media_label_bg = media_label.cget('bg')
@@ -165,7 +170,7 @@ def handle_image(media_url):
         
     try:
         image_data = Image.open(BytesIO(response.content))
-        if fullscreen:
+        if fullscreen or focus_mode:
             img_width, img_height = image_data.size
             scale_factor = min(screen_width / img_width, screen_height / img_height)
             new_width = int(img_width * scale_factor)
@@ -321,6 +326,61 @@ def toggle_autonext(event=None):
     autonext_checkbox.toggle()
     schedule_autonext()
 
+# Function to toggle focus mode
+def toggle_focus_mode(event=None):
+    global focus_mode
+    focus_mode = not focus_mode
+
+    if focus_mode:
+        # Activate focus mode
+        
+        # Configure the overlay frame to fill the window
+        overlay_frame.place(x=0, y=0, width=root.winfo_width(), height=root.winfo_height())
+        overlay_frame.configure(bg='#000000')
+        overlay_frame.attributes = {'alpha': 0.7}
+        
+        # Bring media frame to front and center it
+        media_frame.lift()
+        media_frame_width = int(root.winfo_width() * 0.9)  # 90% of window width
+        media_frame_height = int(root.winfo_height() * 0.9)  # 90% of window height
+        
+        # Calculate center position
+        x_center = (root.winfo_width() - media_frame_width) // 2
+        y_center = (root.winfo_height() - media_frame_height) // 2
+        
+        # Reconfigure media frame
+        media_frame.pack_forget()
+        media_frame.configure(width=media_frame_width, height=media_frame_height, bg='black')
+        media_frame.place(x=x_center, y=y_center, width=media_frame_width, height=media_frame_height)
+        
+        # Configure media label
+        media_label.pack_forget()
+        media_label.configure(width=media_frame_width, height=media_frame_height, bg='black')
+        media_label.pack(fill='both', expand=True)
+        
+        # Hide button frame
+        button_frame.pack_forget()
+    else:
+        # Exit focus mode
+        # Remove the darkening overlay
+        overlay_frame.place_forget()
+        
+        # Reset media frame position and size
+        media_frame.place_forget()
+        media_frame.configure(width=1280, height=720, bg=default_media_frame_bg)
+        media_frame.pack(pady=10)
+        
+        # Reset media label
+        media_label.pack_forget()
+        media_label.configure(width=1280, height=720, background=default_media_label_bg)
+        media_label.pack()
+        
+        # Show button frame
+        button_frame.pack(fill='x')
+
+    # Refresh the current post to adjust image size
+    show_post(current_index)
+
 # Function to toggle fullscreen mode
 def toggle_fullscreen(event=None):
     global fullscreen
@@ -415,11 +475,11 @@ autonext_interval_entry.grid(row=1, column=1, padx=5, sticky='w')
 
 # Open in Browser button below the dropdowns
 open_browser_button = tk.Button(bottom_frame, text="Open in Browser", command=open_in_browser)
-open_browser_button.grid(row=1, column=0, columnspan=2, pady=(5, 0), padx=10, sticky='w')
+open_browser_button.grid(row=1, column=0, pady=(5, 0), padx=10, sticky='w')
 
-# Open in Browser button below the dropdowns
+# Copy to Clipboard button
 copy_to_clipboard_button = tk.Button(bottom_frame, text="Copy to Clipboard", command=copy_to_clipboard)
-copy_to_clipboard_button.grid(row=1, column=1, columnspan=2, pady=(5, 0), padx=10, sticky='w')
+copy_to_clipboard_button.grid(row=1, column=1, pady=(5, 0), padx=10, sticky='w')
 
 # Set up the trace on the rating_option variable
 rating_option.trace('w', rating_option_changed)
@@ -457,12 +517,14 @@ def sigint_handler(sig, frame):
 
 signal.signal(signal.SIGINT, sigint_handler)
 
+# Bind keyboard shortcuts
 root.bind('<Right>', next_post)
 root.bind('<Left>', previous_post)
 root.bind('<Up>', like_post)
 root.bind('<Down>', dislike_post)
 root.bind('<space>', toggle_autonext)
 root.bind('<F11>', toggle_fullscreen)
+root.bind('<F10>', toggle_focus_mode)  # Add keyboard shortcut for focus mode
 
 # Display the first post
 fetch_and_update_posts()
