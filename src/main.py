@@ -16,6 +16,8 @@ import user_profile
 
 # Initialize tkinter window
 root = tk.Tk()
+root.tk_setPalette(background='#333333', foreground='white', activeBackground='#555555', activeForeground='white')
+root.configure(bg='#333333')
 root.title("Danbooru Viewer")
 root.geometry("1280x900")  # Set the overall window size
 
@@ -99,6 +101,13 @@ def open_in_browser():
     post_id = posts[current_index]["id"]
     url = f"https://danbooru.donmai.us/posts/{post_id}"
     webbrowser.open(url)
+
+def copy_to_clipboard():
+    post_id = posts[current_index]["id"]
+    url = f"https://danbooru.donmai.us/posts/{post_id}"
+    root.clipboard_clear()
+    root.clipboard_append(url)
+    root.update()
 
 # Function to stop video playback
 def stop_playback():
@@ -368,7 +377,7 @@ dislike_button.grid(row=0, column=1, padx=5, sticky='ew')
 like_button = tk.Button(top_button_frame, text="Like", command=like_post, bg="green")
 like_button.grid(row=0, column=2, padx=5, sticky='ew')
 
-super_like_button = tk.Button(top_button_frame, text="Super Like", command=super_like_post, bg="light blue")
+super_like_button = tk.Button(top_button_frame, text="Super Like", command=super_like_post, bg="blue")
 super_like_button.grid(row=0, column=3, padx=5, sticky='ew')
 
 next_button = tk.Button(top_button_frame, text="Next", command=next_post)
@@ -408,6 +417,10 @@ autonext_interval_entry.grid(row=1, column=1, padx=5, sticky='w')
 open_browser_button = tk.Button(bottom_frame, text="Open in Browser", command=open_in_browser)
 open_browser_button.grid(row=1, column=0, columnspan=2, pady=(5, 0), padx=10, sticky='w')
 
+# Open in Browser button below the dropdowns
+copy_to_clipboard_button = tk.Button(bottom_frame, text="Copy to Clipboard", command=copy_to_clipboard)
+copy_to_clipboard_button.grid(row=1, column=1, columnspan=2, pady=(5, 0), padx=10, sticky='w')
+
 # Set up the trace on the rating_option variable
 rating_option.trace('w', rating_option_changed)
 media_option.trace('w', media_option_changed)
@@ -435,6 +448,14 @@ def on_close():
 
 # Attach the on_close function to the window close event
 root.protocol("WM_DELETE_WINDOW", on_close)
+
+# Add SIGINT handler to catch Ctrl+C and ensure cleanup is performed
+import signal
+
+def sigint_handler(sig, frame):
+    on_close()
+
+signal.signal(signal.SIGINT, sigint_handler)
 
 root.bind('<Right>', next_post)
 root.bind('<Left>', previous_post)
