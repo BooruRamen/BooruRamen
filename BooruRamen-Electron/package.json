@@ -1,0 +1,29 @@
+{
+  "name": "booru-ramen-electron",
+  "version": "1.0.0",
+  "description": "Danbooru viewer application built with Electron",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "electron",
+    "danbooru",
+    "image-viewer"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.6.4"
+  },
+  "dependencies": {
+    "better-sqlite3": "^8.5.0",
+    "axios": "^1.5.0",
+    "vue": "^3.3.4",
+    "bootstrap": "^5.3.1",
+    "bootstrap-vue-next": "^0.9.19"
+  }
+}
