@@ -9,37 +9,93 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js"></script>
   <style>
+    /* Basic container styles - keep these simple */
     .media-container {
-      max-height: 80vh;
+      max-height: 68vh;
       display: flex;
       justify-content: center;
       align-items: center;
       position: relative;
-      overflow: hidden;
-      margin-bottom: 3rem; /* Added extra bottom margin to prevent UI obstruction */
+      overflow: hidden !important;
+      margin-bottom: 2rem !important;
     }
     
     .media-display {
-      max-height: 80vh;
+      max-height: 68vh;
       max-width: 100%;
       object-fit: contain;
       margin: auto;
       display: block;
     }
     
-    /* Specific styles for video media */
+    /* Video-specific styles - ensure controls work properly */
     video.media-display {
-      z-index: 5;
-      position: relative;
+      max-height: 65vh !important;
+      /* Remove any custom styling that might interfere with controls */
     }
     
-    /* Make sure video controls are visible and not obstructed */
+    /* Ensure video controls are visible and interactive */
+    video::-webkit-media-controls,
     video::-webkit-media-controls-panel {
-      z-index: 10;
-      position: relative;
-      margin-bottom: 20px; /* Adds padding under the controls */
+      display: flex !important;
+      opacity: 1 !important;
+      visibility: visible !important;
     }
     
+    /* Create a dedicated container for video to ensure controls are accessible */
+    .video-container {
+      position: relative;
+      width: 100%;
+      max-height: 68vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    /* Custom video controls as a backup */
+    .custom-video-controls {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 40px;
+      background-color: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      z-index: 1000;
+    }
+    
+    .custom-control-button {
+      color: white;
+      font-size: 24px;
+      margin-right: 10px;
+      cursor: pointer;
+      background: none;
+      border: none;
+    }
+    
+    .custom-timeline {
+      flex-grow: 1;
+      height: 5px;
+      background-color: #444;
+      position: relative;
+      cursor: pointer;
+      margin: 0 10px;
+    }
+    
+    .custom-progress {
+      height: 100%;
+      background-color: #007bff;
+      width: 0%;
+    }
+    
+    /* Control buttons */
+    .control-buttons {
+      margin-top: -0.5rem;
+    }
+    
+    /* Rest of default styling remains unchanged */
     .loading-spinner {
       position: absolute;
       top: 50%;
@@ -59,21 +115,20 @@
     }
     
     .focus-mode .media-display {
-      max-height: 95vh;
+      max-height: 90vh;
       z-index: 100;
       position: relative;
     }
     
     /* Improved fullscreen mode for videos */
     .fullscreen-mode .media-display {
-      max-height: 95vh;
+      max-height: 90vh;
     }
     
-    /* Ensure videos in fullscreen or focus mode have extra space for controls */
     .focus-mode video.media-display,
     .fullscreen-mode video.media-display {
-      max-height: 90vh; /* Reduced slightly to make room for controls */
-      margin-bottom: 5vh; /* Added space specifically for controls */
+      max-height: 85vh !important; 
+      padding-bottom: 40px !important; /* Increased space for controls */
     }
     
     /* Additional style for debug info */
@@ -93,47 +148,68 @@
   <div id="app">
     <div class="container-fluid p-3">
       <!-- Media Display Area -->
-      <div class="media-container mb-3">
-        <div class="position-relative" style="width: 100%; text-align: center;">
-          <!-- Loading indicator -->
-          <div class="loading-spinner" v-if="loading">
-            <div class="spinner-border text-primary" role="status">
-              <span class="visually-hidden">Loading...</span>
+      <div class="media-content-section">
+        <div class="media-container mb-3">
+          <div class="position-relative" style="width: 100%; text-align: center;">
+            <!-- Loading indicator -->
+            <div class="loading-spinner" v-if="loading">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
             </div>
+            
+            <!-- Image display -->
+            <img v-if="currentPost && !isVideo(currentPost) && mediaUrl" 
+                 :src="mediaUrl" 
+                 class="media-display" 
+                 @load="mediaLoaded"
+                 @error="mediaError">
+            
+            <!-- Video display - Restructured for better control access -->
+            <div v-if="currentPost && isVideo(currentPost) && mediaUrl" class="video-container">
+              <!-- Main video element with native controls -->
+              <video 
+                ref="videoPlayer"
+                class="media-display"
+                :key="mediaUrl"
+                controls
+                controlsList="nodownload"
+                autoplay
+                loop
+                @loadeddata="mediaLoaded"
+                @error="mediaError"
+                @timeupdate="updateCustomProgressBar">
+                <source :src="mediaUrl" :type="'video/' + currentPost.file_ext">
+                Your browser does not support the video tag.
+              </video>
+              
+              <!-- Custom controls as backup -->
+              <div class="custom-video-controls" ref="customControls" v-if="showCustomControls">
+                <button class="custom-control-button" @click="togglePlay">
+                  <i :class="isPlaying ? 'bi bi-pause-fill' : 'bi bi-play-fill'"></i>
+                </button>
+                <div class="custom-timeline" ref="customTimeline" @click="seekVideo">
+                  <div class="custom-progress" ref="customProgress"></div>
+                </div>
+                <button class="custom-control-button" @click="toggleMute">
+                  <i :class="isMuted ? 'bi bi-volume-mute-fill' : 'bi bi-volume-up-fill'"></i>
+                </button>
+              </div>
+            </div>
+            
+            <!-- No media message -->
+            <div v-if="currentPost && !mediaUrl && !loading" class="alert alert-warning">
+              Unable to load media. Please try the next post.
+            </div>
+            
+            <!-- Focus mode overlay -->
+            <div v-if="focusMode" class="focus-overlay"></div>
           </div>
-          
-          <!-- Image display -->
-          <img v-if="currentPost && !isVideo(currentPost) && mediaUrl" 
-               :src="mediaUrl" 
-               class="media-display" 
-               @load="mediaLoaded"
-               @error="mediaError">
-          
-          <!-- Video display - Added wrapper div for better control -->
-          <div v-if="currentPost && isVideo(currentPost) && mediaUrl" 
-               class="video-wrapper" style="position: relative;">
-            <video ref="videoPlayer"
-                   class="media-display" 
-                   controls autoplay loop
-                   @loadeddata="mediaLoaded"
-                   @error="mediaError">
-              <source :src="mediaUrl" :type="'video/' + currentPost.file_ext">
-              Your browser does not support the video tag.
-            </video>
-          </div>
-          
-          <!-- No media message -->
-          <div v-if="currentPost && !mediaUrl && !loading" class="alert alert-warning">
-            Unable to load media. Please try the next post.
-          </div>
-          
-          <!-- Focus mode overlay -->
-          <div v-if="focusMode" class="focus-overlay"></div>
         </div>
       </div>
       
       <!-- Control Buttons -->
-      <div class="control-buttons mb-3" v-if="!focusMode">
+      <div class="control-buttons mb-3" v-if="!focusMode" style="margin-top: -0.5rem;">
         <div class="row">
           <div class="col">
             <button @click="previousPost" class="btn btn-secondary w-100">
@@ -157,7 +233,7 @@
           </div>
           <div class="col">
             <button @click="nextPost" class="btn btn-secondary w-100">
-              <i class="bi bi-arrow-right"></i> Next
+              <i class="bi-arrow-right"></i> Next
             </button>
           </div>
         </div>
@@ -165,6 +241,7 @@
       
       <!-- Settings Area -->
       <div class="settings-area mb-3" v-if="!focusMode">
+        <!-- Rest of the settings area content remains unchanged -->
         <div class="row">
           <!-- Rating Selection -->
           <div class="col-md-4 mb-2">
