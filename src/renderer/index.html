@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js"></script>
   <style>
-    /* Basic container styles - keep these simple */
+    /* Basic container styles with reduced margins */
     .media-container {
       max-height: 68vh;
       display: flex;
@@ -17,7 +17,7 @@
       align-items: center;
       position: relative;
       overflow: hidden !important;
-      margin-bottom: 2rem !important;
+      margin-bottom: 0.5rem !important; /* Reduced margin from 2rem to 0.5rem */
     }
     
     .media-display {
@@ -32,6 +32,7 @@
     video.media-display {
       max-height: 65vh !important;
       /* Remove any custom styling that might interfere with controls */
+      margin-bottom: 0 !important; /* Ensure no bottom margin on video */
     }
     
     /* Ensure video controls are visible and interactive */
@@ -50,6 +51,8 @@
       display: flex;
       justify-content: center;
       align-items: center;
+      margin-bottom: 0 !important; /* No margin on the container */
+      padding-bottom: 0 !important; /* No padding on the container */
     }
     
     /* Custom video controls as a backup */
@@ -64,6 +67,17 @@
       align-items: center;
       padding: 0 10px;
       z-index: 1000;
+    }
+    
+    /* Control buttons - reduced top margin to bring closer to video */
+    .control-buttons {
+      margin-top: 0 !important; /* Removed negative margin */
+    }
+    
+    /* Compact buttons with reduced padding */
+    .control-buttons .btn {
+      padding-top: 0.25rem;
+      padding-bottom: 0.25rem;
     }
     
     .custom-control-button {
@@ -88,11 +102,6 @@
       height: 100%;
       background-color: #007bff;
       width: 0%;
-    }
-    
-    /* Control buttons */
-    .control-buttons {
-      margin-top: -0.5rem;
     }
     
     /* Rest of default styling remains unchanged */
@@ -142,14 +151,24 @@
       color: #aaa;
       z-index: 1000;
     }
+    
+    /* Reduce spacing in the media content section */
+    .media-content-section {
+      margin-bottom: 0.5rem !important;
+    }
+    
+    /* Make all sections more compact */
+    .settings-area {
+      margin-top: 0.5rem !important;
+    }
   </style>
 </head>
 <body class="bg-dark text-light">
   <div id="app">
     <div class="container-fluid p-3">
-      <!-- Media Display Area -->
+      <!-- Media Display Area - Reduced spacing -->
       <div class="media-content-section">
-        <div class="media-container mb-3">
+        <div class="media-container">
           <div class="position-relative" style="width: 100%; text-align: center;">
             <!-- Loading indicator -->
             <div class="loading-spinner" v-if="loading">
@@ -208,8 +227,8 @@
         </div>
       </div>
       
-      <!-- Control Buttons -->
-      <div class="control-buttons mb-3" v-if="!focusMode" style="margin-top: -0.5rem;">
+      <!-- Control Buttons with less spacing -->
+      <div class="control-buttons mb-2" v-if="!focusMode">
         <div class="row">
           <div class="col">
             <button @click="previousPost" class="btn btn-secondary w-100">
@@ -239,9 +258,8 @@
         </div>
       </div>
       
-      <!-- Settings Area -->
-      <div class="settings-area mb-3" v-if="!focusMode">
-        <!-- Rest of the settings area content remains unchanged -->
+      <!-- Settings Area - Rest of the content remains unchanged -->
+      <div class="settings-area mb-2" v-if="!focusMode">
         <div class="row">
           <!-- Rating Selection -->
           <div class="col-md-4 mb-2">
