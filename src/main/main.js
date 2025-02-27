@@ -1,14 +1,22 @@
 const { app, BrowserWindow, ipcMain, dialog, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const Database = require('better-sqlite3');
+let Database;
+let db;
+
+// Try to load better-sqlite3, but handle errors gracefully
+try {
+  Database = require('better-sqlite3');
+  console.log("Successfully loaded better-sqlite3 module");
+} catch (err) {
+  console.warn("Warning: Failed to load better-sqlite3. Database features will be disabled.", err);
+  Database = null;
+}
+
 const axios = require('axios');
 
 // Global reference to the main window to prevent automatic closure due to JavaScript garbage collection
 let mainWindow;
-
-// Database connection
-let db;
 
 function createWindow() {
   // Create the browser window
@@ -48,8 +56,17 @@ function createWindow() {
 
 // Initialize the SQLite database
 function initDatabase() {
+  // Skip database initialization if better-sqlite3 module isn't available
+  if (!Database) {
+    console.warn("Database module not loaded. Database functionality will be disabled. Using localStorage fallback.");
+    return;
+  }
+  
   try {
+    // Use userData path for storing databases
     const dbPath = path.join(app.getPath('userData'), 'seen_posts.db');
+    console.log(`Attempting to initialize database at: ${dbPath}`);
+    
     db = new Database(dbPath);
     
     // Create tables if they don't exist
@@ -135,7 +152,7 @@ ipcMain.handle('fetch-media', async (event, url) => {
 // IPC handlers for database operations
 ipcMain.handle('get-setting', (event, key, defaultValue) => {
   if (!db) {
-    console.error('Database is not initialized');
+    console.warn('Database is not initialized, returning default value');
     return defaultValue;
   }
   try {
@@ -150,7 +167,7 @@ ipcMain.handle('get-setting', (event, key, defaultValue) => {
 ipcMain.handle('set-setting', (event, key, value) => {
   try {
     if (!db) {
-      console.error('Database is not initialized');
+      console.warn('Database is not initialized, skipping set-setting');
       return false;
     }
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, String(value));
@@ -164,7 +181,7 @@ ipcMain.handle('set-setting', (event, key, value) => {
 ipcMain.handle('is-seen', (event, postId) => {
   try {
     if (!db) {
-      console.error('Database is not initialized');
+      console.warn('Database is not initialized, assuming post not seen');
       return false;
     }
     const result = db.prepare("SELECT 1 FROM seen_posts WHERE id=?").get(postId);
@@ -178,7 +195,7 @@ ipcMain.handle('is-seen', (event, postId) => {
 ipcMain.handle('mark-as-seen', (event, postId, tags, rating) => {
   try {
     if (!db) {
-      console.error('Database is not initialized');
+      console.warn('Database is not initialized, skipping mark-as-seen');
       return false;
     }
     db.prepare("INSERT OR IGNORE INTO seen_posts (id, status, tags, rating) VALUES (?, NULL, ?, ?)").run(postId, tags, rating);
@@ -192,7 +209,7 @@ ipcMain.handle('mark-as-seen', (event, postId, tags, rating) => {
 ipcMain.handle('mark-post-status', (event, postId, status, tags, rating) => {
   try {
     if (!db) {
-      console.error('Database is not initialized');
+      console.warn('Database is not initialized, skipping mark-post-status');
       return false;
     }
     db.prepare("INSERT OR IGNORE INTO seen_posts (id, status, tags, rating) VALUES (?, NULL, ?, ?)").run(postId, tags, rating);
@@ -207,9 +224,17 @@ ipcMain.handle('mark-post-status', (event, postId, status, tags, rating) => {
 // User profile operations
 ipcMain.handle('load-user-profile', (event) => {
   try {
+    // First try to get the user profile from the app's user data directory
     const profilePath = path.join(app.getPath('userData'), 'user_profile.json');
+    
+    // If that doesn't exist, try the one in the app directory (for backward compatibility)
+    const backupProfilePath = path.join(app.getAppPath(), 'user_profile.json');
+    
     if (fs.existsSync(profilePath)) {
       const profileData = fs.readFileSync(profilePath, 'utf8');
+      return JSON.parse(profileData);
+    } else if (fs.existsSync(backupProfilePath)) {
+      const profileData = fs.readFileSync(backupProfilePath, 'utf8');
       return JSON.parse(profileData);
     } else {
       // Return empty profile if file doesn't exist
@@ -231,7 +256,13 @@ ipcMain.handle('load-user-profile', (event) => {
 
 ipcMain.handle('save-user-profile', (event, profile) => {
   try {
-    const profilePath = path.join(app.getPath('userData'), 'user_profile.json');
+    // Make sure userData directory exists
+    const userDataPath = app.getPath('userData');
+    if (!fs.existsSync(userDataPath)) {
+      fs.mkdirSync(userDataPath, { recursive: true });
+    }
+    
+    const profilePath = path.join(userDataPath, 'user_profile.json');
     fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), 'utf8');
     return true;
   } catch (error) {
@@ -242,8 +273,15 @@ ipcMain.handle('save-user-profile', (event, profile) => {
 
 ipcMain.handle('build-user-profile', async (event) => {
   if (!db) {
-    console.error('Database is not initialized');
-    return null;
+    console.warn('Database is not initialized, returning empty profile');
+    return {
+      tag_scores: {},
+      tag_totals: {},
+      rating_scores: {},
+      rating_totals: {},
+      total_liked: 0,
+      total_disliked: 0
+    };
   }
   try {
     const likedPosts = db.prepare("SELECT tags, rating FROM seen_posts WHERE status = 'liked'").all();
@@ -289,13 +327,25 @@ ipcMain.handle('build-user-profile', async (event) => {
     };
     
     // Save profile to file
-    const profilePath = path.join(app.getPath('userData'), 'user_profile.json');
-    fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), 'utf8');
+    try {
+      const userDataPath = app.getPath('userData');
+      const profilePath = path.join(userDataPath, 'user_profile.json');
+      fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), 'utf8');
+    } catch (saveErr) {
+      console.error("Error saving built profile:", saveErr);
+    }
     
     return profile;
   } catch (error) {
     console.error("Error building user profile:", error);
-    return null;
+    return {
+      tag_scores: {},
+      tag_totals: {},
+      rating_scores: {},
+      rating_totals: {},
+      total_liked: 0,
+      total_disliked: 0
+    };
   }
 });
 
@@ -303,7 +353,11 @@ ipcMain.handle('build-user-profile', async (event) => {
 app.on('will-quit', () => {
   // Close database connection
   if (db) {
-    db.close();
+    try {
+      db.close();
+    } catch (err) {
+      console.error("Error closing database connection:", err);
+    }
   }
 });
 

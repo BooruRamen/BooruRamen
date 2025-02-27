@@ -8,13 +8,69 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js"></script>
+  <style>
+    .media-container {
+      max-height: 80vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .media-display {
+      max-height: 80vh;
+      max-width: 100%;
+      object-fit: contain;
+      margin: auto;
+      display: block;
+    }
+    
+    .loading-spinner {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 100;
+    }
+    
+    .focus-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 50;
+    }
+    
+    .focus-mode .media-display {
+      max-height: 95vh;
+      z-index: 100;
+      position: relative;
+    }
+    
+    .fullscreen-mode .media-display {
+      max-height: 95vh;
+    }
+    
+    /* Additional style for debug info */
+    .debug-info {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 5px;
+      font-size: 10px;
+      color: #aaa;
+      z-index: 1000;
+    }
+  </style>
 </head>
 <body class="bg-dark text-light">
   <div id="app">
     <div class="container-fluid p-3">
       <!-- Media Display Area -->
       <div class="media-container mb-3">
-        <div class="position-relative">
+        <div class="position-relative" style="width: 100%; text-align: center;">
           <!-- Loading indicator -->
           <div class="loading-spinner" v-if="loading">
             <div class="spinner-border text-primary" role="status">
@@ -23,14 +79,14 @@
           </div>
           
           <!-- Image display -->
-          <img v-if="currentPost && !isVideo(currentPost) && !loading && mediaUrl" 
+          <img v-if="currentPost && !isVideo(currentPost) && mediaUrl" 
                :src="mediaUrl" 
                class="media-display" 
                @load="mediaLoaded"
                @error="mediaError">
           
           <!-- Video display -->
-          <video v-if="currentPost && isVideo(currentPost) && !loading && mediaUrl" 
+          <video v-if="currentPost && isVideo(currentPost) && mediaUrl" 
                  ref="videoPlayer"
                  class="media-display" 
                  controls autoplay loop
@@ -39,6 +95,11 @@
             <source :src="mediaUrl" :type="'video/' + currentPost.file_ext">
             Your browser does not support the video tag.
           </video>
+          
+          <!-- No media message -->
+          <div v-if="currentPost && !mediaUrl && !loading" class="alert alert-warning">
+            Unable to load media. Please try the next post.
+          </div>
           
           <!-- Focus mode overlay -->
           <div v-if="focusMode" class="focus-overlay"></div>
@@ -145,6 +206,12 @@
           </span>
         </div>
       </div>
+    </div>
+    
+    <!-- Debug info in development mode -->
+    <div class="debug-info" v-if="currentPost">
+      <div>Media URL: {{ mediaUrl ? (mediaUrl.substring(0, 30) + '...') : 'None' }}</div>
+      <div>Type: {{ currentPost.file_ext }}</div>
     </div>
   </div>
   
