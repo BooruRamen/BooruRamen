@@ -8,7 +8,7 @@ body {
   overflow-x: hidden;
 }
 
-/* Media Container */
+/* Media Container - Reduced bottom margin to decrease padding above buttons */
 .media-container {
   display: flex;
   justify-content: center;
@@ -17,16 +17,57 @@ body {
   height: 70vh;
   background-color: #222222;
   position: relative;
-  overflow: hidden;
+  overflow: hidden; /* Changed back to hidden to prevent overflow */
+  margin-bottom: 2rem !important; /* Reduced from 4rem to 2rem to decrease padding above buttons */
 }
 
-/* Media Display */
+/* Media Display - Strict constraints */
 .media-display {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
   display: block;
   margin: 0 auto;
+}
+
+/* Image-specific styles */
+img.media-display {
+  max-height: 68vh; /* Reduced to ensure no overflow */
+  object-fit: contain;
+}
+
+/* Video-specific styles - simplified to fix control issues */
+video.media-display {
+  position: relative;
+  z-index: 5;
+  max-height: 65vh;
+  width: auto;
+  display: block !important;
+  /* Remove styles that might interfere with controls */
+  padding: 0 !important;
+  margin: 0 auto 2rem auto !important;
+}
+
+/* Remove custom styling that may be interfering with native controls */
+video::-webkit-media-controls,
+video::-webkit-media-controls-enclosure,
+video::-webkit-media-controls-panel {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 100;
+  position: relative !important; /* Changed from absolute to relative */
+}
+
+/* Enhanced video wrapper for better control positioning */
+.video-wrapper {
+  width: 100%;
+  position: relative;
+  display: block;
+  text-align: center;
+  margin-bottom: 2rem !important;
+  /* Remove custom padding to let native controls work */
+  padding: 0 !important;
 }
 
 /* Loading Spinner */
@@ -57,6 +98,13 @@ body {
   bottom: 0;
   height: 100vh;
   z-index: 1100;
+  overflow: hidden !important;
+}
+
+/* Ensure videos in fullscreen mode have extra space for controls */
+.fullscreen-mode video.media-display {
+  max-height: 85vh !important; /* Reduced further to ensure no overlap */
+  margin-bottom: 2rem !important;
 }
 
 /* Button Styles */
@@ -69,10 +117,16 @@ button:hover {
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
-/* Control Buttons */
+/* Control Buttons - adjusted margin to reduce space */
+.control-buttons {
+  margin-top: -0.5rem; /* Negative margin to pull buttons up */
+}
+
 .control-buttons .btn {
   padding: 10px;
   font-weight: 500;
+  position: relative;
+  z-index: 20; /* Ensure buttons are above media */
 }
 
 /* Focus Mode */
@@ -85,4 +139,33 @@ button:hover {
   max-width: 90%;
   max-height: 90%;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+/* Ensure video controls in focus mode are visible */
+.focus-mode video.media-display {
+  max-height: 80vh !important; /* Further reduced to ensure controls visibility */
+  margin-bottom: 0 !important; /* Remove margin to ensure controls are at true bottom */
+}
+
+/* Fix for Chrome and Edge specific issue */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  video.media-display {
+    margin-bottom: 2rem !important;
+  }
+  
+  .video-wrapper {
+    margin-bottom: 2rem !important;
+  }
+  
+  /* Ensure proper spacing between media and buttons - reduced */
+  .media-container {
+    margin-bottom: 2rem !important; /* Reduced from 4rem to 2rem */
+  }
+  
+  /* Ensure buttons are always clickable */
+  .control-buttons {
+    position: relative;
+    z-index: 50 !important;
+    margin-top: -0.5rem; /* Negative margin to pull buttons up */
+  }
 }

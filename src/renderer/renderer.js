@@ -126,6 +126,11 @@ const app = createApp({
       fullscreen: false,
       focusMode: false,
       
+      // Video control states
+      showCustomControls: false,
+      isPlaying: false,
+      isMuted: false,
+      
       // User settings
       selectedRating: 'General and Sensitive',
       selectedMedia: 'Video and Images',
@@ -459,6 +464,167 @@ const app = createApp({
     // Media event handlers
     mediaLoaded() {
       this.loading = false;
+      
+      // Special handling for video elements to ensure proper sizing and controls positioning
+      if (this.currentPost && this.isVideo(this.currentPost) && this.$refs.videoPlayer) {
+        // Give the video a moment to initialize
+        setTimeout(() => {
+          const video = this.$refs.videoPlayer;
+          
+          // Ensure video is sized properly relative to its container
+          if (video.videoWidth && video.videoHeight) {
+            // Set inline styles to maintain aspect ratio
+            const aspectRatio = video.videoWidth / video.videoHeight;
+            
+            // Apply styles based on aspect ratio
+            if (aspectRatio > 1) { // Wider video
+              video.style.width = '100%';
+              video.style.height = 'auto';
+            } else { // Taller video
+              video.style.height = '100%';
+              video.style.width = 'auto';
+            }
+          }
+          
+          // Force controls to be visible
+          video.controls = true;
+          
+          // Test if native controls work by checking if they're visibly rendered
+          const testControlsVisibility = () => {
+            // If we can't detect native controls after a few seconds, enable custom controls
+            setTimeout(() => {
+              // Try to manually show controls
+              video.dispatchEvent(new MouseEvent('mouseover', {
+                'view': window,
+                'bubbles': true,
+                'cancelable': true
+              }));
+              
+              // Check if controls are accessible by testing player features
+              try {
+                if (!video.controls || getComputedStyle(video).pointerEvents === 'none') {
+                  console.log('Native controls might not be accessible, enabling custom controls');
+                  this.showCustomControls = true;
+                  this.isPlaying = !video.paused;
+                  this.isMuted = video.muted;
+                }
+              } catch (e) {
+                console.error('Error checking controls visibility:', e);
+                this.showCustomControls = true;  // Enable custom controls as a fallback
+              }
+            }, 1500);  // Wait for controls to render
+          };
+          
+          testControlsVisibility();
+          
+          // Set up custom override for media controls
+          video.style.pointerEvents = 'auto';
+          
+          // Remove any style/attribute that might interfere with controls
+          video.style.zIndex = '1';
+          video.style.position = 'relative';
+          
+          // Ensure autoplay works properly
+          video.muted = false; // Unmute by default (many browsers only allow autoplay if muted)
+          
+          // Add event listeners for player state
+          video.addEventListener('play', () => {
+            this.isPlaying = true;
+          });
+          
+          video.addEventListener('pause', () => {
+            this.isPlaying = false;
+          });
+          
+          video.addEventListener('volumechange', () => {
+            this.isMuted = video.muted;
+          });
+          
+          // Monitor mouse movement over video to display controls
+          video.addEventListener('mousemove', (e) => {
+            video.controls = true; // Force controls to show
+            
+            // Explicitly show controls via DOM manipulation
+            const showControls = () => {
+              const mediaControls = video.querySelector('::-webkit-media-controls');
+              if (mediaControls) {
+                mediaControls.style.display = 'flex';
+                mediaControls.style.opacity = '1';
+                mediaControls.style.visibility = 'visible';
+              }
+            };
+            
+            // Try to force controls to show
+            try {
+              showControls();
+            } catch(e) {
+              console.warn('Could not directly manipulate media controls:', e);
+            }
+          });
+          
+          // Special override for Firefox and browsers with broken controls
+          video.addEventListener('click', (e) => {
+            // For browsers where controls don't show, toggle play/pause on click
+            if (!this.showCustomControls) {
+              if (video.paused) {
+                video.play();
+              } else {
+                video.pause();
+              }
+            }
+          });
+          
+          console.log('Video control handlers initialized');
+        }, 100);
+      }
+    },
+    
+    // Custom video control functions
+    togglePlay() {
+      if (!this.$refs.videoPlayer) return;
+      const video = this.$refs.videoPlayer;
+      
+      if (video.paused) {
+        video.play();
+        this.isPlaying = true;
+      } else {
+        video.pause();
+        this.isPlaying = false;
+      }
+    },
+    
+    toggleMute() {
+      if (!this.$refs.videoPlayer) return;
+      const video = this.$refs.videoPlayer;
+      
+      video.muted = !video.muted;
+      this.isMuted = video.muted;
+    },
+    
+    seekVideo(e) {
+      if (!this.$refs.videoPlayer || !this.$refs.customTimeline) return;
+      
+      const video = this.$refs.videoPlayer;
+      const timeline = this.$refs.customTimeline;
+      
+      // Calculate seek position based on click position within timeline
+      const rect = timeline.getBoundingClientRect();
+      const seekPos = (e.clientX - rect.left) / rect.width;
+      
+      // Set new time
+      video.currentTime = video.duration * seekPos;
+      this.updateCustomProgressBar();
+    },
+    
+    updateCustomProgressBar() {
+      if (!this.$refs.videoPlayer || !this.$refs.customProgress || !this.showCustomControls) return;
+      
+      const video = this.$refs.videoPlayer;
+      const progress = this.$refs.customProgress;
+      
+      // Update progress bar width
+      const progressPercent = (video.currentTime / video.duration) * 100;
+      progress.style.width = `${progressPercent}%`;
     },
     
     mediaError() {
