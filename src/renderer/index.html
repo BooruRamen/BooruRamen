@@ -14,6 +14,9 @@
       display: flex;
       justify-content: center;
       align-items: center;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 3rem; /* Added extra bottom margin to prevent UI obstruction */
     }
     
     .media-display {
@@ -22,6 +25,19 @@
       object-fit: contain;
       margin: auto;
       display: block;
+    }
+    
+    /* Specific styles for video media */
+    video.media-display {
+      z-index: 5;
+      position: relative;
+    }
+    
+    /* Make sure video controls are visible and not obstructed */
+    video::-webkit-media-controls-panel {
+      z-index: 10;
+      position: relative;
+      margin-bottom: 20px; /* Adds padding under the controls */
     }
     
     .loading-spinner {
@@ -48,8 +64,16 @@
       position: relative;
     }
     
+    /* Improved fullscreen mode for videos */
     .fullscreen-mode .media-display {
       max-height: 95vh;
+    }
+    
+    /* Ensure videos in fullscreen or focus mode have extra space for controls */
+    .focus-mode video.media-display,
+    .fullscreen-mode video.media-display {
+      max-height: 90vh; /* Reduced slightly to make room for controls */
+      margin-bottom: 5vh; /* Added space specifically for controls */
     }
     
     /* Additional style for debug info */
@@ -85,16 +109,18 @@
                @load="mediaLoaded"
                @error="mediaError">
           
-          <!-- Video display -->
-          <video v-if="currentPost && isVideo(currentPost) && mediaUrl" 
-                 ref="videoPlayer"
-                 class="media-display" 
-                 controls autoplay loop
-                 @loadeddata="mediaLoaded"
-                 @error="mediaError">
-            <source :src="mediaUrl" :type="'video/' + currentPost.file_ext">
-            Your browser does not support the video tag.
-          </video>
+          <!-- Video display - Added wrapper div for better control -->
+          <div v-if="currentPost && isVideo(currentPost) && mediaUrl" 
+               class="video-wrapper" style="position: relative;">
+            <video ref="videoPlayer"
+                   class="media-display" 
+                   controls autoplay loop
+                   @loadeddata="mediaLoaded"
+                   @error="mediaError">
+              <source :src="mediaUrl" :type="'video/' + currentPost.file_ext">
+              Your browser does not support the video tag.
+            </video>
+          </div>
           
           <!-- No media message -->
           <div v-if="currentPost && !mediaUrl && !loading" class="alert alert-warning">

@@ -18,6 +18,7 @@ body {
   background-color: #222222;
   position: relative;
   overflow: hidden;
+  margin-bottom: 3rem; /* Added extra space at bottom to prevent UI obstruction */
 }
 
 /* Media Display */
@@ -27,6 +28,25 @@ body {
   object-fit: contain;
   display: block;
   margin: 0 auto;
+}
+
+/* Video-specific styles */
+video.media-display {
+  z-index: 5;
+  position: relative;
+}
+
+/* Video controls - ensure they're visible */
+video::-webkit-media-controls-panel {
+  z-index: 10;
+  position: relative;
+  display: flex !important;
+}
+
+/* Add padding to ensure controls are visible */
+.video-wrapper {
+  padding-bottom: 30px;
+  width: 100%;
 }
 
 /* Loading Spinner */
@@ -59,6 +79,12 @@ body {
   z-index: 1100;
 }
 
+/* Ensure videos in fullscreen mode have extra space for controls */
+.fullscreen-mode video.media-display {
+  max-height: 90vh;
+  margin-bottom: 5vh;
+}
+
 /* Button Styles */
 button {
   transition: all 0.2s ease;
@@ -85,4 +111,10 @@ button:hover {
   max-width: 90%;
   max-height: 90%;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+/* Ensure video controls in focus mode are visible */
+.focus-mode video.media-display {
+  max-height: 85vh; /* Leave space for controls */
+  margin-bottom: 5vh;
 }

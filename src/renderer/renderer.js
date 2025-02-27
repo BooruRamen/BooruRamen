@@ -459,6 +459,29 @@ const app = createApp({
     // Media event handlers
     mediaLoaded() {
       this.loading = false;
+      
+      // Special handling for video elements to ensure proper sizing
+      if (this.currentPost && this.isVideo(this.currentPost) && this.$refs.videoPlayer) {
+        // Give the video a moment to initialize
+        setTimeout(() => {
+          const video = this.$refs.videoPlayer;
+          
+          // Ensure video is sized properly relative to its container
+          if (video.videoWidth && video.videoHeight) {
+            // Set inline styles to maintain aspect ratio
+            const aspectRatio = video.videoWidth / video.videoHeight;
+            
+            // Apply styles based on aspect ratio
+            if (aspectRatio > 1) { // Wider video
+              video.style.width = '100%';
+              video.style.height = 'auto';
+            } else { // Taller video
+              video.style.height = '100%';
+              video.style.width = 'auto';
+            }
+          }
+        }, 100);
+      }
     },
     
     mediaError() {
