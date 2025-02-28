@@ -9,7 +9,8 @@ try {
   Database = require('better-sqlite3');
   console.log("Successfully loaded better-sqlite3 module");
 } catch (err) {
-  console.warn("Warning: Failed to load better-sqlite3. Database features will be disabled.", err);
+  console.error("Error loading better-sqlite3:", err);
+  console.warn("Warning: Failed to load better-sqlite3. Database features will be disabled.");
   Database = null;
 }
 
@@ -67,39 +68,126 @@ function initDatabase() {
     const dbPath = path.join(app.getPath('userData'), 'seen_posts.db');
     console.log(`Attempting to initialize database at: ${dbPath}`);
     
-    db = new Database(dbPath);
-    
-    // Create tables if they don't exist
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS seen_posts (
-        id INTEGER PRIMARY KEY,
-        status TEXT,
-        tags TEXT,
-        rating TEXT
-      );
-      
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
-      );
-    `);
-    
-    // Check if 'tags' and 'rating' columns exist and add them if not
-    const columns = db.prepare("PRAGMA table_info(seen_posts)").all();
-    const columnNames = columns.map(col => col.name);
-    
-    if (!columnNames.includes('tags')) {
-      try {
-        db.exec("ALTER TABLE seen_posts ADD COLUMN tags TEXT");
-      } catch (err) {
-        console.error("Error adding column tags:", err);
-      }
+    // Ensure directory exists
+    const dbDir = path.dirname(dbPath);
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+      console.log(`Created database directory: ${dbDir}`);
     }
-    if (!columnNames.includes('rating')) {
+    
+    // Check if this is a first-time setup by looking for DB file
+    const isFirstTimeSetup = !fs.existsSync(dbPath);
+    
+    // Open the database with reduced logging for production
+    db = new Database(dbPath, { 
+      verbose: process.env.NODE_ENV === 'development' ? console.log : null,
+      fileMustExist: false 
+    });
+    
+    // Enable WAL mode for better concurrent access, but only log in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log("Setting journal mode to WAL");
+      db.pragma('journal_mode = WAL');
+    } else {
+      db.pragma('journal_mode = WAL');
+    }
+    
+    // Only create tables and indexes on first run
+    if (isFirstTimeSetup) {
+      console.log("First-time database setup. Creating tables and indexes...");
+      
+      // Create tables if they don't exist
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS seen_posts (
+          id INTEGER PRIMARY KEY,
+          status TEXT,
+          tags TEXT,
+          rating TEXT,
+          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT,
+          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Create indexes for better query performance
+        CREATE INDEX IF NOT EXISTS idx_seen_posts_status ON seen_posts(status);
+        CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key);
+      `);
+    } else {
+      // Check schema version to handle migrations
+      let schemaVersion = 1;
       try {
-        db.exec("ALTER TABLE seen_posts ADD COLUMN rating TEXT");
+        const versionResult = db.prepare("SELECT value FROM settings WHERE key='schema_version'").get();
+        if (versionResult) {
+          schemaVersion = parseInt(versionResult.value);
+        }
       } catch (err) {
-        console.error("Error adding column rating:", err);
+        // Schema version doesn't exist yet, will be created below
+      }
+      
+      // Handle schema migrations based on version
+      if (schemaVersion < 2) {
+        // Migration for schema version 1 to 2
+        try {
+          // Ensure all needed columns exist
+          const columns = db.prepare("PRAGMA table_info(seen_posts)").all();
+          const columnNames = columns.map(col => col.name);
+          
+          const neededColumns = {
+            'tags': 'TEXT',
+            'rating': 'TEXT',
+            'timestamp': 'DATETIME DEFAULT CURRENT_TIMESTAMP'
+          };
+          
+          Object.entries(neededColumns).forEach(([colName, colType]) => {
+            if (!columnNames.includes(colName)) {
+              console.log(`Adding '${colName}' column to seen_posts table`);
+              db.exec(`ALTER TABLE seen_posts ADD COLUMN ${colName} ${colType}`);
+            }
+          });
+          
+          // Set schema version to 2
+          db.prepare("INSERT OR REPLACE INTO settings (key, value, timestamp) VALUES ('schema_version', ?, CURRENT_TIMESTAMP)").run('2');
+          schemaVersion = 2;
+        } catch (err) {
+          console.error("Error in schema migration 1->2:", err);
+        }
+      }
+      
+      // Add future migrations here as needed
+      // if (schemaVersion < 3) { ... }
+    }
+    
+    // Only perform a basic test in development mode
+    if (process.env.NODE_ENV === 'development') {
+      // Test database with a simple query
+      try {
+        const count = db.prepare("SELECT COUNT(*) as count FROM seen_posts").get();
+        console.log(`Database test successful. Found ${count.count} records in seen_posts table.`);
+      } catch (testError) {
+        console.error("Database test failed:", testError);
+        
+        // Try to reinitialize with more basic options
+        if (db) {
+          try {
+            db.close();
+          } catch (closeError) {
+            console.error("Error closing database:", closeError);
+          }
+        }
+        db = null;
+        
+        try {
+          console.log("Attempting to reinitialize the database...");
+          db = new Database(dbPath, { fileMustExist: false });
+          console.log("Database reinitialized successfully");
+        } catch (reopenError) {
+          console.error("Failed to reinitialize database:", reopenError);
+          db = null;
+        }
       }
     }
     
@@ -107,6 +195,13 @@ function initDatabase() {
   } catch (error) {
     console.error("Database initialization failed:", error);
     // Ensure db is set to null on failure
+    if (db) {
+      try {
+        db.close();
+      } catch (closeError) {
+        console.error("Error closing database after initialization failure:", closeError);
+      }
+    }
     db = null;
   }
 }
@@ -170,7 +265,7 @@ ipcMain.handle('set-setting', (event, key, value) => {
       console.warn('Database is not initialized, skipping set-setting');
       return false;
     }
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, String(value));
+    db.prepare("INSERT OR REPLACE INTO settings (key, value, timestamp) VALUES (?, ?, CURRENT_TIMESTAMP)").run(key, String(value));
     return true;
   } catch (error) {
     console.error("Error setting setting:", error);
@@ -198,7 +293,7 @@ ipcMain.handle('mark-as-seen', (event, postId, tags, rating) => {
       console.warn('Database is not initialized, skipping mark-as-seen');
       return false;
     }
-    db.prepare("INSERT OR IGNORE INTO seen_posts (id, status, tags, rating) VALUES (?, NULL, ?, ?)").run(postId, tags, rating);
+    db.prepare("INSERT OR IGNORE INTO seen_posts (id, status, tags, rating, timestamp) VALUES (?, NULL, ?, ?, CURRENT_TIMESTAMP)").run(postId, tags, rating);
     return true;
   } catch (error) {
     console.error("Error marking post as seen:", error);
@@ -212,11 +307,39 @@ ipcMain.handle('mark-post-status', (event, postId, status, tags, rating) => {
       console.warn('Database is not initialized, skipping mark-post-status');
       return false;
     }
-    db.prepare("INSERT OR IGNORE INTO seen_posts (id, status, tags, rating) VALUES (?, NULL, ?, ?)").run(postId, tags, rating);
-    db.prepare("UPDATE seen_posts SET status = ?, tags = ?, rating = ? WHERE id = ?").run(status, tags, rating, postId);
+    db.prepare("INSERT OR IGNORE INTO seen_posts (id, status, tags, rating, timestamp) VALUES (?, NULL, ?, ?, CURRENT_TIMESTAMP)").run(postId, tags, rating);
+    db.prepare("UPDATE seen_posts SET status = ?, tags = ?, rating = ?, timestamp = CURRENT_TIMESTAMP WHERE id = ?").run(status, tags, rating, postId);
     return true;
   } catch (error) {
     console.error("Error marking post status:", error);
+    return false;
+  }
+});
+
+// Implementing a batch settings update method to reduce individual database operations
+
+// Add this handler near the other IPC handlers
+ipcMain.handle('set-settings-batch', (event, settingsObj) => {
+  try {
+    if (!db) {
+      console.warn('Database is not initialized, skipping set-settings-batch');
+      return false;
+    }
+    
+    // Use a transaction for better performance with multiple operations
+    const transaction = db.transaction(() => {
+      const stmt = db.prepare("INSERT OR REPLACE INTO settings (key, value, timestamp) VALUES (?, ?, CURRENT_TIMESTAMP)");
+      
+      Object.entries(settingsObj).forEach(([key, value]) => {
+        stmt.run(key, String(value));
+      });
+    });
+    
+    // Execute the transaction
+    transaction();
+    return true;
+  } catch (error) {
+    console.error("Error setting settings batch:", error);
     return false;
   }
 });
@@ -346,6 +469,69 @@ ipcMain.handle('build-user-profile', async (event) => {
       total_liked: 0,
       total_disliked: 0
     };
+  }
+});
+
+// Add diagnostic tool to check database status
+ipcMain.handle('check-database-status', (event) => {
+  const status = {
+    isInitialized: db !== null,
+    databasePath: db ? db.name : null,
+    tables: [],
+    error: null
+  };
+  
+  if (db) {
+    try {
+      // Get list of tables
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table';").all();
+      status.tables = tables.map(t => t.name);
+      
+      // Get count of records in seen_posts
+      const seenCount = db.prepare("SELECT COUNT(*) as count FROM seen_posts").get();
+      status.seenPostsCount = seenCount.count;
+      
+      // Get count of records in settings
+      const settingsCount = db.prepare("SELECT COUNT(*) as count FROM settings").get();
+      status.settingsCount = settingsCount.count;
+      
+    } catch (err) {
+      status.error = err.message;
+    }
+  }
+  
+  return status;
+});
+
+// Add a batch method to check multiple posts at once
+ipcMain.handle('are-posts-seen', (event, postIds) => {
+  try {
+    if (!db || !postIds || postIds.length === 0) {
+      return {};
+    }
+    
+    // Convert the IDs array to a comma-separated string for SQL IN clause
+    const placeholders = postIds.map(() => '?').join(',');
+    const query = `SELECT id FROM seen_posts WHERE id IN (${placeholders})`;
+    
+    // Execute the query with the postIds array as parameters
+    const results = db.prepare(query).all(...postIds);
+    
+    // Convert to a map of id -> boolean for easy lookup
+    const seenMap = {};
+    postIds.forEach(id => {
+      seenMap[id] = false; // Default all to not seen
+    });
+    
+    // Mark the ones that were found as seen
+    results.forEach(row => {
+      seenMap[row.id] = true;
+    });
+    
+    return seenMap;
+  } catch (error) {
+    console.error("Error batch-checking seen posts:", error);
+    return {};
   }
 });
 
