@@ -1,8 +1,10 @@
 const { app, BrowserWindow, ipcMain, dialog, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const MonolithRecommendation = require('./recommendation');
 let Database;
 let db;
+let recommendationEngine;
 
 // Try to load better-sqlite3, but handle errors gracefully
 try {
@@ -18,6 +20,44 @@ const axios = require('axios');
 
 // Global reference to the main window to prevent automatic closure due to JavaScript garbage collection
 let mainWindow;
+
+// Add global function for media preloading
+global.fetchMediaForPreload = async (url) => {
+  try {
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent': 'BooruRamen/1.0'
+      }
+    });
+    
+    // Convert the arraybuffer to base64
+    const buffer = Buffer.from(response.data, 'binary');
+    const base64 = buffer.toString('base64');
+    
+    // Determine content type
+    let contentType = response.headers['content-type'];
+    if (!contentType) {
+      // Try to guess content type from URL
+      if (url.endsWith('.jpg') || url.endsWith('.jpeg')) {
+        contentType = 'image/jpeg';
+      } else if (url.endsWith('.png')) {
+        contentType = 'image/png';
+      } else if (url.endsWith('.gif')) {
+        contentType = 'image/gif';
+      } else if (url.endsWith('.webm')) {
+        contentType = 'video/webm';
+      } else if (url.endsWith('.mp4')) {
+        contentType = 'video/mp4';
+      }
+    }
+    
+    return `data:${contentType};base64,${base64}`;
+  } catch (error) {
+    console.error(`Error preloading media from ${url}:`, error);
+    return null;
+  }
+};
 
 function createWindow() {
   // Create the browser window
@@ -190,6 +230,10 @@ function initDatabase() {
         }
       }
     }
+    
+    // Initialize the recommendation engine with the database
+    recommendationEngine = new MonolithRecommendation(db);
+    console.log("Recommendation engine created");
     
     console.log("Database initialized successfully");
   } catch (error) {
@@ -532,6 +576,161 @@ ipcMain.handle('are-posts-seen', (event, postIds) => {
   } catch (error) {
     console.error("Error batch-checking seen posts:", error);
     return {};
+  }
+});
+
+// Add this right after the build-user-profile handler
+ipcMain.handle('initialize-recommendation-engine', async (event, userProfile) => {
+  try {
+    if (!recommendationEngine) {
+      recommendationEngine = new MonolithRecommendation(db);
+    }
+    await recommendationEngine.initialize(userProfile);
+    return { success: true };
+  } catch (error) {
+    console.error("Error initializing recommendation engine:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('update-recommendation-profile', async (event, post, status) => {
+  try {
+    if (!recommendationEngine) {
+      recommendationEngine = new MonolithRecommendation(db);
+      await recommendationEngine.initialize();
+    }
+    
+    const updatedProfile = recommendationEngine.updateProfile(post, status);
+    return { success: true, profile: updatedProfile };
+  } catch (error) {
+    console.error("Error updating recommendation profile:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('recommend-posts', async (event, posts) => {
+  try {
+    if (!recommendationEngine) {
+      recommendationEngine = new MonolithRecommendation(db);
+      await recommendationEngine.initialize();
+    }
+    
+    recommendationEngine.adjustExplorationRate();
+    const recommendedPosts = recommendationEngine.recommendPosts(posts);
+    
+    return { success: true, posts: recommendedPosts };
+  } catch (error) {
+    console.error("Error recommending posts:", error);
+    return { success: false, error: error.message, posts: posts };
+  }
+});
+
+ipcMain.handle('save-recommendation-model', async (event) => {
+  try {
+    if (!recommendationEngine) {
+      return { success: false, error: "Recommendation engine not initialized" };
+    }
+    
+    const model = recommendationEngine.exportModel();
+    const modelPath = path.join(app.getPath('userData'), 'recommendation_model.json');
+    
+    fs.writeFileSync(modelPath, JSON.stringify(model, null, 2), 'utf8');
+    return { success: true, path: modelPath };
+  } catch (error) {
+    console.error("Error saving recommendation model:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Load saved recommendation model
+ipcMain.handle('load-recommendation-model', async (event) => {
+  try {
+    if (!recommendationEngine) {
+      recommendationEngine = new MonolithRecommendation(db);
+    }
+    
+    // First try to load from database if available
+    if (db) {
+      try {
+        // Check if the recommendation_models table exists
+        const tableCheck = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='recommendation_models'").get();
+        
+        if (tableCheck) {
+          const stmt = db.prepare('SELECT model FROM recommendation_models ORDER BY timestamp DESC LIMIT 1');
+          const row = stmt.get();
+          
+          if (row && row.model) {
+            const model = JSON.parse(row.model);
+            const success = recommendationEngine.importModel(model);
+            return { success };
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Error loading model from database:', dbErr);
+        // Continue to try loading from file
+      }
+    }
+    
+    // If no model in database or loading failed, try from file
+    const modelPath = path.join(app.getPath('userData'), 'recommendation_model.json');
+    if (fs.existsSync(modelPath)) {
+      const modelData = fs.readFileSync(modelPath, 'utf8');
+      const model = JSON.parse(modelData);
+      
+      const success = recommendationEngine.importModel(model);
+      return { success };
+    }
+    
+    // If no model exists yet, initialize with a new one
+    await recommendationEngine.initialize();
+    return { success: true };
+  } catch (error) {
+    console.error("Error loading recommendation model:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get top user tags from recommendation engine
+ipcMain.handle('get-top-user-tags', async (event, limit = 20) => {
+  try {
+    if (!recommendationEngine) {
+      recommendationEngine = new MonolithRecommendation(db);
+      await recommendationEngine.initialize();
+    }
+    
+    return await recommendationEngine.getTopUserTags(limit);
+  } catch (error) {
+    console.error('Error getting top user tags:', error);
+    return [];
+  }
+});
+
+// Get top tag combinations from recommendation engine
+ipcMain.handle('get-top-tag-combinations', async (event, limit = 10) => {
+  try {
+    if (!recommendationEngine) {
+      recommendationEngine = new MonolithRecommendation(db);
+      await recommendationEngine.initialize();
+    }
+    
+    return await recommendationEngine.getTopTagCombinations(limit);
+  } catch (error) {
+    console.error('Error getting top tag combinations:', error);
+    return [];
+  }
+});
+
+// New: Add handler for getting preloaded media
+ipcMain.handle('get-preloaded-media', (event, postId) => {
+  try {
+    if (!recommendationEngine) {
+      return null;
+    }
+    
+    return recommendationEngine.getPreloadedMedia(postId);
+  } catch (error) {
+    console.error('Error getting preloaded media:', error);
+    return null;
   }
 });
 

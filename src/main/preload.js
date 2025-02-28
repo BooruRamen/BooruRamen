@@ -20,6 +20,24 @@ contextBridge.exposeInMainWorld(
     saveUserProfile: (profile) => ipcRenderer.invoke('save-user-profile', profile),
     buildUserProfile: () => ipcRenderer.invoke('build-user-profile'),
     
+    // Recommendation system operations
+    initializeRecommendationEngine: (userProfile) => 
+      ipcRenderer.invoke('initialize-recommendation-engine', userProfile),
+    updateRecommendationProfile: (post, status) => 
+      ipcRenderer.invoke('update-recommendation-profile', post, status),
+    recommendPosts: (posts) => 
+      ipcRenderer.invoke('recommend-posts', posts),
+    saveRecommendationModel: () => 
+      ipcRenderer.invoke('save-recommendation-model'),
+    loadRecommendationModel: () => 
+      ipcRenderer.invoke('load-recommendation-model'),
+    
+    // Top tags analysis methods  
+    getTopUserTags: (limit) => 
+      ipcRenderer.invoke('get-top-user-tags', limit),
+    getTopTagCombinations: (limit) => 
+      ipcRenderer.invoke('get-top-tag-combinations', limit),
+      
     // Helper functions for math operations
     sigmoid: (x) => 1 / (1 + Math.exp(-x)),
     
@@ -28,6 +46,9 @@ contextBridge.exposeInMainWorld(
     // Methods for updating user profile incrementally - MOVED TO RENDERER
     
     // Media loading proxy function - allows loading remote content
-    fetchMedia: (url) => ipcRenderer.invoke('fetch-media', url)
+    fetchMedia: (url) => ipcRenderer.invoke('fetch-media', url),
+    
+    // New: Check if there's preloaded media available for a post
+    getPreloadedMedia: (postId) => ipcRenderer.invoke('get-preloaded-media', postId)
   }
 );
