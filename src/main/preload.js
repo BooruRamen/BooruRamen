@@ -46,6 +46,9 @@ contextBridge.exposeInMainWorld(
     // Methods for updating user profile incrementally - MOVED TO RENDERER
     
     // Media loading proxy function - allows loading remote content
-    fetchMedia: (url) => ipcRenderer.invoke('fetch-media', url)
+    fetchMedia: (url) => ipcRenderer.invoke('fetch-media', url),
+    
+    // New: Check if there's preloaded media available for a post
+    getPreloadedMedia: (postId) => ipcRenderer.invoke('get-preloaded-media', postId)
   }
 );

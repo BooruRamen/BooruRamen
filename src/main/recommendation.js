@@ -10,6 +10,11 @@ class MonolithRecommendation {
     this.decayFactor = 0.98; // Decay factor for historical preferences
     this.postScoresCache = new Map(); // Cache for post scores to avoid recalculation
     this.initialized = false;
+    
+    // Add preloading cache
+    this.preloadCache = new Map(); // Cache for preloaded media data
+    this.preloading = false; // Flag to prevent multiple concurrent preloads
+    this.maxPreloadItems = 3; // Maximum number of items to preload ahead
   }
 
   /**
@@ -267,11 +272,15 @@ class MonolithRecommendation {
     // Clear cache as scores have changed
     this.postScoresCache.clear();
 
-    console.log("After update - tag_scores:", Object.keys(this.userProfile.tag_scores).length, "tags");
-    console.log("Total liked:", this.userProfile.total_liked);
-    console.log("Profile updated successfully");
-
-    return this.userProfile;
+    // Return only the serializable parts of the profile
+    return {
+      tag_scores: this.userProfile.tag_scores,
+      tag_totals: this.userProfile.tag_totals,
+      rating_scores: this.userProfile.rating_scores,
+      rating_totals: this.userProfile.rating_totals,
+      total_liked: this.userProfile.total_liked,
+      total_disliked: this.userProfile.total_disliked
+    };
   }
 
   /**
@@ -415,12 +424,106 @@ class MonolithRecommendation {
       return b.score - a.score; // Higher scores first
     });
 
+    // Trigger preloading for the top posts
+    this.preloadTopPosts(scoredPosts.slice(0, this.maxPreloadItems));
+
     // Return posts with their scores for debugging
     return scoredPosts.map(item => ({
       ...item.post,
       recommendationScore: item.score,
       isExploration: item.isExploration
     }));
+  }
+
+  /**
+   * Preload media for top recommended posts
+   * @param {Array} topPosts - Array of top scored posts to preload
+   */
+  async preloadTopPosts(topPosts) {
+    if (this.preloading || !topPosts || topPosts.length === 0) {
+      return;
+    }
+
+    this.preloading = true;
+    
+    try {
+      for (let i = 0; i < topPosts.length; i++) {
+        const post = topPosts[i].post;
+        
+        // Skip if already in cache
+        if (this.preloadCache.has(post.id)) {
+          continue;
+        }
+        
+        // Determine which URL to use for preloading
+        const url = post.file_url || post.large_file_url;
+        
+        if (url) {
+          // Use setTimeout to stagger preload requests
+          setTimeout(async () => {
+            try {
+              // Use IPC to fetch media
+              const mediaData = await global.fetchMediaForPreload(url);
+              // Store in cache with timestamp for potential future cache management
+              this.preloadCache.set(post.id, {
+                url: url,
+                mediaData: mediaData,
+                timestamp: Date.now()
+              });
+              console.log(`Preloaded media for post ID: ${post.id}`);
+              
+              // Manage cache size to prevent memory issues
+              this.managePreloadCache();
+            } catch (err) {
+              console.error(`Error preloading media for post ID ${post.id}:`, err);
+            }
+          }, i * 300); // Stagger preloads with 300ms delay between each
+        }
+      }
+    } catch (err) {
+      console.error("Error in preload operation:", err);
+    } finally {
+      // Reset preloading flag after a delay to allow all scheduled preloads to start
+      setTimeout(() => {
+        this.preloading = false;
+      }, topPosts.length * 300 + 100);
+    }
+  }
+  
+  /**
+   * Manage preload cache size to prevent memory issues
+   */
+  managePreloadCache() {
+    if (this.preloadCache.size > 10) { // Keep max 10 items in cache
+      // Convert to array for sorting
+      const cacheEntries = Array.from(this.preloadCache.entries());
+      
+      // Sort by timestamp (oldest first)
+      cacheEntries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+      
+      // Remove oldest items to get back to size 5
+      const itemsToRemove = cacheEntries.slice(0, cacheEntries.length - 5);
+      for (const [id] of itemsToRemove) {
+        this.preloadCache.delete(id);
+      }
+      
+      console.log(`Cleaned preload cache, removed ${itemsToRemove.length} old items`);
+    }
+  }
+  
+  /**
+   * Get preloaded media data for a post if available
+   * @param {number} postId - The post ID to retrieve
+   * @returns {Object|null} The preloaded media data or null if not found
+   */
+  getPreloadedMedia(postId) {
+    if (this.preloadCache.has(postId)) {
+      const cachedData = this.preloadCache.get(postId);
+      // Update timestamp to indicate recent usage
+      cachedData.timestamp = Date.now();
+      return cachedData.mediaData;
+    }
+    return null;
   }
 
   /**

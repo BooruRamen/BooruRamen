@@ -448,28 +448,60 @@ const app = createApp({
           }
         }
         
-        // Fetch media using the API's fetchMedia function
-        if (safePost.file_url) {
-          try {
-            this.mediaUrl = await window.api.fetchMedia(safePost.file_url);
-            console.log("Media fetched successfully");
-          } catch (mediaError) {
-            console.error("Error fetching media:", mediaError);
-            // Try with large file URL as fallback
-            if (safePost.large_file_url && safePost.large_file_url !== safePost.file_url) {
-              try {
-                this.mediaUrl = await window.api.fetchMedia(safePost.large_file_url);
-                console.log("Media fetched successfully from large_file_url");
-              } catch (largeMediaError) {
-                console.error("Error fetching large media:", largeMediaError);
-                
-                // As a last resort, try loading directly from the URL
-                console.log("Attempting to load media directly from URL");
-                this.mediaUrl = safePost.large_file_url || safePost.file_url;
+        // Check for preloaded media first
+        const preloadedMedia = await window.api.getPreloadedMedia(safePost.id);
+        if (preloadedMedia) {
+          console.log("Using preloaded media for post:", safePost.id);
+          this.mediaUrl = preloadedMedia;
+        } else {
+          // Fetch media using the API's fetchMedia function if not preloaded
+          if (safePost.file_url) {
+            try {
+              this.mediaUrl = await window.api.fetchMedia(safePost.file_url);
+              console.log("Media fetched successfully");
+            } catch (mediaError) {
+              console.error("Error fetching media:", mediaError);
+              // Try with large file URL as fallback
+              if (safePost.large_file_url && safePost.large_file_url !== safePost.file_url) {
+                try {
+                  this.mediaUrl = await window.api.fetchMedia(safePost.large_file_url);
+                  console.log("Media fetched successfully from large_file_url");
+                } catch (largeMediaError) {
+                  console.error("Error fetching large media:", largeMediaError);
+                  
+                  // As a last resort, try loading directly from the URL
+                  console.log("Attempting to load media directly from URL");
+                  this.mediaUrl = safePost.large_file_url || safePost.file_url;
+                }
+              } else {
+                // Fallback to direct URL
+                this.mediaUrl = safePost.file_url;
               }
-            } else {
-              // Fallback to direct URL
-              this.mediaUrl = safePost.file_url;
+            }
+          }
+        }
+        
+        // If this is not the last post, preload the next post in the background
+        if (index < this.posts.length - 1) {
+          const nextPost = this.posts[index + 1];
+          if (nextPost) {
+            // Create a serializable version of the next post for preloading
+            const preloadPost = {
+              id: nextPost.id,
+              file_url: nextPost.file_url,
+              large_file_url: nextPost.large_file_url,
+              preview_file_url: nextPost.preview_file_url,
+              tag_string: nextPost.tag_string || '',
+              rating: nextPost.rating || '',
+              score: nextPost.score || 0,
+              file_ext: nextPost.file_ext || ''
+            };
+            
+            // Recommendation engine will handle the actual preloading
+            try {
+              await window.api.recommendPosts([preloadPost]);
+            } catch (err) {
+              console.warn("Failed to trigger preload for next post:", err);
             }
           }
         }
@@ -691,6 +723,14 @@ const app = createApp({
       
       const post = this.currentPost;
       
+      // Create a minimal serializable version of the post
+      const serializablePost = {
+        id: post.id,
+        tag_string: post.tag_string || '',
+        rating: post.rating || '',
+        score: post.score || 0
+      };
+
       try {
         await window.api.markPostStatus(post.id, 'liked', post.tag_string || '', post.rating || '');
       } catch (err) {
@@ -700,19 +740,41 @@ const app = createApp({
         localStorage.setItem(`post_rating_${post.id}`, post.rating || '');
       }
       
-      // Update user profile
+      // Update user profile with full post data
       this.userProfile = updateProfileIncrementally(post, 'liked', this.userProfile);
       
       try {
-        // Create a completely sanitized version of the profile for IPC transfer
+        // Create a minimal serializable profile
         const serializableProfile = {
-          tag_scores: Object.assign({}, this.userProfile.tag_scores || {}),
-          tag_totals: Object.assign({}, this.userProfile.tag_totals || {}),
-          rating_scores: Object.assign({}, this.userProfile.rating_scores || {}),
-          rating_totals: Object.assign({}, this.userProfile.rating_totals || {}),
+          tag_scores: {},
+          tag_totals: {},
+          rating_scores: {},
+          rating_totals: {},
           total_liked: this.userProfile.total_liked || 0,
           total_disliked: this.userProfile.total_disliked || 0
         };
+
+        // Only copy the necessary data
+        if (this.userProfile.tag_scores) {
+          Object.keys(this.userProfile.tag_scores).forEach(key => {
+            serializableProfile.tag_scores[key] = this.userProfile.tag_scores[key];
+          });
+        }
+        if (this.userProfile.tag_totals) {
+          Object.keys(this.userProfile.tag_totals).forEach(key => {
+            serializableProfile.tag_totals[key] = this.userProfile.tag_totals[key];
+          });
+        }
+        if (this.userProfile.rating_scores) {
+          Object.keys(this.userProfile.rating_scores).forEach(key => {
+            serializableProfile.rating_scores[key] = this.userProfile.rating_scores[key];
+          });
+        }
+        if (this.userProfile.rating_totals) {
+          Object.keys(this.userProfile.rating_totals).forEach(key => {
+            serializableProfile.rating_totals[key] = this.userProfile.rating_totals[key];
+          });
+        }
         
         // Save profile and initialize recommendation engine
         await Promise.all([
@@ -720,19 +782,12 @@ const app = createApp({
           window.api.initializeRecommendationEngine(serializableProfile)
         ]);
         
-        // Update recommendation profile
-        await window.api.updateRecommendationProfile(post, 'liked');
+        // Update recommendation profile with minimal post data
+        await window.api.updateRecommendationProfile(serializablePost, 'liked');
       } catch (err) {
         console.warn("Failed to save user profile or update recommendations:", err);
         // Store a simplified version in localStorage as fallback
-        localStorage.setItem('user_profile', JSON.stringify({
-          tag_scores: this.userProfile.tag_scores || {},
-          tag_totals: this.userProfile.tag_totals || {},
-          rating_scores: this.userProfile.rating_scores || {},
-          rating_totals: this.userProfile.rating_totals || {},
-          total_liked: this.userProfile.total_liked || 0,
-          total_disliked: this.userProfile.total_disliked || 0
-        }));
+        localStorage.setItem('user_profile', JSON.stringify(createSerializableProfile(this.userProfile)));
       }
       
       await this.nextPost();
@@ -742,6 +797,15 @@ const app = createApp({
       if (!this.currentPost) return;
       
       const post = this.currentPost;
+      
+      // Create a minimal serializable version of the post
+      const serializablePost = {
+        id: post.id,
+        tag_string: post.tag_string || '',
+        rating: post.rating || '',
+        score: post.score || 0
+      };
+
       try {
         await window.api.markPostStatus(post.id, 'super liked', post.tag_string || '', post.rating || '');
       } catch (err) {
@@ -751,19 +815,41 @@ const app = createApp({
         localStorage.setItem(`post_rating_${post.id}`, post.rating || '');
       }
       
-      // Update user profile
+      // Update user profile with full post data
       this.userProfile = updateProfileIncrementally(post, 'super liked', this.userProfile);
       
       try {
-        // Create a completely sanitized version of the profile for IPC transfer
+        // Create a minimal serializable profile
         const serializableProfile = {
-          tag_scores: Object.assign({}, this.userProfile.tag_scores || {}),
-          tag_totals: Object.assign({}, this.userProfile.tag_totals || {}),
-          rating_scores: Object.assign({}, this.userProfile.rating_scores || {}),
-          rating_totals: Object.assign({}, this.userProfile.rating_totals || {}),
+          tag_scores: {},
+          tag_totals: {},
+          rating_scores: {},
+          rating_totals: {},
           total_liked: this.userProfile.total_liked || 0,
           total_disliked: this.userProfile.total_disliked || 0
         };
+
+        // Only copy the necessary data
+        if (this.userProfile.tag_scores) {
+          Object.keys(this.userProfile.tag_scores).forEach(key => {
+            serializableProfile.tag_scores[key] = this.userProfile.tag_scores[key];
+          });
+        }
+        if (this.userProfile.tag_totals) {
+          Object.keys(this.userProfile.tag_totals).forEach(key => {
+            serializableProfile.tag_totals[key] = this.userProfile.tag_totals[key];
+          });
+        }
+        if (this.userProfile.rating_scores) {
+          Object.keys(this.userProfile.rating_scores).forEach(key => {
+            serializableProfile.rating_scores[key] = this.userProfile.rating_scores[key];
+          });
+        }
+        if (this.userProfile.rating_totals) {
+          Object.keys(this.userProfile.rating_totals).forEach(key => {
+            serializableProfile.rating_totals[key] = this.userProfile.rating_totals[key];
+          });
+        }
         
         // Save profile and initialize recommendation engine
         await Promise.all([
@@ -771,19 +857,12 @@ const app = createApp({
           window.api.initializeRecommendationEngine(serializableProfile)
         ]);
         
-        // Update recommendation profile
-        await window.api.updateRecommendationProfile(post, 'super liked');
+        // Update recommendation profile with minimal post data
+        await window.api.updateRecommendationProfile(serializablePost, 'super liked');
       } catch (err) {
         console.warn("Failed to save user profile or update recommendations:", err);
         // Store a simplified version in localStorage as fallback
-        localStorage.setItem('user_profile', JSON.stringify({
-          tag_scores: this.userProfile.tag_scores || {},
-          tag_totals: this.userProfile.tag_totals || {},
-          rating_scores: this.userProfile.rating_scores || {},
-          rating_totals: this.userProfile.rating_totals || {},
-          total_liked: this.userProfile.total_liked || 0,
-          total_disliked: this.userProfile.total_disliked || 0
-        }));
+        localStorage.setItem('user_profile', JSON.stringify(createSerializableProfile(this.userProfile)));
       }
       
       await this.nextPost();
@@ -793,6 +872,15 @@ const app = createApp({
       if (!this.currentPost) return;
       
       const post = this.currentPost;
+      
+      // Create a minimal serializable version of the post
+      const serializablePost = {
+        id: post.id,
+        tag_string: post.tag_string || '',
+        rating: post.rating || '',
+        score: post.score || 0
+      };
+
       try {
         await window.api.markPostStatus(post.id, 'disliked', post.tag_string || '', post.rating || '');
       } catch (err) {
@@ -802,19 +890,41 @@ const app = createApp({
         localStorage.setItem(`post_rating_${post.id}`, post.rating || '');
       }
       
-      // Update user profile
+      // Update user profile with full post data
       this.userProfile = updateProfileIncrementally(post, 'disliked', this.userProfile);
       
       try {
-        // Create a completely sanitized version of the profile for IPC transfer
+        // Create a minimal serializable profile
         const serializableProfile = {
-          tag_scores: Object.assign({}, this.userProfile.tag_scores || {}),
-          tag_totals: Object.assign({}, this.userProfile.tag_totals || {}),
-          rating_scores: Object.assign({}, this.userProfile.rating_scores || {}),
-          rating_totals: Object.assign({}, this.userProfile.rating_totals || {}),
+          tag_scores: {},
+          tag_totals: {},
+          rating_scores: {},
+          rating_totals: {},
           total_liked: this.userProfile.total_liked || 0,
           total_disliked: this.userProfile.total_disliked || 0
         };
+
+        // Only copy the necessary data
+        if (this.userProfile.tag_scores) {
+          Object.keys(this.userProfile.tag_scores).forEach(key => {
+            serializableProfile.tag_scores[key] = this.userProfile.tag_scores[key];
+          });
+        }
+        if (this.userProfile.tag_totals) {
+          Object.keys(this.userProfile.tag_totals).forEach(key => {
+            serializableProfile.tag_totals[key] = this.userProfile.tag_totals[key];
+          });
+        }
+        if (this.userProfile.rating_scores) {
+          Object.keys(this.userProfile.rating_scores).forEach(key => {
+            serializableProfile.rating_scores[key] = this.userProfile.rating_scores[key];
+          });
+        }
+        if (this.userProfile.rating_totals) {
+          Object.keys(this.userProfile.rating_totals).forEach(key => {
+            serializableProfile.rating_totals[key] = this.userProfile.rating_totals[key];
+          });
+        }
         
         // Save profile and initialize recommendation engine
         await Promise.all([
@@ -822,19 +932,12 @@ const app = createApp({
           window.api.initializeRecommendationEngine(serializableProfile)
         ]);
         
-        // Update recommendation profile
-        await window.api.updateRecommendationProfile(post, 'disliked');
+        // Update recommendation profile with minimal post data
+        await window.api.updateRecommendationProfile(serializablePost, 'disliked');
       } catch (err) {
         console.warn("Failed to save user profile or update recommendations:", err);
         // Store a simplified version in localStorage as fallback
-        localStorage.setItem('user_profile', JSON.stringify({
-          tag_scores: this.userProfile.tag_scores || {},
-          tag_totals: this.userProfile.tag_totals || {},
-          rating_scores: this.userProfile.rating_scores || {},
-          rating_totals: this.userProfile.rating_totals || {},
-          total_liked: this.userProfile.total_liked || 0,
-          total_disliked: this.userProfile.total_disliked || 0
-        }));
+        localStorage.setItem('user_profile', JSON.stringify(createSerializableProfile(this.userProfile)));
       }
       
       await this.nextPost();

@@ -21,6 +21,44 @@ const axios = require('axios');
 // Global reference to the main window to prevent automatic closure due to JavaScript garbage collection
 let mainWindow;
 
+// Add global function for media preloading
+global.fetchMediaForPreload = async (url) => {
+  try {
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent': 'BooruRamen/1.0'
+      }
+    });
+    
+    // Convert the arraybuffer to base64
+    const buffer = Buffer.from(response.data, 'binary');
+    const base64 = buffer.toString('base64');
+    
+    // Determine content type
+    let contentType = response.headers['content-type'];
+    if (!contentType) {
+      // Try to guess content type from URL
+      if (url.endsWith('.jpg') || url.endsWith('.jpeg')) {
+        contentType = 'image/jpeg';
+      } else if (url.endsWith('.png')) {
+        contentType = 'image/png';
+      } else if (url.endsWith('.gif')) {
+        contentType = 'image/gif';
+      } else if (url.endsWith('.webm')) {
+        contentType = 'video/webm';
+      } else if (url.endsWith('.mp4')) {
+        contentType = 'video/mp4';
+      }
+    }
+    
+    return `data:${contentType};base64,${base64}`;
+  } catch (error) {
+    console.error(`Error preloading media from ${url}:`, error);
+    return null;
+  }
+};
+
 function createWindow() {
   // Create the browser window
   mainWindow = new BrowserWindow({
@@ -679,6 +717,20 @@ ipcMain.handle('get-top-tag-combinations', async (event, limit = 10) => {
   } catch (error) {
     console.error('Error getting top tag combinations:', error);
     return [];
+  }
+});
+
+// New: Add handler for getting preloaded media
+ipcMain.handle('get-preloaded-media', (event, postId) => {
+  try {
+    if (!recommendationEngine) {
+      return null;
+    }
+    
+    return recommendationEngine.getPreloadedMedia(postId);
+  } catch (error) {
+    console.error('Error getting preloaded media:', error);
+    return null;
   }
 });
 
