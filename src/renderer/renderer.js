@@ -160,7 +160,11 @@ const app = createApp({
       currentPost: null,
       
       // Media content URL (after fetching)
-      mediaUrl: null
+      mediaUrl: null,
+      
+      // Favorite tags data
+      topTags: [],
+      topTagCombinations: []
     };
   },
   
@@ -871,6 +875,25 @@ const app = createApp({
       navigator.clipboard.writeText(url)
         .then(() => console.log('URL copied to clipboard'))
         .catch(err => console.error('Failed to copy URL: ', err));
+    },
+    
+    // Show favorites modal
+    async showFavoriteTagsModal() {
+      try {
+        console.log("Fetching favorite tags...");
+        // Get the top tags from the recommendation system
+        this.topTags = await window.api.getTopUserTags(20);
+        this.topTagCombinations = await window.api.getTopTagCombinations(10);
+        
+        console.log("Top tags:", this.topTags);
+        console.log("Top tag combinations:", this.topTagCombinations);
+        
+        // Use Bootstrap's modal API to show the modal
+        const favoriteTagsModal = new bootstrap.Modal(document.getElementById('favoriteTags'));
+        favoriteTagsModal.show();
+      } catch (error) {
+        console.error("Error fetching favorite tags:", error);
+      }
     },
     
     // Fullscreen and focus mode

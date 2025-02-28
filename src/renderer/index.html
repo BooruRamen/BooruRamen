@@ -307,6 +307,9 @@
           </div>
           <div class="col-md-4">
             <div class="d-flex justify-content-end">
+              <button @click="showFavoriteTagsModal" class="btn btn-outline-light btn-sm me-2">
+                <i class="bi bi-star"></i> My Favorites
+              </button>
               <button @click="toggleFocusMode" class="btn btn-outline-light btn-sm me-2">
                 <i class="bi bi-fullscreen"></i> Focus Mode
               </button>
@@ -334,8 +337,74 @@
       <div>Media URL: {{ mediaUrl ? (mediaUrl.substring(0, 30) + '...') : 'None' }}</div>
       <div>Type: {{ currentPost.file_ext }}</div>
     </div>
+    
+    <!-- Favorite Tags Modal -->
+    <div class="modal fade" id="favoriteTags" tabindex="-1" aria-labelledby="favoriteTagsLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content bg-dark text-light">
+          <div class="modal-header">
+            <h5 class="modal-title" id="favoriteTagsLabel">Your Favorite Tags</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div v-if="topTags.length === 0" class="text-center">
+              <p>You haven't liked enough posts to generate favorite tags yet.</p>
+              <p>Like more posts to see your preferences!</p>
+            </div>
+            
+            <div v-else>
+              <h6 class="mb-3">Top Individual Tags:</h6>
+              <div class="table-responsive">
+                <table class="table table-dark table-striped">
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Tag</th>
+                      <th>Score</th>
+                      <th>Interactions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(tag, index) in topTags" :key="index">
+                      <td>{{ index + 1 }}</td>
+                      <td>{{ tag.tag }}</td>
+                      <td>{{ tag.rawScore.toFixed(2) }}</td>
+                      <td>{{ tag.interactions }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              
+              <h6 class="mb-3 mt-4">Top Tag Combinations:</h6>
+              <div class="table-responsive">
+                <table class="table table-dark table-striped">
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Tags</th>
+                      <th>Occurrences</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(pair, index) in topTagCombinations" :key="index">
+                      <td>{{ index + 1 }}</td>
+                      <td>{{ pair.tags.join(' + ') }}</td>
+                      <td>{{ pair.count }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>
