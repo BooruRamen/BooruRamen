@@ -208,25 +208,30 @@ const app = createApp({
         if (timeDiff > 30 * 60 * 1000) {
           this.page = 1;
           
-          // Reset pages for all combinations of rating and media types
+          // Create a batch of settings to initialize
+          const settingsToInitialize = {};
+          
+          // Prepare settings for all combinations of rating and media types
           for (const rating of this.ratingOptions) {
             for (const media of this.mediaOptions) {
-              try {
-                await window.api.setSetting(`last_used_page_(${rating})_(${media})`, 1);
-              } catch (err) {
-                console.warn("Failed to save setting to database, using localStorage:", err);
-                localStorage.setItem(`last_used_page_(${rating})_(${media})`, 1);
-              }
+              settingsToInitialize[`last_used_page_(${rating})_(${media})`] = 1;
             }
           }
           
-          // Update last access time
+          // Add the last access time setting
+          settingsToInitialize['last_time_app_accessed'] = currentTime.toString();
+          
+          // Save all settings in a single batch operation
           try {
-            await window.api.setSetting('last_time_app_accessed', currentTime.toString());
+            await window.api.setSettingsBatch(settingsToInitialize);
           } catch (err) {
-            console.warn("Failed to save setting to database, using localStorage:", err);
-            localStorage.setItem('last_time_app_accessed', currentTime.toString());
+            console.warn("Failed to save settings to database, using localStorage:", err);
+            // Fallback to localStorage
+            Object.entries(settingsToInitialize).forEach(([key, value]) => {
+              localStorage.setItem(key, value);
+            });
           }
+          
         } else {
           // Get the last used page for current rating and media selection
           try {
@@ -304,44 +309,54 @@ const app = createApp({
         
         let posts = await response.json();
         
+        // Batch check all posts at once to see if they are already seen
+        const postIds = posts.map(post => post.id);
+        let seenMap = {};
+        
+        try {
+          // Use the batch check method
+          seenMap = await window.api.arePostsSeen(postIds);
+        } catch (err) {
+          console.warn("Batch database operation failed, using localStorage:", err);
+          // Fallback to localStorage
+          seenMap = {};
+          postIds.forEach(id => {
+            seenMap[id] = localStorage.getItem(`seen_post_${id}`) === 'true';
+          });
+        }
+        
         // Filter by score and seen status
-        const filteredPosts = [];
-        for (const post of posts) {
-          // Check if post is already seen, use localStorage as fallback
-          let isSeen;
-          try {
-            isSeen = await window.api.isSeen(post.id);
-          } catch (err) {
-            console.warn("Database operation failed, using localStorage:", err);
-            isSeen = localStorage.getItem(`seen_post_${post.id}`) === 'true';
-          }
+        const filteredPosts = posts.filter(post => {
+          // Check if post is already seen using our batch results
+          const isSeen = seenMap[post.id] === true;
           
-          // Only include posts with score >= 0
+          // Only include posts with score >= 0 and not seen
           if (!isSeen && post.score >= 0) {
             // Filter based on media type if needed
             const isVideo = this.isVideo(post);
-            if (
+            return (
               (this.selectedMedia === 'Video Only' && isVideo) ||
               (this.selectedMedia === 'Images Only' && !isVideo) ||
               this.selectedMedia === 'Video and Images'
-            ) {
-              filteredPosts.push(post);
-            }
+            );
           }
-        }
+          
+          return false;
+        });
         
         if (filteredPosts.length > 0) {
           this.posts = filteredPosts;
           this.currentIndex = 0;
           await this.showPost(this.currentIndex);
           
-          // Save the current page, use localStorage as fallback
+          // Save current page and last access time in a batch operation
+          const settings = {
+            [`last_used_page_(${this.selectedRating})_(${this.selectedMedia})`]: this.page,
+            'last_time_app_accessed': new Date().toString()
+          };
+          
           try {
-            await window.api.setSetting(
-              `last_used_page_(${this.selectedRating})_(${this.selectedMedia})`, 
-              this.page
-            );
-            await window.api.setSetting('last_time_app_accessed', new Date().toString());
+            await window.api.setSettingsBatch(settings);
           } catch (err) {
             console.warn("Database operation failed, using localStorage:", err);
             localStorage.setItem(`last_used_page_(${this.selectedRating})_(${this.selectedMedia})`, this.page);
@@ -352,13 +367,14 @@ const app = createApp({
           console.log("No new posts found on current page, trying next page");
           this.page++;
           
-          // Save the current page, use localStorage as fallback
+          // Save current page and last access time in a batch operation
+          const settings = {
+            [`last_used_page_(${this.selectedRating})_(${this.selectedMedia})`]: this.page,
+            'last_time_app_accessed': new Date().toString()
+          };
+          
           try {
-            await window.api.setSetting(
-              `last_used_page_(${this.selectedRating})_(${this.selectedMedia})`, 
-              this.page
-            );
-            await window.api.setSetting('last_time_app_accessed', new Date().toString());
+            await window.api.setSettingsBatch(settings);
           } catch (err) {
             console.warn("Database operation failed, using localStorage:", err);
             localStorage.setItem(`last_used_page_(${this.selectedRating})_(${this.selectedMedia})`, this.page);
@@ -640,14 +656,21 @@ const app = createApp({
       } else {
         // Move to next page
         this.page++;
+        
+        // Save current page and last access time in a batch operation
+        const settings = {
+          [`last_used_page_(${this.selectedRating})_(${this.selectedMedia})`]: this.page,
+          'last_time_app_accessed': new Date().toString()
+        };
+        
         try {
-          await window.api.setSetting(`last_used_page_(${this.selectedRating})_(${this.selectedMedia})`, this.page);
-          await window.api.setSetting('last_time_app_accessed', new Date().toString());
+          await window.api.setSettingsBatch(settings);
         } catch (err) {
           console.warn("Database operation failed, using localStorage:", err);
           localStorage.setItem(`last_used_page_(${this.selectedRating})_(${this.selectedMedia})`, this.page);
           localStorage.setItem('last_time_app_accessed', new Date().toString());
         }
+        
         await this.fetchAndUpdatePosts();
       }
     },
@@ -756,22 +779,23 @@ const app = createApp({
       const timeDiff = currentTime - dbTimestampObj;
       if (timeDiff > 30 * 60 * 1000) {
         this.page = 1;
-        // Reset all pages
+        
+        // Create settings batch for all combinations
+        const settingsToUpdate = {};
         for (const rating of this.ratingOptions) {
           for (const media of this.mediaOptions) {
-            try {
-              await window.api.setSetting(`last_used_page_(${rating})_(${media})`, 1);
-            } catch (err) {
-              console.warn("Failed to save setting to database, using localStorage:", err);
-              localStorage.setItem(`last_used_page_(${rating})_(${media})`, 1);
-            }
+            settingsToUpdate[`last_used_page_(${rating})_(${media})`] = 1;
           }
         }
+        settingsToUpdate['last_time_app_accessed'] = currentTime.toString();
+        
         try {
-          await window.api.setSetting('last_time_app_accessed', currentTime.toString());
+          await window.api.setSettingsBatch(settingsToUpdate);
         } catch (err) {
-          console.warn("Failed to save setting to database, using localStorage:", err);
-          localStorage.setItem('last_time_app_accessed', currentTime.toString());
+          console.warn("Failed to save settings to database, using localStorage:", err);
+          Object.entries(settingsToUpdate).forEach(([key, value]) => {
+            localStorage.setItem(key, value);
+          });
         }
       } else {
         try {
@@ -796,22 +820,23 @@ const app = createApp({
       const timeDiff = currentTime - dbTimestampObj;
       if (timeDiff > 30 * 60 * 1000) {
         this.page = 1;
-        // Reset all pages
+        
+        // Create settings batch for all combinations
+        const settingsToUpdate = {};
         for (const rating of this.ratingOptions) {
           for (const media of this.mediaOptions) {
-            try {
-              await window.api.setSetting(`last_used_page_(${rating})_(${media})`, 1);
-            } catch (err) {
-              console.warn("Failed to save setting to database, using localStorage:", err);
-              localStorage.setItem(`last_used_page_(${rating})_(${media})`, 1);
-            }
+            settingsToUpdate[`last_used_page_(${rating})_(${media})`] = 1;
           }
         }
+        settingsToUpdate['last_time_app_accessed'] = currentTime.toString();
+        
         try {
-          await window.api.setSetting('last_time_app_accessed', currentTime.toString());
+          await window.api.setSettingsBatch(settingsToUpdate);
         } catch (err) {
-          console.warn("Failed to save setting to database, using localStorage:", err);
-          localStorage.setItem('last_time_app_accessed', currentTime.toString());
+          console.warn("Failed to save settings to database, using localStorage:", err);
+          Object.entries(settingsToUpdate).forEach(([key, value]) => {
+            localStorage.setItem(key, value);
+          });
         }
       } else {
         try {

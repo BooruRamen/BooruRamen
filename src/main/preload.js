@@ -7,10 +7,13 @@ contextBridge.exposeInMainWorld(
     // Database operations
     getSetting: (key, defaultValue) => ipcRenderer.invoke('get-setting', key, defaultValue),
     setSetting: (key, value) => ipcRenderer.invoke('set-setting', key, value),
+    setSettingsBatch: (settingsObj) => ipcRenderer.invoke('set-settings-batch', settingsObj),
     isSeen: (postId) => ipcRenderer.invoke('is-seen', postId),
+    arePostsSeen: (postIds) => ipcRenderer.invoke('are-posts-seen', postIds),
     markAsSeen: (postId, tags, rating) => ipcRenderer.invoke('mark-as-seen', postId, tags, rating),
     markPostStatus: (postId, status, tags, rating) => 
       ipcRenderer.invoke('mark-post-status', postId, status, tags, rating),
+    checkDatabaseStatus: () => ipcRenderer.invoke('check-database-status'),
     
     // User profile operations
     loadUserProfile: () => ipcRenderer.invoke('load-user-profile'),
