@@ -660,7 +660,7 @@ ipcMain.handle('get-top-user-tags', async (event, limit = 20) => {
       await recommendationEngine.initialize();
     }
     
-    return recommendationEngine.getTopUserTags(limit);
+    return await recommendationEngine.getTopUserTags(limit);
   } catch (error) {
     console.error('Error getting top user tags:', error);
     return [];
@@ -675,7 +675,7 @@ ipcMain.handle('get-top-tag-combinations', async (event, limit = 10) => {
       await recommendationEngine.initialize();
     }
     
-    return recommendationEngine.getTopTagCombinations(limit);
+    return await recommendationEngine.getTopTagCombinations(limit);
   } catch (error) {
     console.error('Error getting top tag combinations:', error);
     return [];

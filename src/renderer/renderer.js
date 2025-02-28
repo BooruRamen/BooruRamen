@@ -704,13 +704,35 @@ const app = createApp({
       this.userProfile = updateProfileIncrementally(post, 'liked', this.userProfile);
       
       try {
-        // Create a simplified version of the profile for IPC transfer
-        const serializableProfile = createSerializableProfile(this.userProfile);
-        await window.api.saveUserProfile(serializableProfile);
+        // Create a completely sanitized version of the profile for IPC transfer
+        const serializableProfile = {
+          tag_scores: Object.assign({}, this.userProfile.tag_scores || {}),
+          tag_totals: Object.assign({}, this.userProfile.tag_totals || {}),
+          rating_scores: Object.assign({}, this.userProfile.rating_scores || {}),
+          rating_totals: Object.assign({}, this.userProfile.rating_totals || {}),
+          total_liked: this.userProfile.total_liked || 0,
+          total_disliked: this.userProfile.total_disliked || 0
+        };
+        
+        // Save profile and initialize recommendation engine
+        await Promise.all([
+          window.api.saveUserProfile(serializableProfile),
+          window.api.initializeRecommendationEngine(serializableProfile)
+        ]);
+        
+        // Update recommendation profile
+        await window.api.updateRecommendationProfile(post, 'liked');
       } catch (err) {
-        console.warn("Failed to save user profile to database:", err);
-        // Store a simplified version in localStorage
-        localStorage.setItem('user_profile', JSON.stringify(createSerializableProfile(this.userProfile)));
+        console.warn("Failed to save user profile or update recommendations:", err);
+        // Store a simplified version in localStorage as fallback
+        localStorage.setItem('user_profile', JSON.stringify({
+          tag_scores: this.userProfile.tag_scores || {},
+          tag_totals: this.userProfile.tag_totals || {},
+          rating_scores: this.userProfile.rating_scores || {},
+          rating_totals: this.userProfile.rating_totals || {},
+          total_liked: this.userProfile.total_liked || 0,
+          total_disliked: this.userProfile.total_disliked || 0
+        }));
       }
       
       await this.nextPost();
@@ -731,14 +753,37 @@ const app = createApp({
       
       // Update user profile
       this.userProfile = updateProfileIncrementally(post, 'super liked', this.userProfile);
+      
       try {
-        // Create a simplified version of the profile for IPC transfer
-        const serializableProfile = createSerializableProfile(this.userProfile);
-        await window.api.saveUserProfile(serializableProfile);
+        // Create a completely sanitized version of the profile for IPC transfer
+        const serializableProfile = {
+          tag_scores: Object.assign({}, this.userProfile.tag_scores || {}),
+          tag_totals: Object.assign({}, this.userProfile.tag_totals || {}),
+          rating_scores: Object.assign({}, this.userProfile.rating_scores || {}),
+          rating_totals: Object.assign({}, this.userProfile.rating_totals || {}),
+          total_liked: this.userProfile.total_liked || 0,
+          total_disliked: this.userProfile.total_disliked || 0
+        };
+        
+        // Save profile and initialize recommendation engine
+        await Promise.all([
+          window.api.saveUserProfile(serializableProfile),
+          window.api.initializeRecommendationEngine(serializableProfile)
+        ]);
+        
+        // Update recommendation profile
+        await window.api.updateRecommendationProfile(post, 'super liked');
       } catch (err) {
-        console.warn("Failed to save user profile to database:", err);
-        // Store a simplified version in localStorage
-        localStorage.setItem('user_profile', JSON.stringify(createSerializableProfile(this.userProfile)));
+        console.warn("Failed to save user profile or update recommendations:", err);
+        // Store a simplified version in localStorage as fallback
+        localStorage.setItem('user_profile', JSON.stringify({
+          tag_scores: this.userProfile.tag_scores || {},
+          tag_totals: this.userProfile.tag_totals || {},
+          rating_scores: this.userProfile.rating_scores || {},
+          rating_totals: this.userProfile.rating_totals || {},
+          total_liked: this.userProfile.total_liked || 0,
+          total_disliked: this.userProfile.total_disliked || 0
+        }));
       }
       
       await this.nextPost();
@@ -759,14 +804,37 @@ const app = createApp({
       
       // Update user profile
       this.userProfile = updateProfileIncrementally(post, 'disliked', this.userProfile);
+      
       try {
-        // Create a simplified version of the profile for IPC transfer
-        const serializableProfile = createSerializableProfile(this.userProfile);
-        await window.api.saveUserProfile(serializableProfile);
+        // Create a completely sanitized version of the profile for IPC transfer
+        const serializableProfile = {
+          tag_scores: Object.assign({}, this.userProfile.tag_scores || {}),
+          tag_totals: Object.assign({}, this.userProfile.tag_totals || {}),
+          rating_scores: Object.assign({}, this.userProfile.rating_scores || {}),
+          rating_totals: Object.assign({}, this.userProfile.rating_totals || {}),
+          total_liked: this.userProfile.total_liked || 0,
+          total_disliked: this.userProfile.total_disliked || 0
+        };
+        
+        // Save profile and initialize recommendation engine
+        await Promise.all([
+          window.api.saveUserProfile(serializableProfile),
+          window.api.initializeRecommendationEngine(serializableProfile)
+        ]);
+        
+        // Update recommendation profile
+        await window.api.updateRecommendationProfile(post, 'disliked');
       } catch (err) {
-        console.warn("Failed to save user profile to database:", err);
-        // Store a simplified version in localStorage
-        localStorage.setItem('user_profile', JSON.stringify(createSerializableProfile(this.userProfile)));
+        console.warn("Failed to save user profile or update recommendations:", err);
+        // Store a simplified version in localStorage as fallback
+        localStorage.setItem('user_profile', JSON.stringify({
+          tag_scores: this.userProfile.tag_scores || {},
+          tag_totals: this.userProfile.tag_totals || {},
+          rating_scores: this.userProfile.rating_scores || {},
+          rating_totals: this.userProfile.rating_totals || {},
+          total_liked: this.userProfile.total_liked || 0,
+          total_disliked: this.userProfile.total_disliked || 0
+        }));
       }
       
       await this.nextPost();

@@ -206,6 +206,9 @@ class MonolithRecommendation {
    * @returns {Object} Updated user profile
    */
   updateProfile(post, status) {
+    console.log("Updating profile for post:", post.id, "with status:", status);
+    console.log("Current tag_scores:", this.userProfile ? Object.keys(this.userProfile.tag_scores).length : 0, "tags");
+
     if (!this.userProfile) {
       this.userProfile = {
         tag_scores: {},
@@ -219,6 +222,7 @@ class MonolithRecommendation {
     }
 
     const tags = post.tag_string ? post.tag_string.split(' ') : [];
+    console.log("Processing tags:", tags.length, "tags found");
     const rating = post.rating || '';
     let increment;
 
@@ -262,6 +266,10 @@ class MonolithRecommendation {
 
     // Clear cache as scores have changed
     this.postScoresCache.clear();
+
+    console.log("After update - tag_scores:", Object.keys(this.userProfile.tag_scores).length, "tags");
+    console.log("Total liked:", this.userProfile.total_liked);
+    console.log("Profile updated successfully");
 
     return this.userProfile;
   }
@@ -479,32 +487,71 @@ class MonolithRecommendation {
    * @param {number} limit - Maximum number of tags to return
    * @returns {Array} Array of objects with tag and score properties
    */
-  getTopUserTags(limit = 20) {
-    if (!this.userProfile || !this.userProfile.tag_scores) {
+  async getTopUserTags(limit = 20) {
+    console.log("getTopUserTags called with limit:", limit);
+
+    if (!this.db) {
+      console.log("No database connection available");
       return [];
     }
 
-    // Get tags sorted by score
-    const sortedTags = Object.entries(this.userProfile.tag_scores)
-      .map(([tag, score]) => {
-        // Calculate a normalized score
-        const total = this.userProfile.tag_totals[tag] || 1;
-        // Only include tags with positive scores and minimum interactions
-        return {
-          tag,
-          rawScore: score,
-          interactions: total,
-          // Calculate normalized score (score per interaction)
-          normalizedScore: score / total
-        };
-      })
-      // Filter out tags with negative scores or too few interactions
-      .filter(item => item.rawScore > 0 && item.interactions >= 2)
-      // Sort by normalized score (higher is better)
-      .sort((a, b) => b.normalizedScore - a.normalizedScore)
-      .slice(0, limit);
+    try {
+      // Get all liked posts and their tags from the database
+      const query = `
+        SELECT tags, status, 
+          CASE 
+            WHEN status = 'super liked' THEN 3 
+            WHEN status = 'liked' THEN 1 
+            WHEN status = 'disliked' THEN -1 
+            ELSE 0 
+          END as weight
+        FROM seen_posts 
+        WHERE status IS NOT NULL
+      `;
+      
+      const posts = this.db.prepare(query).all();
+      
+      // Process all tags and their scores
+      const tagScores = {};
+      const tagTotals = {};
+      
+      posts.forEach(post => {
+        if (!post.tags) return;
+        
+        const tags = post.tags.split(' ');
+        tags.forEach(tag => {
+          tagScores[tag] = (tagScores[tag] || 0) + post.weight;
+          tagTotals[tag] = (tagTotals[tag] || 0) + 1;
+        });
+      });
 
-    return sortedTags;
+      // Convert to array and sort
+      const sortedTags = Object.entries(tagScores)
+        .map(([tag, score]) => {
+          const total = tagTotals[tag] || 1;
+          return {
+            tag,
+            rawScore: score,
+            interactions: total,
+            normalizedScore: (score + 1) / (total + 2) // Apply Laplace smoothing
+          };
+        })
+        .filter(item => item.normalizedScore > 0.2) // Filter out strongly negative tags
+        .sort((a, b) => {
+          if (Math.abs(b.rawScore - a.rawScore) > 0.01) {
+            return b.rawScore - a.rawScore;
+          }
+          return b.normalizedScore - a.normalizedScore;
+        })
+        .slice(0, limit);
+
+      console.log("Found tags from database:", sortedTags.length);
+      return sortedTags;
+      
+    } catch (err) {
+      console.error("Error getting top tags from database:", err);
+      return [];
+    }
   }
 
   /**
@@ -512,58 +559,84 @@ class MonolithRecommendation {
    * @param {number} limit - Maximum number of tag pairs to return
    * @returns {Array} Array of objects with tags and score properties
    */
-  getTopTagCombinations(limit = 10) {
-    if (!this.db || !this.userProfile) {
+  async getTopTagCombinations(limit = 10) {
+    if (!this.db) {
       return [];
     }
 
     try {
-      // Get posts that user liked
+      // Get all posts with their statuses and calculate weights
       const query = `
-        SELECT tags 
+        SELECT 
+          tags,
+          CASE 
+            WHEN status = 'super liked' THEN 3 
+            WHEN status = 'liked' THEN 1 
+            WHEN status = 'disliked' THEN -1 
+            ELSE 0 
+          END as weight
         FROM seen_posts 
-        WHERE status IN ('liked', 'super liked')
-        ORDER BY timestamp DESC 
-        LIMIT 200
+        WHERE status IS NOT NULL
       `;
-      const likedPosts = this.db.prepare(query).all();
       
-      // Count tag co-occurrences
+      const posts = this.db.prepare(query).all();
+      
+      // Count weighted tag co-occurrences
       const tagPairs = {};
+      const tagScores = {};
       
-      likedPosts.forEach(post => {
+      // First calculate individual tag scores
+      posts.forEach(post => {
         if (!post.tags) return;
         
         const tags = post.tags.split(' ');
-        // Generate all possible pairs of tags
+        tags.forEach(tag => {
+          tagScores[tag] = (tagScores[tag] || 0) + post.weight;
+        });
+      });
+      
+      // Then calculate pair scores with weights
+      posts.forEach(post => {
+        if (!post.tags) return;
+        
+        const tags = post.tags.split(' ');
         for (let i = 0; i < tags.length; i++) {
           for (let j = i + 1; j < tags.length; j++) {
-            // Create a consistent key for the pair
             const pair = [tags[i], tags[j]].sort().join('__');
-            tagPairs[pair] = (tagPairs[pair] || 0) + 1;
+            // Weight the pair by the post's status and individual tag scores
+            const pairScore = post.weight * Math.max(
+              Math.abs(tagScores[tags[i]] || 0),
+              Math.abs(tagScores[tags[j]] || 0)
+            );
+            tagPairs[pair] = (tagPairs[pair] || 0) + pairScore;
           }
         }
       });
       
       // Convert to array and sort
       const sortedPairs = Object.entries(tagPairs)
-        .map(([pair, count]) => {
+        .map(([pair, score]) => {
           const [tag1, tag2] = pair.split('__');
           return { 
-            tags: [tag1, tag2], 
-            count,
-            // Also include individual tag scores
-            tag1Score: this.userProfile.tag_scores[tag1] || 0,
-            tag2Score: this.userProfile.tag_scores[tag2] || 0
+            tags: [tag1, tag2],
+            count: Math.abs(score), // Use absolute value for counting
+            score: score, // Keep raw score for sorting
+            tag1Score: tagScores[tag1] || 0,
+            tag2Score: tagScores[tag2] || 0
           };
         })
-        // Only include pairs with significant co-occurrence
-        .filter(item => item.count >= 3)
-        // Sort by count (higher is better)
-        .sort((a, b) => b.count - a.count)
+        // Only include pairs with positive overall score
+        .filter(item => item.score > 0)
+        // Sort by weighted score
+        .sort((a, b) => {
+          const scoreA = a.score + Math.max(Math.abs(a.tag1Score), Math.abs(a.tag2Score));
+          const scoreB = b.score + Math.max(Math.abs(b.tag1Score), Math.abs(b.tag2Score));
+          return scoreB - scoreA;
+        })
         .slice(0, limit);
       
       return sortedPairs;
+      
     } catch (err) {
       console.error("Error getting tag combinations:", err);
       return [];
