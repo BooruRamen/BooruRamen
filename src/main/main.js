@@ -59,6 +59,85 @@ global.fetchMediaForPreload = async (url) => {
   }
 };
 
+// Handle opening URLs in private/incognito windows
+ipcMain.handle('open-private-window', async (event, url) => {
+  const os = require('os');
+  const platform = os.platform();
+  const fs = require('fs');
+  const { exec } = require('child_process');
+
+  if (platform === 'win32') {
+    const commonBrowserPaths = [
+      'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+      'C:\\Program Files (x86)\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+      `C:\\Users\\${os.userInfo().username}\\AppData\\Local\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`
+    ];
+
+    // Find the first existing Brave path
+    const bravePath = commonBrowserPaths.find(path => fs.existsSync(path));
+    
+    if (bravePath) {
+      try {
+        // Execute the command directly through cmd
+        exec(`cmd /c "${bravePath}" --incognito "${url}"`, { windowsHide: false });
+        return true;
+      } catch (error) {
+        console.error('Error launching Brave:', error);
+      }
+    }
+    
+    // Fallback to shell.openExternal if Brave not found
+    const { shell } = require('electron');
+    try {
+      await shell.openExternal(url);
+      return true;
+    } catch (error) {
+      console.error('Error opening in browser:', error);
+      return false;
+    }
+  } else if (platform === 'darwin') {
+    // macOS - try standard private browsing flags
+    try {
+      await shell.openExternal(url, {
+        activate: true,
+        args: ['--incognito', '--new-window']
+      });
+      return true;
+    } catch (error) {
+      console.error('Error opening private window on macOS:', error);
+      return false;
+    }
+  } else {
+    // Linux and other platforms
+    try {
+      await shell.openExternal(url, {
+        activate: true,
+        args: ['--incognito', '--private-window']
+      });
+      return true;
+    } catch (error) {
+      console.error('Error opening private window:', error);
+      return false;
+    }
+  }
+});
+
+// Handle opening URLs in regular browser window
+ipcMain.handle('open-in-browser', async (event, url) => {
+  const { shell } = require('electron');
+  try {
+    // Use shell.openExternal with no specific flags for regular window
+    await shell.openExternal(url, {
+      activate: true,
+      workingDirectory: process.cwd()
+    });
+    return true;
+  } catch (error) {
+    console.error('Error opening in browser:', error);
+    return false;
+  }
+});
+
 function createWindow() {
   // Create the browser window
   mainWindow = new BrowserWindow({

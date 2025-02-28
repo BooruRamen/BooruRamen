@@ -49,6 +49,10 @@ contextBridge.exposeInMainWorld(
     fetchMedia: (url) => ipcRenderer.invoke('fetch-media', url),
     
     // New: Check if there's preloaded media available for a post
-    getPreloadedMedia: (postId) => ipcRenderer.invoke('get-preloaded-media', postId)
+    getPreloadedMedia: (postId) => ipcRenderer.invoke('get-preloaded-media', postId),
+
+    // Browser opening methods
+    openPrivateWindow: (url) => ipcRenderer.invoke('open-private-window', url),
+    openInBrowser: (url) => ipcRenderer.invoke('open-in-browser', url)
   }
 );

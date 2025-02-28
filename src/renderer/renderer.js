@@ -517,7 +517,7 @@ const app = createApp({
     mediaLoaded() {
       this.loading = false;
       
-      // Special handling for video elements to ensure proper sizing and controls positioning
+      // Set up video controls after loading
       if (this.currentPost && this.isVideo(this.currentPost) && this.$refs.videoPlayer) {
         // Give the video a moment to initialize
         setTimeout(() => {
@@ -629,54 +629,6 @@ const app = createApp({
           console.log('Video control handlers initialized');
         }, 100);
       }
-    },
-    
-    // Custom video control functions
-    togglePlay() {
-      if (!this.$refs.videoPlayer) return;
-      const video = this.$refs.videoPlayer;
-      
-      if (video.paused) {
-        video.play();
-        this.isPlaying = true;
-      } else {
-        video.pause();
-        this.isPlaying = false;
-      }
-    },
-    
-    toggleMute() {
-      if (!this.$refs.videoPlayer) return;
-      const video = this.$refs.videoPlayer;
-      
-      video.muted = !video.muted;
-      this.isMuted = video.muted;
-    },
-    
-    seekVideo(e) {
-      if (!this.$refs.videoPlayer || !this.$refs.customTimeline) return;
-      
-      const video = this.$refs.videoPlayer;
-      const timeline = this.$refs.customTimeline;
-      
-      // Calculate seek position based on click position within timeline
-      const rect = timeline.getBoundingClientRect();
-      const seekPos = (e.clientX - rect.left) / rect.width;
-      
-      // Set new time
-      video.currentTime = video.duration * seekPos;
-      this.updateCustomProgressBar();
-    },
-    
-    updateCustomProgressBar() {
-      if (!this.$refs.videoPlayer || !this.$refs.customProgress || !this.showCustomControls) return;
-      
-      const video = this.$refs.videoPlayer;
-      const progress = this.$refs.customProgress;
-      
-      // Update progress bar width
-      const progressPercent = (video.currentTime / video.duration) * 100;
-      progress.style.width = `${progressPercent}%`;
     },
     
     mediaError() {
@@ -1032,11 +984,16 @@ const app = createApp({
     },
     
     // External link handlers
-    openInBrowser() {
+    async openInBrowser(usePrivate = false) {
       if (!this.currentPost) return;
       const postId = this.currentPost.id;
       const url = `https://danbooru.donmai.us/posts/${postId}`;
-      window.open(url, '_blank');
+      
+      if (usePrivate) {
+        await window.api.openPrivateWindow(url);
+      } else {
+        await window.api.openInBrowser(url);
+      }
     },
     
     copyToClipboard() {

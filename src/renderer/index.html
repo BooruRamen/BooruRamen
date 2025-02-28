@@ -140,18 +140,6 @@
       padding-bottom: 40px !important; /* Increased space for controls */
     }
     
-    /* Additional style for debug info */
-    .debug-info {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 5px;
-      font-size: 10px;
-      color: #aaa;
-      z-index: 1000;
-    }
-    
     /* Reduce spacing in the media content section */
     .media-content-section {
       margin-bottom: 0.5rem !important;
@@ -241,13 +229,13 @@
             </button>
           </div>
           <div class="col">
-            <button @click="likePost" class="btn btn-success w-100">
-              <i class="bi bi-hand-thumbs-up"></i> Like
+            <button @click="superLikePost" class="btn btn-primary w-100">
+              <i class="bi bi-heart"></i> Super Like
             </button>
           </div>
           <div class="col">
-            <button @click="superLikePost" class="btn btn-primary w-100">
-              <i class="bi bi-heart"></i> Super Like
+            <button @click="likePost" class="btn btn-success w-100">
+              <i class="bi bi-hand-thumbs-up"></i> Like
             </button>
           </div>
           <div class="col">
@@ -296,16 +284,24 @@
         
         <div class="row mt-2">
           <div class="col-md-4">
-            <button @click="openInBrowser" class="btn btn-outline-light btn-sm">
-              <i class="bi bi-box-arrow-up-right"></i> Open in Browser
-            </button>
+            <div class="dropdown">
+              <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="shareDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-share"></i> Share
+              </button>
+              <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="shareDropdown">
+                <li><button class="dropdown-item" @click="openInBrowser(true)">
+                  <i class="bi bi-incognito"></i> Open in Private Window
+                </button></li>
+                <li><button class="dropdown-item" @click="openInBrowser(false)">
+                  <i class="bi bi-box-arrow-up-right"></i> Open in Browser
+                </button></li>
+                <li><button class="dropdown-item" @click="copyToClipboard">
+                  <i class="bi bi-clipboard"></i> Copy URL
+                </button></li>
+              </ul>
+            </div>
           </div>
-          <div class="col-md-4">
-            <button @click="copyToClipboard" class="btn btn-outline-light btn-sm">
-              <i class="bi bi-clipboard"></i> Copy URL
-            </button>
-          </div>
-          <div class="col-md-4">
+          <div class="col-md-8">
             <div class="d-flex justify-content-end">
               <button @click="showFavoriteTagsModal" class="btn btn-outline-light btn-sm me-2">
                 <i class="bi bi-star"></i> My Favorites
@@ -320,22 +316,6 @@
           </div>
         </div>
       </div>
-      
-      <!-- Status Area -->
-      <div class="status-area text-center" v-if="currentPost && !focusMode">
-        <div class="post-info small">
-          <span>Score: {{ currentPost.score }}</span> | 
-          <span v-if="postLikelihood !== null">
-            Likelihood: {{ Math.round(postLikelihood * 100) }}%
-          </span>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Debug info in development mode -->
-    <div class="debug-info" v-if="currentPost">
-      <div>Media URL: {{ mediaUrl ? (mediaUrl.substring(0, 30) + '...') : 'None' }}</div>
-      <div>Type: {{ currentPost.file_ext }}</div>
     </div>
     
     <!-- Favorite Tags Modal -->
