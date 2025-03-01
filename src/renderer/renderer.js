@@ -167,7 +167,10 @@ const app = createApp({
       topTagCombinations: [],
 
       // Sidebar state - new property
-      sidebarExpanded: false
+      sidebarExpanded: false,
+
+      preferredTags: '',
+      blacklistedTags: ''
     };
   },
   
@@ -265,6 +268,20 @@ const app = createApp({
         }
         
         console.log("App initialized with page:", this.page);
+
+        // Load tag preferences
+        try {
+          const preferredTags = await window.api.getPreferredTags();
+          this.preferredTags = preferredTags.join(', ');
+          
+          const blacklistedTags = await window.api.getBlacklistedTags();
+          this.blacklistedTags = blacklistedTags.join(', ');
+          
+          console.log(`Loaded ${preferredTags.length} preferred tags and ${blacklistedTags.length} blacklisted tags`);
+        } catch (err) {
+          console.error("Error loading tag preferences:", err);
+        }
+
       } catch (error) {
         console.error("Error initializing app:", error);
       }
@@ -304,32 +321,135 @@ const app = createApp({
             ratingTags = '';
         }
         
-        // Build the tags parameter based on media option
-        const tags = [];
+        // Build the base tags parameter based on media option
+        const baseTags = [];
         
         if (this.selectedMedia === 'Video Only') {
-          tags.push('animated');
+          baseTags.push('animated');
         } else if (this.selectedMedia === 'Images Only') {
-          tags.push('-animated');
+          baseTags.push('-animated');
         }
         
         if (ratingTags) {
-          tags.push(ratingTags);
+          baseTags.push(ratingTags);
+        }
+
+        // Get array of preferred tags
+        const preferredTagsArray = this.preferredTags
+          .split(',')
+          .map(tag => tag.trim())
+          .filter(tag => tag.length > 0);
+
+        // If we have no preferred tags, just do a standard query
+        if (preferredTagsArray.length === 0) {
+          const apiUrl = `https://danbooru.donmai.us/posts.json?limit=20&page=${this.page}&tags=${encodeURIComponent(baseTags.join(' '))}`;
+          console.log(`No preferred tags. Fetching posts with: Page ${this.page}, Tags: ${baseTags.join(' ')}`);
+          
+          const response = await fetch(apiUrl);
+          if (!response.ok) {
+            throw new Error(`API request failed: ${response.status}`);
+          }
+          
+          const posts = await response.json();
+          await this.processAndFilterPosts(posts);
+          return;
+        }
+
+        // If we have preferred tags, run parallel queries for each tag/combination
+        console.log(`Running parallel queries for ${preferredTagsArray.length} preferred tags`);
+        
+        // Array to hold all posts from different queries
+        let allPosts = [];
+        
+        // Create an array of promises for all the fetch operations
+        const fetchPromises = preferredTagsArray.map(async (tagOrCombo) => {
+          const tagsCopy = [...baseTags]; // Clone the base tags array
+          
+          // Process tag combinations (tagA+tagB) or individual tags
+          if (tagOrCombo.includes('+')) {
+            const combinedTags = tagOrCombo.split('+').map(tag => tag.trim());
+            combinedTags.forEach(tag => {
+              if (tag.length > 0) {
+                tagsCopy.push(tag);
+              }
+            });
+            console.log(`Creating query for combined tags: ${combinedTags.join(' + ')}`);
+          } else {
+            tagsCopy.push(tagOrCombo);
+            console.log(`Creating query for tag: ${tagOrCombo}`);
+          }
+          
+          const tagsStr = tagsCopy.join(' ');
+          const apiUrl = `https://danbooru.donmai.us/posts.json?limit=10&page=${this.page}&tags=${encodeURIComponent(tagsStr)}`;
+          
+          try {
+            const response = await fetch(apiUrl);
+            if (!response.ok) {
+              console.warn(`API request for tag ${tagOrCombo} failed: ${response.status}`);
+              return [];
+            }
+            
+            const posts = await response.json();
+            console.log(`Received ${posts.length} posts for query with tag: ${tagOrCombo}`);
+            return posts;
+          } catch (error) {
+            console.error(`Error fetching posts for tag ${tagOrCombo}:`, error);
+            return [];
+          }
+        });
+        
+        // Wait for all fetch operations to complete
+        const postsArrays = await Promise.all(fetchPromises);
+        
+        // Combine all posts into a single array
+        postsArrays.forEach(posts => {
+          if (posts && posts.length > 0) {
+            allPosts = [...allPosts, ...posts];
+          }
+        });
+        
+        // Remove duplicates based on post ID
+        const uniquePosts = [];
+        const seenIds = new Set();
+        
+        for (const post of allPosts) {
+          if (!seenIds.has(post.id)) {
+            uniquePosts.push(post);
+            seenIds.add(post.id);
+          }
         }
         
-        const tagsStr = tags.join(' ');
-        const apiUrl = `https://danbooru.donmai.us/posts.json?limit=20&page=${this.page}&tags=${encodeURIComponent(tagsStr)}`;
+        console.log(`Total unique posts after parallel queries: ${uniquePosts.length}`);
         
-        console.log(`Fetching posts with: Page ${this.page}, Tags: ${tagsStr}`);
-        
-        // Fetch posts from Danbooru API
-        const response = await fetch(apiUrl);
-        if (!response.ok) {
-          throw new Error(`API request failed: ${response.status}`);
+        // Process the combined result through recommendation system if available
+        if (this.userProfile && uniquePosts.length > 0) {
+          try {
+            // Score each post using the recommendation system
+            uniquePosts.forEach(post => {
+              post.recommendationScore = predictPostLikelihood(post, this.userProfile);
+            });
+            
+            // Sort by recommendation score (highest first)
+            uniquePosts.sort((a, b) => b.recommendationScore - a.recommendationScore);
+            
+            console.log(`Posts sorted by recommendation score. Top post score: ${uniquePosts[0].recommendationScore}`);
+          } catch (err) {
+            console.error("Error scoring posts with recommendation system:", err);
+          }
         }
         
-        let posts = await response.json();
+        // Process and filter the combined results
+        await this.processAndFilterPosts(uniquePosts);
         
+      } catch (error) {
+        console.error("Error fetching posts:", error);
+        this.loading = false;
+      }
+    },
+    
+    // Helper method to process and filter posts
+    async processAndFilterPosts(posts) {
+      try {
         // Batch check all posts at once to see if they are already seen
         const postIds = posts.map(post => post.id);
         let seenMap = {};
@@ -351,8 +471,20 @@ const app = createApp({
           // Check if post is already seen using our batch results
           const isSeen = seenMap[post.id] === true;
           
-          // Only include posts with score >= 0 and not seen
-          if (!isSeen && post.score >= 0) {
+          // Get the post's tags as an array
+          const postTags = post.tag_string ? post.tag_string.split(' ') : [];
+          
+          // Check if the post has any blacklisted tags
+          const blacklistedTagsArray = this.blacklistedTags
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(tag => tag.length > 0);
+            
+          const hasBlacklistedTag = blacklistedTagsArray.length > 0 && 
+            postTags.some(tag => blacklistedTagsArray.includes(tag));
+          
+          // Only include posts with score >= 0, not seen, and not containing blacklisted tags
+          if (!isSeen && post.score >= 0 && !hasBlacklistedTag) {
             // Filter based on media type if needed
             const isVideo = this.isVideo(post);
             return (
@@ -364,6 +496,15 @@ const app = createApp({
           
           return false;
         });
+
+        // Get preferred tags as array for highlighting
+        const preferredTagsArray = this.preferredTags
+          .split(',')
+          .map(tag => tag.trim())
+          .filter(tag => tag.length > 0)
+          .flatMap(tag => tag.includes('+') ? tag.split('+').map(t => t.trim()) : [tag]);
+        
+        console.log(`Filtered to ${filteredPosts.length} new posts that match criteria`);
         
         if (filteredPosts.length > 0) {
           this.posts = filteredPosts;
@@ -405,7 +546,7 @@ const app = createApp({
           await this.fetchAndUpdatePosts(); // Try the next page
         }
       } catch (error) {
-        console.error("Error fetching posts:", error);
+        console.error("Error processing posts:", error);
         this.loading = false;
       }
     },
@@ -1190,7 +1331,77 @@ const app = createApp({
           this.toggleSidebar();
           break;
       }
-    }
+    },
+
+    // Save tag preferences
+    async saveTagPreferences() {
+      try {
+        // Parse the comma-separated tags into arrays
+        const preferredTagsArray = this.preferredTags
+          .split(',')
+          .map(tag => tag.trim())
+          .filter(tag => tag.length > 0);
+          
+        const blacklistedTagsArray = this.blacklistedTags
+          .split(',')
+          .map(tag => tag.trim())
+          .filter(tag => tag.length > 0);
+        
+        // Save to the backend
+        await window.api.updatePreferredTags(preferredTagsArray);
+        await window.api.updateBlacklistedTags(blacklistedTagsArray);
+        
+        console.log(`Saved ${preferredTagsArray.length} preferred tags and ${blacklistedTagsArray.length} blacklisted tags`);
+        
+        // Show confirmation
+        alert('Tag preferences saved successfully!');
+      } catch (error) {
+        console.error("Error saving tag preferences:", error);
+        alert('Error saving tag preferences. Please try again.');
+      }
+    },
+
+    // Apply tag preferences and refresh content
+    async applyTagPreferencesAndRefresh() {
+      try {
+        // First, save the tag preferences
+        const preferredTagsArray = this.preferredTags
+          .split(',')
+          .map(tag => tag.trim())
+          .filter(tag => tag.length > 0);
+          
+        const blacklistedTagsArray = this.blacklistedTags
+          .split(',')
+          .map(tag => tag.trim())
+          .filter(tag => tag.length > 0);
+        
+        // Save to the backend
+        await window.api.updatePreferredTags(preferredTagsArray);
+        await window.api.updateBlacklistedTags(blacklistedTagsArray);
+        
+        console.log(`Applied ${preferredTagsArray.length} preferred tags and ${blacklistedTagsArray.length} blacklisted tags`);
+        
+        // Refresh the content - reset the page and fetch new posts
+        this.page = 1;
+        this.posts = [];
+        this.currentIndex = 0;
+        
+        // Clear any cached data
+        await window.api.saveRecommendationModel();
+        
+        // Show a loading indicator
+        this.loading = true;
+        
+        // Fetch posts with the updated preferences
+        await this.fetchAndUpdatePosts();
+        
+        // Close the sidebar after applying
+        this.sidebarExpanded = false;
+      } catch (error) {
+        console.error("Error applying tag preferences:", error);
+        alert('Error applying tag preferences. Please try again.');
+      }
+    },
   },
   
   watch: {

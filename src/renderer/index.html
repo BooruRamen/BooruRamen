@@ -641,6 +641,42 @@
           <label class="form-check-label" for="autonext-video-completion">Auto Next on Video Completion</label>
         </div>
       </div>
+      
+      <!-- Separator -->
+      <div class="sidebar-divider"></div>
+      
+      <!-- Tag Preferences Section -->
+      <div class="mb-3">
+        <div class="sidebar-section-title">Tag Preferences</div>
+        
+        <!-- Preferred Tags -->
+        <div class="mb-1"><!-- Reduced from mb-2 to mb-1 -->
+          <label for="preferred-tags" class="form-label">Preferred Tags</label>
+          <textarea id="preferred-tags" class="form-control bg-dark text-light" v-model="preferredTags" placeholder="Enter tags separated by commas" rows="3"></textarea>
+        </div>
+        
+        <!-- Blacklisted Tags -->
+        <div class="mb-2">
+          <label for="blacklisted-tags" class="form-label">Blacklisted Tags</label>
+          <textarea id="blacklisted-tags" class="form-control bg-dark text-light" v-model="blacklistedTags" placeholder="Enter tags separated by commas" rows="3"></textarea>
+        </div>
+        
+        <!-- Buttons (Save and Apply) -->
+        <div class="d-grid gap-2 mt-3">
+          <div class="row g-2">
+            <div class="col">
+              <button class="btn btn-primary w-100" @click="saveTagPreferences">
+                <i class="bi bi-save"></i> Save
+              </button>
+            </div>
+            <div class="col">
+              <button class="btn btn-success w-100" @click="applyTagPreferencesAndRefresh">
+                <i class="bi bi-arrow-clockwise"></i> Apply & Refresh
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     
     <!-- Favorite Tags Modal -->
