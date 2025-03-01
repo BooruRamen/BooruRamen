@@ -180,7 +180,7 @@
       z-index: 20; /* Above media but below other controls */
     }
     
-    /* Theater Mode styling - replaces Focus Mode */
+    /* Theater Mode overlay - modified to be positioned behind media */
     .theater-overlay {
       position: fixed;
       top: 0;
@@ -188,7 +188,7 @@
       right: 0;
       bottom: 0;
       background: rgba(0, 0, 0, 0.9); /* Darkened background */
-      z-index: 50;
+      z-index: 1; /* Lower z-index to keep it behind the media */
     }
 
     /* Enhanced theater mode container styles - fixed positioning to cover entire viewport */
@@ -203,11 +203,12 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 100;
+      z-index: 100; /* Higher z-index to appear above the overlay */
       margin: 0 !important;
       padding: 0 !important;
       max-height: none !important;
       max-width: none !important;
+      background-color: transparent !important; /* Ensure container is transparent */
     }
     
     /* Position relative container to fill entire space */
@@ -217,6 +218,8 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      z-index: 100; /* Ensure content is above overlay */
+      background-color: transparent !important; /* Ensure container is transparent */
     }
     
     /* Media in theater mode - expand to fill screen better */
@@ -227,7 +230,8 @@
       height: auto !important;
       object-fit: contain !important;
       margin: 0 !important;
-      z-index: 100;
+      z-index: 100; /* Keep media above the dark overlay */
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.7); /* Add shadow around media */
     }
     
     /* Theater mode for videos - ensure they expand properly too */
@@ -236,6 +240,7 @@
       max-height: 100vh !important;
       width: auto !important;
       height: auto !important;
+      z-index: 100; /* Keep video above the dark overlay */
     }
     
     /* Theater mode close button */
@@ -253,7 +258,7 @@
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      z-index: 200;
+      z-index: 200; /* Make sure it's above everything */
       font-size: 18px;
       opacity: 0.7;
       transition: opacity 0.2s;
@@ -263,14 +268,14 @@
       opacity: 1;
     }
     
-    /* Removed fullscreen-mode CSS */
-    
     .theater-mode .video-container {
       max-height: none !important;
       height: 100vh !important; /* Full viewport height for video container */
       width: 100% !important;
       margin: 0 !important;
       padding: 0 !important;
+      z-index: 100; /* Ensure video container is above overlay */
+      background-color: transparent !important; /* Ensure container is transparent */
     }
     
     /* Make content section fill available space with minimal margin */
@@ -313,7 +318,7 @@
       display: flex !important;
       align-items: center !important; /* Center vertically */
       justify-content: center !important; /* Center horizontally */
-      z-index: 1; /* Lower z-index so buttons appear above */
+      z-index: 100; /* Lower z-index so buttons appear above */
       pointer-events: none; /* Allow clicks to pass through to buttons */
     }
     
@@ -586,7 +591,7 @@
 
     <!-- Theater mode overlay and close button -->
     <div v-if="theaterMode">
-      <div @click.self="exitTheaterMode" class="theater-overlay"></div>
+      <div class="theater-overlay"></div>
       <button @click="exitTheaterMode" class="theater-close-btn" aria-label="Close theater mode">
         <i class="bi bi-x"></i>
       </button>
