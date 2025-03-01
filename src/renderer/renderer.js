@@ -130,11 +130,17 @@ const app = createApp({
       isPlaying: false,
       isMuted: false,
       
-      // User settings
-      selectedRating: 'General and Sensitive',
+      // User settings - replaced selectedRating with ratingFilters
+      ratingFilters: {
+        general: true,
+        sensitive: false,
+        questionable: false,
+        explicit: false
+      },
       selectedMedia: 'Video and Images',
+      selectedRating: 'General Only', // Add explicit default
       
-      // Rating and media options
+      // Rating and media options - keeping for backward compatibility
       ratingOptions: [
         'General Only',
         'General and Sensitive',
@@ -178,7 +184,7 @@ const app = createApp({
     // Initialize the app
     await this.initApp();
     
-    // Fetch posts
+    // Fetch posts - removed separate ratingChanged() call since initApp already sets up the filters
     await this.fetchAndUpdatePosts();
     
     // Add keyboard event listeners
@@ -208,6 +214,15 @@ const app = createApp({
 
     async initApp() {
       try {
+        // Initialize rating filters to match the default state
+        this.ratingFilters = {
+          general: true,
+          sensitive: false,
+          questionable: false,
+          explicit: false
+        };
+        this.selectedRating = 'General Only';
+        
         // Load user profile
         this.userProfile = await window.api.loadUserProfile();
         if (!this.userProfile) {
@@ -1085,45 +1100,55 @@ const app = createApp({
       await this.nextPost();
     },
     
-    // Filter change handlers
+    // Filter change handlers - Updated for checkbox-based rating filters
     async ratingChanged() {
-      console.log(`Rating changed to: ${this.selectedRating}`);
+      console.log('Rating filters changed:', this.ratingFilters);
       
-      const currentTime = new Date();
-      const dbTimestamp = await window.api.getSetting('last_time_app_accessed', currentTime.toString());
-      const dbTimestampObj = new Date(dbTimestamp);
+      // Reset page and clear current posts before fetching new ones
+      this.page = 1;
+      this.posts = [];
+      this.currentIndex = 0;
+      this.loading = true;
       
-      const timeDiff = currentTime - dbTimestampObj;
-      if (timeDiff > 30 * 60 * 1000) {
-        this.page = 1;
-        
-        // Create settings batch for all combinations
-        const settingsToUpdate = {};
-        for (const rating of this.ratingOptions) {
-          for (const media of this.mediaOptions) {
-            settingsToUpdate[`last_used_page_(${rating})_(${media})`] = 1;
-          }
-        }
-        settingsToUpdate['last_time_app_accessed'] = currentTime.toString();
-        
-        try {
-          await window.api.setSettingsBatch(settingsToUpdate);
-        } catch (err) {
-          console.warn("Failed to save settings to database, using localStorage:", err);
-          Object.entries(settingsToUpdate).forEach(([key, value]) => {
-            localStorage.setItem(key, value);
-          });
-        }
+      // Calculate the equivalent selectedRating value based on checkboxes for compatibility
+      if (this.ratingFilters.general && !this.ratingFilters.sensitive && !this.ratingFilters.questionable && !this.ratingFilters.explicit) {
+        this.selectedRating = 'General Only';
+      } else if (this.ratingFilters.general && this.ratingFilters.sensitive && !this.ratingFilters.questionable && !this.ratingFilters.explicit) {
+        this.selectedRating = 'General and Sensitive';
+      } else if (this.ratingFilters.general && this.ratingFilters.sensitive && this.ratingFilters.questionable && !this.ratingFilters.explicit) {
+        this.selectedRating = 'General, Sensitive, and Questionable';
+      } else if (this.ratingFilters.general && this.ratingFilters.sensitive && this.ratingFilters.questionable && this.ratingFilters.explicit) {
+        this.selectedRating = 'General, Sensitive, Questionable, and Explicit';
+      } else if (!this.ratingFilters.general && this.ratingFilters.sensitive && !this.ratingFilters.questionable && !this.ratingFilters.explicit) {
+        this.selectedRating = 'Sensitive Only';
+      } else if (!this.ratingFilters.general && !this.ratingFilters.sensitive && this.ratingFilters.questionable && !this.ratingFilters.explicit) {
+        this.selectedRating = 'Questionable Only';
+      } else if (!this.ratingFilters.general && !this.ratingFilters.sensitive && !this.ratingFilters.questionable && this.ratingFilters.explicit) {
+        this.selectedRating = 'Explicit Only';
       } else {
-        try {
-          this.page = parseInt(await window.api.getSetting(
-            `last_used_page_(${this.selectedRating})_(${this.selectedMedia})`, 1));
-        } catch (err) {
-          console.warn("Failed to get setting from database, using localStorage:", err);
-          this.page = parseInt(localStorage.getItem(`last_used_page_(${this.selectedRating})_(${this.selectedMedia})`) || '1');
-        }
+        // Custom combination - use the most permissive rating option
+        this.selectedRating = 'General, Sensitive, Questionable, and Explicit';
       }
       
+      console.log(`Mapped to rating preset: ${this.selectedRating}`);
+      
+      // Update settings and fetch new posts in a single operation
+      const currentTime = new Date();
+      const settings = {
+        [`last_used_page_(${this.selectedRating})_(${this.selectedMedia})`]: this.page,
+        'last_time_app_accessed': currentTime.toString()
+      };
+      
+      try {
+        await window.api.setSettingsBatch(settings);
+      } catch (err) {
+        console.warn("Failed to save settings to database, using localStorage:", err);
+        Object.entries(settings).forEach(([key, value]) => {
+          localStorage.setItem(key, value);
+        });
+      }
+      
+      // Fetch posts with new rating filter
       await this.fetchAndUpdatePosts();
     },
     
@@ -1362,7 +1387,7 @@ const app = createApp({
     },
 
     // Apply tag preferences and refresh content
-    async applyTagPreferencesAndRefresh() {
+    async applyTagPreferences() {
       try {
         // First, save the tag preferences
         const preferredTagsArray = this.preferredTags

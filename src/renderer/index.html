@@ -606,14 +606,25 @@
     <div class="sidebar" :class="{ expanded: sidebarExpanded }">
       <h4 class="sidebar-heading">Filters</h4>
       
-      <!-- Rating Selection -->
+      <!-- Rating Selection - Changed from dropdown to checkbox group -->
       <div class="mb-3">
-        <label for="rating-select" class="form-label">Rating Filter</label>
-        <select id="rating-select" class="form-select bg-dark text-light" v-model="selectedRating" @change="ratingChanged">
-          <option v-for="rating in ratingOptions" :key="rating" :value="rating">
-            {{ rating }}
-          </option>
-        </select>
+        <div class="sidebar-section-title">Rating Filter</div>
+        <div class="form-check">
+          <input class="form-check-input bg-dark" type="checkbox" id="rating-general" v-model="ratingFilters.general" @change="ratingChanged">
+          <label class="form-check-label" for="rating-general">General</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input bg-dark" type="checkbox" id="rating-sensitive" v-model="ratingFilters.sensitive" @change="ratingChanged">
+          <label class="form-check-label" for="rating-sensitive">Sensitive</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input bg-dark" type="checkbox" id="rating-questionable" v-model="ratingFilters.questionable" @change="ratingChanged">
+          <label class="form-check-label" for="rating-questionable">Questionable</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input bg-dark" type="checkbox" id="rating-explicit" v-model="ratingFilters.explicit" @change="ratingChanged">
+          <label class="form-check-label" for="rating-explicit">Explicit</label>
+        </div>
       </div>
       
       <!-- Media Type Selection -->
@@ -661,20 +672,11 @@
           <textarea id="blacklisted-tags" class="form-control bg-dark text-light" v-model="blacklistedTags" placeholder="Enter tags separated by commas" rows="3"></textarea>
         </div>
         
-        <!-- Buttons (Save and Apply) -->
+        <!-- Buttons (Apply) -->
         <div class="d-grid gap-2 mt-3">
-          <div class="row g-2">
-            <div class="col">
-              <button class="btn btn-primary w-100" @click="saveTagPreferences">
-                <i class="bi bi-save"></i> Save
-              </button>
-            </div>
-            <div class="col">
-              <button class="btn btn-success w-100" @click="applyTagPreferencesAndRefresh">
-                <i class="bi bi-arrow-clockwise"></i> Apply & Refresh
-              </button>
-            </div>
-          </div>
+          <button class="btn btn-success w-100" @click="applyTagPreferences">
+            <i class="bi bi-arrow-clockwise"></i> Apply
+          </button>
         </div>
       </div>
     </div>
