@@ -123,8 +123,7 @@ const app = createApp({
       
       // UI state
       loading: true,
-      fullscreen: false,
-      focusMode: false,
+      theaterMode: false, // Changed from focusMode to theaterMode
       
       // Video control states
       showCustomControls: false,
@@ -151,6 +150,7 @@ const app = createApp({
       autonextEnabled: false,
       autonextInterval: 5,
       autonextTimerId: null,
+      autonextOnVideoCompletion: true, // New property for video completion auto next
       
       // User profile data
       userProfile: null,
@@ -164,7 +164,10 @@ const app = createApp({
       
       // Favorite tags data
       topTags: [],
-      topTagCombinations: []
+      topTagCombinations: [],
+
+      // Sidebar state - new property
+      sidebarExpanded: false
     };
   },
   
@@ -177,15 +180,29 @@ const app = createApp({
     
     // Add keyboard event listeners
     document.addEventListener('keydown', this.handleKeyPress);
+
+    // Add event listener for ESC key to exit theater mode
+    document.addEventListener('keydown', this.handleEscapeKey);
+
+    // Add event listener for clicks outside the media to exit theater mode
+    document.addEventListener('click', this.handleOutsideClick);
   },
   
   beforeUnmount() {
     // Clean up event listeners
     document.removeEventListener('keydown', this.handleKeyPress);
+    document.removeEventListener('keydown', this.handleEscapeKey);
+    document.removeEventListener('click', this.handleOutsideClick);
     this.stopAutonext();
   },
   
   methods: {
+    // Toggle sidebar - new method
+    toggleSidebar() {
+      this.sidebarExpanded = !this.sidebarExpanded;
+      console.log(`Sidebar ${this.sidebarExpanded ? 'expanded' : 'collapsed'}`);
+    },
+
     async initApp() {
       try {
         // Load user profile
@@ -266,10 +283,10 @@ const app = createApp({
             ratingTags = 'rating:general';
             break;
           case 'General and Sensitive':
-            ratingTags = 'rating:general..sensitive';
+            ratingTags = '(rating:general OR rating:sensitive)';
             break;
           case 'General, Sensitive, and Questionable':
-            ratingTags = 'rating:general..questionable';
+            ratingTags = '(rating:general OR rating:sensitive OR rating:questionable)';
             break;
           case 'General, Sensitive, Questionable, and Explicit':
             ratingTags = ''; // No rating filter
@@ -517,7 +534,7 @@ const app = createApp({
     mediaLoaded() {
       this.loading = false;
       
-      // Special handling for video elements to ensure proper sizing and controls positioning
+      // Set up video controls after loading
       if (this.currentPost && this.isVideo(this.currentPost) && this.$refs.videoPlayer) {
         // Give the video a moment to initialize
         setTimeout(() => {
@@ -579,18 +596,47 @@ const app = createApp({
           // Ensure autoplay works properly
           video.muted = false; // Unmute by default (many browsers only allow autoplay if muted)
           
+          // Remove any previous event listeners to avoid duplicates
+          video.removeEventListener('ended', this.videoEndedHandler);
+          video.removeEventListener('play', this.videoPlayHandler);
+          video.removeEventListener('pause', this.videoPauseHandler);
+          video.removeEventListener('volumechange', this.videoVolumeChangeHandler);
+          
           // Add event listeners for player state
-          video.addEventListener('play', () => {
+          this.videoPlayHandler = () => {
             this.isPlaying = true;
-          });
+          };
           
-          video.addEventListener('pause', () => {
+          this.videoPauseHandler = () => {
             this.isPlaying = false;
-          });
+          };
           
-          video.addEventListener('volumechange', () => {
+          this.videoVolumeChangeHandler = () => {
             this.isMuted = video.muted;
-          });
+          };
+          
+          // Add event listener for video completion
+          this.videoEndedHandler = () => {
+            console.log('Video ended event triggered');
+            // Auto advance to next post when video ends if enabled
+            if (this.autonextEnabled && this.autonextOnVideoCompletion) {
+              console.log('Auto Next enabled and Video Completion enabled - advancing to next post');
+              this.nextPost();
+            } else {
+              // Only restart if looping is desired (Auto Next disabled or video completion option off)
+              if (!this.autonextEnabled || !this.autonextOnVideoCompletion) {
+                console.log('Either Auto Next is disabled or Video Completion is disabled - restarting video');
+                video.currentTime = 0;
+                video.play();
+              }
+            }
+          };
+          
+          // Attach the event listeners
+          video.addEventListener('play', this.videoPlayHandler);
+          video.addEventListener('pause', this.videoPauseHandler);
+          video.addEventListener('volumechange', this.videoVolumeChangeHandler);
+          video.addEventListener('ended', this.videoEndedHandler);
           
           // Monitor mouse movement over video to display controls
           video.addEventListener('mousemove', (e) => {
@@ -627,56 +673,11 @@ const app = createApp({
           });
           
           console.log('Video control handlers initialized');
+          console.log('Auto Next:', this.autonextEnabled ? 'Enabled' : 'Disabled');
+          console.log('Auto Next on Video Completion:', this.autonextOnVideoCompletion ? 'Enabled' : 'Disabled');
+          console.log('Video will loop:', (!this.autonextEnabled || !this.autonextOnVideoCompletion) ? 'Yes' : 'No');
         }, 100);
       }
-    },
-    
-    // Custom video control functions
-    togglePlay() {
-      if (!this.$refs.videoPlayer) return;
-      const video = this.$refs.videoPlayer;
-      
-      if (video.paused) {
-        video.play();
-        this.isPlaying = true;
-      } else {
-        video.pause();
-        this.isPlaying = false;
-      }
-    },
-    
-    toggleMute() {
-      if (!this.$refs.videoPlayer) return;
-      const video = this.$refs.videoPlayer;
-      
-      video.muted = !video.muted;
-      this.isMuted = video.muted;
-    },
-    
-    seekVideo(e) {
-      if (!this.$refs.videoPlayer || !this.$refs.customTimeline) return;
-      
-      const video = this.$refs.videoPlayer;
-      const timeline = this.$refs.customTimeline;
-      
-      // Calculate seek position based on click position within timeline
-      const rect = timeline.getBoundingClientRect();
-      const seekPos = (e.clientX - rect.left) / rect.width;
-      
-      // Set new time
-      video.currentTime = video.duration * seekPos;
-      this.updateCustomProgressBar();
-    },
-    
-    updateCustomProgressBar() {
-      if (!this.$refs.videoPlayer || !this.$refs.customProgress || !this.showCustomControls) return;
-      
-      const video = this.$refs.videoPlayer;
-      const progress = this.$refs.customProgress;
-      
-      // Update progress bar width
-      const progressPercent = (video.currentTime / video.duration) * 100;
-      progress.style.width = `${progressPercent}%`;
     },
     
     mediaError() {
@@ -1032,11 +1033,16 @@ const app = createApp({
     },
     
     // External link handlers
-    openInBrowser() {
+    async openInBrowser(usePrivate = false) {
       if (!this.currentPost) return;
       const postId = this.currentPost.id;
       const url = `https://danbooru.donmai.us/posts/${postId}`;
-      window.open(url, '_blank');
+      
+      if (usePrivate) {
+        await window.api.openPrivateWindow(url);
+      } else {
+        await window.api.openInBrowser(url);
+      }
     },
     
     copyToClipboard() {
@@ -1067,29 +1073,43 @@ const app = createApp({
       }
     },
     
-    // Fullscreen and focus mode
-    toggleFullscreen() {
-      this.fullscreen = !this.fullscreen;
-      
-      if (this.fullscreen) {
-        document.documentElement.requestFullscreen()
-          .catch(err => console.error('Error attempting to enable fullscreen:', err));
-        document.body.classList.add('fullscreen-mode');
+    // Theater Mode - replacing focusMode
+    toggleTheaterMode() {
+      this.theaterMode = !this.theaterMode;
+      if (this.theaterMode) {
+        document.body.classList.add('theater-mode');
+        console.log('Theater mode activated');
       } else {
-        if (document.fullscreenElement) {
-          document.exitFullscreen()
-            .catch(err => console.error('Error attempting to exit fullscreen:', err));
-        }
-        document.body.classList.remove('fullscreen-mode');
+        this.exitTheaterMode();
       }
     },
-    
-    toggleFocusMode() {
-      this.focusMode = !this.focusMode;
-      if (this.focusMode) {
-        document.body.classList.add('focus-mode');
-      } else {
-        document.body.classList.remove('focus-mode');
+
+    // Method to exit theater mode
+    exitTheaterMode() {
+      this.theaterMode = false;
+      document.body.classList.remove('theater-mode');
+      console.log('Theater mode exited');
+    },
+
+    // Handle clicks outside the media element to exit theater mode
+    handleOutsideClick(event) {
+      // Only proceed if we're in theater mode
+      if (!this.theaterMode) return;
+
+      // Check if the click was on the theater-overlay (background)
+      const overlay = document.querySelector('.theater-overlay');
+      if (overlay && event.target === overlay) {
+        this.exitTheaterMode();
+      }
+    },
+
+    // Handle Escape key to exit theater mode
+    handleEscapeKey(event) {
+      if (event.key === 'Escape') {
+        // Exit theater mode if active
+        if (this.theaterMode) {
+          this.exitTheaterMode();
+        }
       }
     },
     
@@ -1106,13 +1126,17 @@ const app = createApp({
       // Clear existing timer if any
       this.stopAutonext();
       
-      // Start a new timer
-      const intervalMs = parseFloat(this.autonextInterval) * 1000 || 5000;
-      this.autonextTimerId = setInterval(() => {
-        this.nextPost();
-      }, intervalMs);
-      
-      console.log(`AutoNext started with interval: ${intervalMs}ms`);
+      // Start a new timer - only if we're not showing a video or if video completion auto-next is disabled
+      if (!this.isVideo(this.currentPost) || !this.autonextOnVideoCompletion) {
+        const intervalMs = parseFloat(this.autonextInterval) * 1000 || 5000;
+        this.autonextTimerId = setInterval(() => {
+          this.nextPost();
+        }, intervalMs);
+        
+        console.log(`AutoNext started with interval: ${intervalMs}ms`);
+      } else {
+        console.log('AutoNext timer not started - using video completion instead');
+      }
     },
     
     stopAutonext() {
@@ -1120,6 +1144,22 @@ const app = createApp({
         clearInterval(this.autonextTimerId);
         this.autonextTimerId = null;
         console.log("AutoNext stopped");
+      }
+    },
+    
+    // Update AutoNext behavior when video completion setting changes
+    updateAutonextBehavior() {
+      if (this.autonextEnabled) {
+        this.stopAutonext();
+        this.startAutonext();
+        
+        // Update the loop attribute on video if it exists
+        if (this.currentPost && this.isVideo(this.currentPost) && this.$refs.videoPlayer) {
+          const video = this.$refs.videoPlayer;
+          // Video should only loop if auto next is disabled or auto next on video completion is disabled
+          video.loop = !this.autonextEnabled || !this.autonextOnVideoCompletion;
+          console.log(`Video loop attribute updated: ${video.loop}`);
+        }
       }
     },
     
@@ -1142,12 +1182,35 @@ const app = createApp({
           this.autonextEnabled = !this.autonextEnabled;
           this.toggleAutonext();
           break;
-        case 'F11': // Fullscreen
-          this.toggleFullscreen();
+        case 'F10': // Theater Mode (was Focus Mode)
+          this.toggleTheaterMode();
           break;
-        case 'F10': // Focus Mode
-          this.toggleFocusMode();
+        case 'S': // Toggle Sidebar
+        case 's':
+          this.toggleSidebar();
           break;
+      }
+    }
+  },
+  
+  watch: {
+    // Watch for changes in autonextOnVideoCompletion to update behavior
+    autonextOnVideoCompletion() {
+      this.updateAutonextBehavior();
+      
+      // Update the loop attribute on video if it exists
+      if (this.currentPost && this.isVideo(this.currentPost) && this.$refs.videoPlayer) {
+        const video = this.$refs.videoPlayer;
+        // Video should only loop if auto next is disabled or auto next on video completion is disabled
+        video.loop = !this.autonextEnabled || !this.autonextOnVideoCompletion;
+        console.log(`Video loop attribute updated after video completion setting changed: ${video.loop}`);
+      }
+    },
+    
+    // Watch for changes in current post to adjust autonext behavior
+    currentPost() {
+      if (this.autonextEnabled) {
+        this.updateAutonextBehavior();
       }
     }
   }

@@ -9,30 +9,43 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.js"></script>
   <style>
-    /* Basic container styles with reduced margins */
+    /* Basic container styles with increased height to fill available space */
     .media-container {
-      max-height: 68vh;
       display: flex;
       justify-content: center;
       align-items: center;
       position: relative;
       overflow: hidden !important;
-      margin-bottom: 0.5rem !important; /* Reduced margin from 2rem to 0.5rem */
+      margin-bottom: 0 !important;
+      padding-bottom: 0 !important; /* Ensure no padding */
+      height: 100% !important; /* Fill the container height */
+      z-index: 1; /* Lower z-index so buttons appear above */
     }
     
     .media-display {
-      max-height: 68vh;
+      max-height: 85vh; /* Increased from 80vh to 85vh */
       max-width: 100%;
       object-fit: contain;
       margin: auto;
       display: block;
+      z-index: 1; /* Lower z-index so buttons appear above */
     }
     
     /* Video-specific styles - ensure controls work properly */
     video.media-display {
-      max-height: 65vh !important;
-      /* Remove any custom styling that might interfere with controls */
-      margin-bottom: 0 !important; /* Ensure no bottom margin on video */
+      max-height: 83vh !important; /* Increased from 77vh to 83vh */
+      margin-bottom: 0 !important;
+      z-index: 1; /* Lower z-index so buttons appear above */
+    }
+    
+    /* Position relative container to center content vertically */
+    .position-relative {
+      width: 100%;
+      height: 100% !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      z-index: 1; /* Lower z-index so buttons appear above */
     }
     
     /* Ensure video controls are visible and interactive */
@@ -47,12 +60,14 @@
     .video-container {
       position: relative;
       width: 100%;
-      max-height: 68vh;
+      height: 100%; /* Use full height */
+      max-height: 85vh; /* Increased from 80vh to 85vh */
       display: flex;
       justify-content: center;
       align-items: center;
       margin-bottom: 0 !important; /* No margin on the container */
       padding-bottom: 0 !important; /* No padding on the container */
+      z-index: 1; /* Lower z-index so buttons appear above */
     }
     
     /* Custom video controls as a backup */
@@ -66,18 +81,70 @@
       display: flex;
       align-items: center;
       padding: 0 10px;
-      z-index: 1000;
+      z-index: 20; /* Keep this higher for visibility */
     }
     
-    /* Control buttons - reduced top margin to bring closer to video */
+    /* Control buttons positioned closer to the media - updated to be fixed width and centered */
     .control-buttons {
-      margin-top: 0 !important; /* Removed negative margin */
+      position: fixed;
+      bottom: 50px; /* Moved up from 10px */
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background-color: rgba(33, 37, 41, 0.85);
+      padding-top: 8px;
+      padding-bottom: 8px;
+      pointer-events: auto !important; /* Ensure buttons are clickable */
+      /* Added to center the buttons container */
+      display: flex;
+      justify-content: center;
+      width: 100%;
     }
     
-    /* Compact buttons with reduced padding */
+    /* Button container for fixed width and center alignment */
+    .control-buttons-container {
+      max-width: 900px; /* Fixed maximum width */
+      width: 100%;
+      padding: 0 15px;
+    }
+    
+    /* Compact buttons with fixed widths */
     .control-buttons .btn {
       padding-top: 0.25rem;
       padding-bottom: 0.25rem;
+      pointer-events: auto !important; /* Ensure buttons are clickable */
+      min-width: 100px; /* Fixed minimum width for buttons */
+      width: 100%; /* Fill container width */
+      max-width: 150px; /* Maximum width for consistency */
+    }
+    
+    /* Settings area positioned at the bottom - updated to be fixed width and centered */
+    .settings-area {
+      position: fixed;
+      bottom: 10px; /* Position at the bottom */
+      left: 0;
+      right: 0;
+      z-index: 990;
+      background-color: rgba(33, 37, 41, 0.75);
+      padding-top: 6px; /* Reduced padding */
+      padding-bottom: 6px; /* Reduced padding */
+      pointer-events: auto !important; /* Ensure buttons are clickable */
+      /* Added to center the settings container */
+      display: flex;
+      justify-content: center;
+      width: 100%;
+    }
+    
+    /* Settings container for fixed width and center alignment */
+    .settings-container {
+      max-width: 900px; /* Match control buttons container width */
+      width: 100%;
+      padding: 0 15px;
+    }
+    
+    /* Ensure fixed width for secondary buttons */
+    .settings-area .btn {
+      min-width: 80px; /* Smaller fixed minimum width for secondary buttons */
     }
     
     .custom-control-button {
@@ -110,66 +177,284 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      z-index: 100;
+      z-index: 20; /* Above media but below other controls */
     }
     
-    .focus-overlay {
+    /* Theater Mode overlay - modified to be positioned behind media */
+    .theater-overlay {
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(0, 0, 0, 0.8);
-      z-index: 50;
+      background: rgba(0, 0, 0, 0.9); /* Darkened background */
+      z-index: 1; /* Lower z-index to keep it behind the media */
     }
-    
-    .focus-mode .media-display {
-      max-height: 90vh;
-      z-index: 100;
-      position: relative;
-    }
-    
-    /* Improved fullscreen mode for videos */
-    .fullscreen-mode .media-display {
-      max-height: 90vh;
-    }
-    
-    .focus-mode video.media-display,
-    .fullscreen-mode video.media-display {
-      max-height: 85vh !important; 
-      padding-bottom: 40px !important; /* Increased space for controls */
-    }
-    
-    /* Additional style for debug info */
-    .debug-info {
+
+    /* Enhanced theater mode container styles - fixed positioning to cover entire viewport */
+    .theater-mode .media-container {
       position: fixed;
-      bottom: 0;
+      top: 0;
       left: 0;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 5px;
-      font-size: 10px;
-      color: #aaa;
-      z-index: 1000;
+      right: 0;
+      bottom: 0;
+      width: 100vw !important;
+      height: 100vh !important; /* Fill full viewport height */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100; /* Higher z-index to appear above the overlay */
+      margin: 0 !important;
+      padding: 0 !important;
+      max-height: none !important;
+      max-width: none !important;
+      background-color: transparent !important; /* Ensure container is transparent */
     }
     
-    /* Reduce spacing in the media content section */
+    /* Position relative container to fill entire space */
+    .theater-mode .position-relative {
+      width: 100% !important;
+      height: 100% !important;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100; /* Ensure content is above overlay */
+      background-color: transparent !important; /* Ensure container is transparent */
+    }
+    
+    /* Media in theater mode - expand to fill screen better */
+    .theater-mode .media-display {
+      max-width: 100vw !important;
+      max-height: 100vh !important;
+      width: auto !important;
+      height: auto !important;
+      object-fit: contain !important;
+      margin: 0 !important;
+      z-index: 100; /* Keep media above the dark overlay */
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.7); /* Add shadow around media */
+    }
+    
+    /* Theater mode for videos - ensure they expand properly too */
+    .theater-mode video.media-display {
+      max-width: 100vw !important;
+      max-height: 100vh !important;
+      width: auto !important;
+      height: auto !important;
+      z-index: 100; /* Keep video above the dark overlay */
+    }
+    
+    /* Theater mode close button */
+    .theater-close-btn {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      background-color: rgba(0, 0, 0, 0.5);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 200; /* Make sure it's above everything */
+      font-size: 18px;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+    
+    .theater-close-btn:hover {
+      opacity: 1;
+    }
+    
+    .theater-mode .video-container {
+      max-height: none !important;
+      height: 100vh !important; /* Full viewport height for video container */
+      width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      z-index: 100; /* Ensure video container is above overlay */
+      background-color: transparent !important; /* Ensure container is transparent */
+    }
+    
+    /* Make content section fill available space with minimal margin */
     .media-content-section {
-      margin-bottom: 0.5rem !important;
+      display: flex !important;
+      align-items: center !important; /* This centers vertically */
+      justify-content: center !important; /* This centers horizontally */
+      margin-bottom: 0px !important;
+      padding-bottom: 0 !important;
+      flex-grow: 1;
+      height: 100% !important;
+      z-index: 1; /* Lower z-index so buttons appear above */
+      pointer-events: none; /* Allow clicks to pass through to buttons */
     }
     
-    /* Make all sections more compact */
-    .settings-area {
-      margin-top: 0.5rem !important;
+    /* Ensure media content still captures pointer events */
+    .media-content-section img,
+    .media-content-section video,
+    .media-content-section .video-container {
+      pointer-events: auto !important;
+    }
+
+    /* Main content container adjustments */
+    .main-content {
+      position: relative;
+      padding-bottom: 0 !important; /* Remove bottom padding */
+      padding-top: 0 !important;    /* Remove top padding */
+      margin-top: 0 !important;     /* Remove top margin */
+      display: flex !important;      /* Use flexbox for centering */
+      align-items: center !important; /* Center vertically */
+      justify-content: center !important; /* Center horizontally */
+      z-index: 1; /* Lower z-index so buttons appear above */
+      pointer-events: none; /* Allow clicks to pass through to buttons */
+    }
+    
+    /* Full height container */
+    .container-fluid {
+      padding: 0 !important; /* Remove default padding to maximize space */
+      height: calc(100vh - 100px); /* Take full viewport height minus space for buttons */
+      display: flex !important;
+      align-items: center !important; /* Center vertically */
+      justify-content: center !important; /* Center horizontally */
+      z-index: 100; /* Lower z-index so buttons appear above */
+      pointer-events: none; /* Allow clicks to pass through to buttons */
+    }
+    
+    /* Ensure the app takes the full height */
+    #app, html, body {
+      height: 100vh;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    /* Hide controls in theater mode */
+    .theater-mode .control-buttons,
+    .theater-mode .settings-area,
+    .theater-mode .sidebar-toggle {
+      display: none !important;
+    }
+
+    /* Updated sidebar toggle styles - fixed position in upper right and no movement on hover */
+    .sidebar-toggle {
+      position: fixed;
+      right: 20px;  /* Fixed position from right edge */
+      top: 11px;    /* Positioned at top */
+      z-index: 1020;
+      background-color: rgba(51, 51, 51, 0.6); /* More transparent background */
+      border-radius: 5px;
+      padding: 8px 10px;
+      cursor: pointer;
+      box-shadow: -2px 0 5px rgba(0, 0, 0, 0.3);
+      border: 1px solid #444;
+      transition: background-color 0.2s ease; /* Smooth transition for hover effect */
+      pointer-events: auto !important; /* Ensure button is clickable */
+    }
+
+    /* Add hover effect to make the button more opaque */
+    .sidebar-toggle:hover {
+      background-color: rgba(51, 51, 51, 0.9); /* More opaque on hover */
+    }
+
+    /* Remove transition from sidebar toggle button to prevent movement */
+    .sidebar-toggle-expanded {
+      right: 20px !important; /* Always stay in the same position */
+    }
+
+    .sidebar {
+      position: fixed;
+      top: 0;
+      right: -250px; /* Initially hidden off-screen */
+      width: 250px;
+      height: 100%;
+      background-color: #222;
+      z-index: 1010;
+      padding: 20px;
+      box-shadow: -2px 0 10px rgba(0, 0, 0, 0.5);
+      overflow-y: auto;
+      transition: right 0.3s ease;
+      pointer-events: auto !important; /* Ensure sidebar is interactive */
+    }
+
+    .sidebar.expanded {
+      right: 0; /* Show sidebar when expanded */
+    }
+
+    .sidebar-heading {
+      border-bottom: 1px solid #444;
+      padding-bottom: 10px;
+      margin-bottom: 15px;
+      text-align: center; /* Center the heading since we removed the X button */
+    }
+
+    /* Ensure the main content doesn't move when sidebar is opened */
+    .main-content {
+      position: relative;
+      transition: margin-right 0.3s ease;
+      padding-bottom: 100px; /* Add padding to ensure content isn't hidden behind fixed elements */
+    }
+
+    /* Add space for toggle button */
+    .toggle-icon {
+      font-size: 1.2rem;
+      color: #fff;
+    }
+    
+    /* Auto Next switch positioned on the right side */
+    .autonext-switch-container {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+    }
+    
+    .autonext-switch-container .form-check {
+      margin-right: 2rem;
+    }
+    
+    /* Sidebar section divider */
+    .sidebar-divider {
+      border-top: 1px solid #444;
+      margin-top: 15px;
+      margin-bottom: 15px;
+    }
+    
+    .sidebar-section-title {
+      font-size: 1rem;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    
+    /* Compact layout for settings row */
+    .settings-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      column-gap: 64px; /* Reduced space between items */
+    }
+    
+    /* Make "My Favorites" and "Theater Mode" buttons smaller */
+    .small-btn {
+      font-size: 0.85rem;
+      padding: 0.2rem 0.5rem;
+      min-width: 70px !important; /* Smaller width */
+    }
+    
+    /* Auto Next toggle - more compact */
+    .form-check.compact-switch {
+      margin: 0;
+      padding-left: 2.5rem;
     }
   </style>
 </head>
 <body class="bg-dark text-light">
   <div id="app">
-    <div class="container-fluid p-3">
-      <!-- Media Display Area - Reduced spacing -->
-      <div class="media-content-section">
+    <div class="container-fluid main-content">
+      <!-- Media Display Area - Enhanced to fill more space and center content -->
+      <div class="media-content-section" :class="{ 'theater-mode': theaterMode }">
         <div class="media-container">
-          <div class="position-relative" style="width: 100%; text-align: center;">
+          <div class="position-relative" style="width: 100%; height: 100%;">
             <!-- Loading indicator -->
             <div class="loading-spinner" v-if="loading">
               <div class="spinner-border text-primary" role="status">
@@ -186,7 +471,7 @@
             
             <!-- Video display - Restructured for better control access -->
             <div v-if="currentPost && isVideo(currentPost) && mediaUrl" class="video-container">
-              <!-- Main video element with native controls -->
+              <!-- Main video element with native controls - Loop only when Auto Next on Video Completion is disabled -->
               <video 
                 ref="videoPlayer"
                 class="media-display"
@@ -194,7 +479,7 @@
                 controls
                 controlsList="nodownload"
                 autoplay
-                loop
+                :loop="!autonextEnabled || !autonextOnVideoCompletion"
                 @loadeddata="mediaLoaded"
                 @error="mediaError"
                 @timeupdate="updateCustomProgressBar">
@@ -220,122 +505,142 @@
             <div v-if="currentPost && !mediaUrl && !loading" class="alert alert-warning">
               Unable to load media. Please try the next post.
             </div>
-            
-            <!-- Focus mode overlay -->
-            <div v-if="focusMode" class="focus-overlay"></div>
           </div>
         </div>
       </div>
-      
-      <!-- Control Buttons with less spacing -->
-      <div class="control-buttons mb-2" v-if="!focusMode">
-        <div class="row">
-          <div class="col">
-            <button @click="previousPost" class="btn btn-secondary w-100">
+    </div>
+
+    <!-- Primary Control Buttons (Previous, Dislike, Super Like, Like, Next) -->
+    <div class="control-buttons" v-if="!theaterMode">
+      <div class="control-buttons-container">
+        <div class="row justify-content-center">
+          <div class="col-auto">
+            <button @click="previousPost" class="btn btn-secondary">
               <i class="bi bi-arrow-left"></i> Previous
             </button>
           </div>
-          <div class="col">
-            <button @click="dislikePost" class="btn btn-danger w-100">
+          <div class="col-auto">
+            <button @click="dislikePost" class="btn btn-danger">
               <i class="bi bi-hand-thumbs-down"></i> Dislike
             </button>
           </div>
-          <div class="col">
-            <button @click="likePost" class="btn btn-success w-100">
-              <i class="bi bi-hand-thumbs-up"></i> Like
-            </button>
-          </div>
-          <div class="col">
-            <button @click="superLikePost" class="btn btn-primary w-100">
+          <div class="col-auto">
+            <button @click="superLikePost" class="btn btn-primary">
               <i class="bi bi-heart"></i> Super Like
             </button>
           </div>
-          <div class="col">
-            <button @click="nextPost" class="btn btn-secondary w-100">
+          <div class="col-auto">
+            <button @click="likePost" class="btn btn-success">
+              <i class="bi bi-hand-thumbs-up"></i> Like
+            </button>
+          </div>
+          <div class="col-auto">
+            <button @click="nextPost" class="btn btn-secondary">
               <i class="bi-arrow-right"></i> Next
             </button>
           </div>
         </div>
       </div>
-      
-      <!-- Settings Area - Rest of the content remains unchanged -->
-      <div class="settings-area mb-2" v-if="!focusMode">
-        <div class="row">
-          <!-- Rating Selection -->
-          <div class="col-md-4 mb-2">
-            <label for="rating-select" class="form-label">Rating Filter</label>
-            <select id="rating-select" class="form-select bg-dark text-light" v-model="selectedRating" @change="ratingChanged">
-              <option v-for="rating in ratingOptions" :key="rating" :value="rating">
-                {{ rating }}
-              </option>
-            </select>
+    </div>
+    
+    <!-- Secondary buttons (Share, Auto Next, Favorites, Theater Mode) moved below -->
+    <div class="settings-area" v-if="!theaterMode">
+      <div class="settings-container">
+        <div class="settings-row">
+          <div>
+            <div class="dropdown">
+              <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="shareDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-share"></i> Share
+              </button>
+              <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="shareDropdown">
+                <li><button class="dropdown-item" @click="openInBrowser(true)">
+                  <i class="bi bi-incognito"></i> Open in Private Window
+                </button></li>
+                <li><button class="dropdown-item" @click="openInBrowser(false)">
+                  <i class="bi bi-box-arrow-up-right"></i> Open in Browser
+                </button></li>
+                <li><button class="dropdown-item" @click="copyToClipboard">
+                  <i class="bi bi-clipboard"></i> Copy URL
+                </button></li>
+              </ul>
+            </div>
           </div>
           
-          <!-- Media Type Selection -->
-          <div class="col-md-4 mb-2">
-            <label for="media-select" class="form-label">Media Filter</label>
-            <select id="media-select" class="form-select bg-dark text-light" v-model="selectedMedia" @change="mediaTypeChanged">
-              <option v-for="media in mediaOptions" :key="media" :value="media">
-                {{ media }}
-              </option>
-            </select>
-          </div>
-          
-          <!-- AutoNext Feature -->
-          <div class="col-md-4 mb-2">
-            <div class="form-check form-switch mt-4">
+          <div>
+            <!-- Auto Next toggle -->
+            <div class="form-check form-switch compact-switch">
               <input class="form-check-input" type="checkbox" id="autonext-switch" v-model="autonextEnabled" @change="toggleAutonext">
               <label class="form-check-label" for="autonext-switch">Auto Next</label>
             </div>
-            <div class="input-group input-group-sm" v-if="autonextEnabled">
-              <input type="number" class="form-control bg-dark text-light" v-model="autonextInterval" placeholder="Seconds">
-              <span class="input-group-text bg-dark text-light">seconds</span>
-            </div>
           </div>
-        </div>
-        
-        <div class="row mt-2">
-          <div class="col-md-4">
-            <button @click="openInBrowser" class="btn btn-outline-light btn-sm">
-              <i class="bi bi-box-arrow-up-right"></i> Open in Browser
+          
+          <div>
+            <button @click="showFavoriteTagsModal" class="btn btn-outline-light btn-sm small-btn">
+              <i class="bi bi-star"></i> My Favorites
             </button>
           </div>
-          <div class="col-md-4">
-            <button @click="copyToClipboard" class="btn btn-outline-light btn-sm">
-              <i class="bi bi-clipboard"></i> Copy URL
+          
+          <div>
+            <button @click="toggleTheaterMode" class="btn btn-outline-light btn-sm small-btn">
+              <i class="bi bi-tv"></i> Theater Mode
             </button>
           </div>
-          <div class="col-md-4">
-            <div class="d-flex justify-content-end">
-              <button @click="showFavoriteTagsModal" class="btn btn-outline-light btn-sm me-2">
-                <i class="bi bi-star"></i> My Favorites
-              </button>
-              <button @click="toggleFocusMode" class="btn btn-outline-light btn-sm me-2">
-                <i class="bi bi-fullscreen"></i> Focus Mode
-              </button>
-              <button @click="toggleFullscreen" class="btn btn-outline-light btn-sm">
-                <i class="bi bi-arrows-fullscreen"></i> Fullscreen
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Status Area -->
-      <div class="status-area text-center" v-if="currentPost && !focusMode">
-        <div class="post-info small">
-          <span>Score: {{ currentPost.score }}</span> | 
-          <span v-if="postLikelihood !== null">
-            Likelihood: {{ Math.round(postLikelihood * 100) }}%
-          </span>
         </div>
       </div>
     </div>
-    
-    <!-- Debug info in development mode -->
-    <div class="debug-info" v-if="currentPost">
-      <div>Media URL: {{ mediaUrl ? (mediaUrl.substring(0, 30) + '...') : 'None' }}</div>
-      <div>Type: {{ currentPost.file_ext }}</div>
+
+    <!-- Theater mode overlay and close button -->
+    <div v-if="theaterMode">
+      <div class="theater-overlay"></div>
+      <button @click="exitTheaterMode" class="theater-close-btn" aria-label="Close theater mode">
+        <i class="bi bi-x"></i>
+      </button>
+    </div>
+
+    <!-- Updated Sidebar Toggle Button -->
+    <button class="sidebar-toggle" v-if="!theaterMode" @click="toggleSidebar" :class="{ 'sidebar-toggle-expanded': sidebarExpanded }">
+      <i :class="sidebarExpanded ? 'bi bi-chevron-right toggle-icon' : 'bi bi-chevron-left toggle-icon'"></i>
+    </button>
+
+    <!-- New Sidebar for Filters - X button removed -->
+    <div class="sidebar" :class="{ expanded: sidebarExpanded }">
+      <h4 class="sidebar-heading">Filters</h4>
+      
+      <!-- Rating Selection -->
+      <div class="mb-3">
+        <label for="rating-select" class="form-label">Rating Filter</label>
+        <select id="rating-select" class="form-select bg-dark text-light" v-model="selectedRating" @change="ratingChanged">
+          <option v-for="rating in ratingOptions" :key="rating" :value="rating">
+            {{ rating }}
+          </option>
+        </select>
+      </div>
+      
+      <!-- Media Type Selection -->
+      <div class="mb-3">
+        <label for="media-select" class="form-label">Media Filter</label>
+        <select id="media-select" class="form-select bg-dark text-light" v-model="selectedMedia" @change="mediaTypeChanged">
+          <option v-for="media in mediaOptions" :key="media" :value="media">
+            {{ media }}
+          </option>
+        </select>
+      </div>
+      
+      <!-- Separator -->
+      <div class="sidebar-divider"></div>
+      
+      <!-- Auto Next Settings (timer only) -->
+      <div class="mb-3">
+        <div class="sidebar-section-title">Auto Next Settings</div>
+        <label for="autonext-interval" class="form-label">Interval (seconds)</label>
+        <input type="number" id="autonext-interval" class="form-control bg-dark text-light" v-model="autonextInterval" placeholder="Seconds">
+        
+        <!-- Auto Next on Video Completion switch -->
+        <div class="form-check form-switch mt-3">
+          <input class="form-check-input" type="checkbox" id="autonext-video-completion" v-model="autonextOnVideoCompletion">
+          <label class="form-check-label" for="autonext-video-completion">Auto Next on Video Completion</label>
+        </div>
+      </div>
     </div>
     
     <!-- Favorite Tags Modal -->
@@ -361,8 +666,7 @@
                       <th>Rank</th>
                       <th>Tag</th>
                       <th>Score</th>
-                      <th>Interactions</th>
-                    </tr>
+                      <th>Interactions</tr>
                   </thead>
                   <tbody>
                     <tr v-for="(tag, index) in topTags" :key="index">
