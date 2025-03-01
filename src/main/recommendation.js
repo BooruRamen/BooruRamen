@@ -561,6 +561,22 @@ class MonolithRecommendation {
     // but track each post individually
     const postsToLoad = topPosts.filter(item => {
       const postId = item.post.id;
+      
+      // Check if the post has been previously marked as problematic
+      try {
+        // Read problematic posts from localStorage via the renderer process
+        const problematicPostsStr = global.getProblematicPostsFromRenderer ? 
+          global.getProblematicPostsFromRenderer() : '[]';
+        const problematicPosts = JSON.parse(problematicPostsStr || '[]');
+        if (problematicPosts.includes(postId)) {
+          console.log(`Skipping preload for known problematic post ID: ${postId}`);
+          return false;
+        }
+      } catch (err) {
+        // Continue if this check fails
+        console.warn("Error checking problematic posts list:", err);
+      }
+      
       // Only preload if not already in cache or being preloaded
       return !this.preloadCache.has(postId) || 
              (this.preloadCache.has(postId) && !this.preloadCache.get(postId).mediaData);
@@ -572,6 +588,21 @@ class MonolithRecommendation {
       for (let i = 0; i < postsToLoad.length; i++) {
         const post = postsToLoad[i].post;
         const postId = post.id;
+        
+        // Check for premium or text-only content
+        const isPremiumOrTextOnly = this.isPremiumOrTextOnly(post);
+        if (isPremiumOrTextOnly) {
+          console.log(`Skipping preload for post ID ${postId} - detected as premium or text-only content`);
+          this.preloadCache.set(postId, {
+            url: null,
+            mediaData: null,
+            loading: false,
+            error: true,
+            isPremium: true,
+            timestamp: Date.now()
+          });
+          continue;
+        }
         
         // Mark as "preloading in progress" to avoid duplicate requests
         if (!this.preloadCache.has(postId)) {
@@ -920,6 +951,36 @@ class MonolithRecommendation {
    */
   getBlacklistedTags() {
     return [...this.blacklistedTags];
+  }
+
+  /**
+   * Check if a post is likely premium content or text-only that can't be displayed
+   * @param {Object} post - Post to check
+   * @returns {boolean} True if post appears to be premium content or text-only
+   */
+  isPremiumOrTextOnly(post) {
+    // Check if post has no media URL
+    if (!post.file_url && !post.large_file_url) {
+      console.log(`Post ID ${post.id} has no media URL - likely premium content or text-only`);
+      return true;
+    }
+    
+    // Check for common indicators of premium content in tags
+    const tags = post.tag_string ? post.tag_string.split(' ') : [];
+    const premiumIndicators = ['ai_generated', 'paywall', 'patreon', 'fanbox', 'paid_reward', 'commentary', 'text_only'];
+    if (tags.some(tag => premiumIndicators.includes(tag))) {
+      console.log(`Post ID ${post.id} has premium content indicators in tags: ${tags.filter(tag => premiumIndicators.includes(tag))}`);
+      return true;
+    }
+    
+    // Additional check for special file extensions that indicate text-only content
+    const textOnlyExtensions = ['txt', 'html', 'json'];
+    if (post.file_ext && textOnlyExtensions.includes(post.file_ext.toLowerCase())) {
+      console.log(`Post ID ${post.id} has text-only file extension: ${post.file_ext}`);
+      return true;
+    }
+    
+    return false;
   }
 }
 

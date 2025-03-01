@@ -481,7 +481,7 @@ const app = createApp({
           });
         }
         
-        // Filter by score and seen status
+        // Filter by score, seen status, and detect premium/text-only content
         const filteredPosts = posts.filter(post => {
           // Check if post is already seen using our batch results
           const isSeen = seenMap[post.id] === true;
@@ -498,8 +498,14 @@ const app = createApp({
           const hasBlacklistedTag = blacklistedTagsArray.length > 0 && 
             postTags.some(tag => blacklistedTagsArray.includes(tag));
           
-          // Only include posts with score >= 0, not seen, and not containing blacklisted tags
-          if (!isSeen && post.score >= 0 && !hasBlacklistedTag) {
+          // Check for premium content or text-only posts that can't be displayed properly
+          const isPremiumContent = this.isPremiumOrTextOnly(post);
+          if (isPremiumContent) {
+            console.log(`Filtering out post ID ${post.id} - detected as premium content or text-only`);
+          }
+          
+          // Only include posts with score >= 0, not seen, not premium, and not containing blacklisted tags
+          if (!isSeen && post.score >= 0 && !hasBlacklistedTag && !isPremiumContent) {
             // Filter based on media type if needed
             const isVideo = this.isVideo(post);
             return (
@@ -838,8 +844,33 @@ const app = createApp({
     
     mediaError() {
       console.error("Error loading media");
+      
+      // Log more detailed information if we have a current post
+      if (this.currentPost) {
+        console.log(`Media loading failed for post ID: ${this.currentPost.id}`);
+        console.log(`File URL: ${this.currentPost.file_url || 'None'}`);
+        console.log(`Large file URL: ${this.currentPost.large_file_url || 'None'}`);
+        console.log(`File extension: ${this.currentPost.file_ext || 'Unknown'}`);
+        
+        // Add this post ID to a local storage list of problematic posts to avoid in the future
+        try {
+          // Get existing problematic posts list
+          const problematicPostsStr = localStorage.getItem('problematic_posts') || '[]';
+          const problematicPosts = JSON.parse(problematicPostsStr);
+          
+          // Add current post if not already in the list
+          if (!problematicPosts.includes(this.currentPost.id)) {
+            problematicPosts.push(this.currentPost.id);
+            localStorage.setItem('problematic_posts', JSON.stringify(problematicPosts));
+            console.log(`Added post ID ${this.currentPost.id} to problematic posts list`);
+          }
+        } catch (err) {
+          console.error("Error updating problematic posts list:", err);
+        }
+      }
+      
       this.loading = false;
-      this.nextPost();
+      this.nextPost(); // Skip to the next post when media can't be loaded
     },
     
     // Post navigation
@@ -1196,6 +1227,32 @@ const app = createApp({
     // Helper functions
     isVideo(post) {
       return post.file_ext === 'mp4' || post.file_ext === 'webm';
+    },
+    
+    // New helper function to detect premium or text-only content
+    isPremiumOrTextOnly(post) {
+      // Check if post has no media URL
+      if (!post.file_url && !post.large_file_url) {
+        console.log(`Post ID ${post.id} has no media URL - likely premium content or text-only`);
+        return true;
+      }
+      
+      // Check for common indicators of premium content in tags
+      const tags = post.tag_string ? post.tag_string.split(' ') : [];
+      const premiumIndicators = ['ai_generated', 'paywall', 'patreon', 'fanbox', 'paid_reward', 'commentary', 'text_only'];
+      if (tags.some(tag => premiumIndicators.includes(tag))) {
+        console.log(`Post ID ${post.id} has premium content indicators in tags: ${tags.filter(tag => premiumIndicators.includes(tag))}`);
+        return true;
+      }
+      
+      // Additional check for special file extensions that indicate text-only content
+      const textOnlyExtensions = ['txt', 'html', 'json'];
+      if (post.file_ext && textOnlyExtensions.includes(post.file_ext.toLowerCase())) {
+        console.log(`Post ID ${post.id} has text-only file extension: ${post.file_ext}`);
+        return true;
+      }
+      
+      return false;
     },
     
     // External link handlers
