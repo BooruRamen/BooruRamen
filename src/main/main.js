@@ -63,31 +63,98 @@ global.fetchMediaForPreload = async (url) => {
 ipcMain.handle('open-private-window', async (event, url) => {
   const os = require('os');
   const platform = os.platform();
-  const fs = require('fs');
   const { exec } = require('child_process');
+  const { shell } = require('electron');
 
   if (platform === 'win32') {
-    const commonBrowserPaths = [
-      'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
-      'C:\\Program Files (x86)\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
-      `C:\\Users\\${os.userInfo().username}\\AppData\\Local\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`
-    ];
-
-    // Find the first existing Brave path
-    const bravePath = commonBrowserPaths.find(path => fs.existsSync(path));
+    // Common paths for different browsers on Windows
+    const browserPaths = {
+      brave: [
+        'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+        'C:\\Program Files (x86)\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
+        `C:\\Users\\${os.userInfo().username}\\AppData\\Local\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`
+      ],
+      chrome: [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        `C:\\Users\\${os.userInfo().username}\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe`
+      ],
+      edge: [
+        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+        `C:\\Users\\${os.userInfo().username}\\AppData\\Local\\Microsoft\\Edge\\Application\\msedge.exe`
+      ]
+    };
     
-    if (bravePath) {
-      try {
-        // Execute the command directly through cmd
-        exec(`cmd /c "${bravePath}" --incognito "${url}"`, { windowsHide: false });
-        return true;
-      } catch (error) {
-        console.error('Error launching Brave:', error);
+    // First try to use Brave (preferred)
+    for (const bravePath of browserPaths.brave) {
+      if (fs.existsSync(bravePath)) {
+        try {
+          console.log(`Launching Brave at ${bravePath} with URL: ${url}`);
+          exec(`"${bravePath}" --incognito "${url}"`, { windowsHide: false });
+          return true;
+        } catch (error) {
+          console.error('Error launching Brave:', error);
+        }
       }
     }
     
-    // Fallback to shell.openExternal if Brave not found
-    const { shell } = require('electron');
+    // Try Chrome next
+    for (const chromePath of browserPaths.chrome) {
+      if (fs.existsSync(chromePath)) {
+        try {
+          console.log(`Launching Chrome at ${chromePath} with URL: ${url}`);
+          exec(`"${chromePath}" --incognito "${url}"`, { windowsHide: false });
+          return true;
+        } catch (error) {
+          console.error('Error launching Chrome:', error);
+        }
+      }
+    }
+    
+    // Try Edge next
+    for (const edgePath of browserPaths.edge) {
+      if (fs.existsSync(edgePath)) {
+        try {
+          console.log(`Launching Edge at ${edgePath} with URL: ${url}`);
+          exec(`"${edgePath}" --inprivate "${url}"`, { windowsHide: false });
+          return true;
+        } catch (error) {
+          console.error('Error launching Edge:', error);
+        }
+      }
+    }
+    
+    // If we couldn't find any of the specific browsers, fallback to the default browser
+    try {
+      console.log('Falling back to default browser for URL:', url);
+      await shell.openExternal(url);
+      return true;
+    } catch (error) {
+      console.error('Error opening in default browser:', error);
+      return false;
+    }
+  } else if (platform === 'darwin') {
+    // macOS - try to open with specific browsers in order of preference
+    const browsers = [
+      { name: 'Brave Browser', args: ['--incognito'] },
+      { name: 'Google Chrome', args: ['--incognito'] },
+      { name: 'Safari', args: [] }  // Safari doesn't support command line private browsing
+    ];
+    
+    for (const browser of browsers) {
+      try {
+        // On macOS we can use the 'open' command to target specific applications
+        const command = `open -a "${browser.name}" ${browser.args.join(' ')} "${url}"`;
+        console.log(`Attempting to run: ${command}`);
+        exec(command);
+        return true;
+      } catch (error) {
+        console.error(`Error opening ${browser.name}:`, error);
+        // Continue to the next browser option
+      }
+    }
+    
+    // If none of the specific browsers worked, try the default
     try {
       await shell.openExternal(url);
       return true;
@@ -95,28 +162,30 @@ ipcMain.handle('open-private-window', async (event, url) => {
       console.error('Error opening in browser:', error);
       return false;
     }
-  } else if (platform === 'darwin') {
-    // macOS - try standard private browsing flags
-    try {
-      await shell.openExternal(url, {
-        activate: true,
-        args: ['--incognito', '--new-window']
-      });
-      return true;
-    } catch (error) {
-      console.error('Error opening private window on macOS:', error);
-      return false;
-    }
   } else {
-    // Linux and other platforms
+    // Linux and other platforms - try common browsers with their private flags
+    const commands = [
+      `brave-browser --incognito "${url}"`,
+      `google-chrome --incognito "${url}"`,
+      `firefox --private-window "${url}"`
+    ];
+    
+    for (const command of commands) {
+      try {
+        console.log(`Attempting to run: ${command}`);
+        exec(command);
+        return true;
+      } catch (error) {
+        // Just continue to the next command
+      }
+    }
+    
+    // If all specific browser commands failed, try default
     try {
-      await shell.openExternal(url, {
-        activate: true,
-        args: ['--incognito', '--private-window']
-      });
+      await shell.openExternal(url);
       return true;
     } catch (error) {
-      console.error('Error opening private window:', error);
+      console.error('Error opening in browser:', error);
       return false;
     }
   }
