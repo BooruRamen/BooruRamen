@@ -211,7 +211,7 @@ function createWindow() {
   // Create the browser window
   mainWindow = new BrowserWindow({
     width: 1280,
-    height: 900,
+    height: 1000,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true, // Enable context isolation for better security
