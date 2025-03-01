@@ -606,14 +606,25 @@
     <div class="sidebar" :class="{ expanded: sidebarExpanded }">
       <h4 class="sidebar-heading">Filters</h4>
       
-      <!-- Rating Selection -->
+      <!-- Rating Selection - Changed from dropdown to checkbox group -->
       <div class="mb-3">
-        <label for="rating-select" class="form-label">Rating Filter</label>
-        <select id="rating-select" class="form-select bg-dark text-light" v-model="selectedRating" @change="ratingChanged">
-          <option v-for="rating in ratingOptions" :key="rating" :value="rating">
-            {{ rating }}
-          </option>
-        </select>
+        <div class="sidebar-section-title">Rating Filter</div>
+        <div class="form-check">
+          <input class="form-check-input bg-dark" type="checkbox" id="rating-general" v-model="ratingFilters.general" @change="ratingChanged">
+          <label class="form-check-label" for="rating-general">General</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input bg-dark" type="checkbox" id="rating-sensitive" v-model="ratingFilters.sensitive" @change="ratingChanged">
+          <label class="form-check-label" for="rating-sensitive">Sensitive</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input bg-dark" type="checkbox" id="rating-questionable" v-model="ratingFilters.questionable" @change="ratingChanged">
+          <label class="form-check-label" for="rating-questionable">Questionable</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input bg-dark" type="checkbox" id="rating-explicit" v-model="ratingFilters.explicit" @change="ratingChanged">
+          <label class="form-check-label" for="rating-explicit">Explicit</label>
+        </div>
       </div>
       
       <!-- Media Type Selection -->
@@ -639,6 +650,33 @@
         <div class="form-check form-switch mt-3">
           <input class="form-check-input" type="checkbox" id="autonext-video-completion" v-model="autonextOnVideoCompletion">
           <label class="form-check-label" for="autonext-video-completion">Auto Next on Video Completion</label>
+        </div>
+      </div>
+      
+      <!-- Separator -->
+      <div class="sidebar-divider"></div>
+      
+      <!-- Tag Preferences Section -->
+      <div class="mb-3">
+        <div class="sidebar-section-title">Tag Preferences</div>
+        
+        <!-- Preferred Tags -->
+        <div class="mb-1"><!-- Reduced from mb-2 to mb-1 -->
+          <label for="preferred-tags" class="form-label">Preferred Tags</label>
+          <textarea id="preferred-tags" class="form-control bg-dark text-light" v-model="preferredTags" placeholder="Enter tags separated by commas" rows="3"></textarea>
+        </div>
+        
+        <!-- Blacklisted Tags -->
+        <div class="mb-2">
+          <label for="blacklisted-tags" class="form-label">Blacklisted Tags</label>
+          <textarea id="blacklisted-tags" class="form-control bg-dark text-light" v-model="blacklistedTags" placeholder="Enter tags separated by commas" rows="3"></textarea>
+        </div>
+        
+        <!-- Buttons (Apply) -->
+        <div class="d-grid gap-2 mt-3">
+          <button class="btn btn-success w-100" @click="applyTagPreferences">
+            <i class="bi bi-arrow-clockwise"></i> Apply
+          </button>
         </div>
       </div>
     </div>

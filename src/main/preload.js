@@ -38,6 +38,16 @@ contextBridge.exposeInMainWorld(
     getTopTagCombinations: (limit) => 
       ipcRenderer.invoke('get-top-tag-combinations', limit),
       
+    // New: Tag preferences methods
+    getPreferredTags: () =>
+      ipcRenderer.invoke('get-preferred-tags'),
+    updatePreferredTags: (tags) =>
+      ipcRenderer.invoke('update-preferred-tags', tags),
+    getBlacklistedTags: () =>
+      ipcRenderer.invoke('get-blacklisted-tags'),
+    updateBlacklistedTags: (tags) =>
+      ipcRenderer.invoke('update-blacklisted-tags', tags),
+      
     // Helper functions for math operations
     sigmoid: (x) => 1 / (1 + Math.exp(-x)),
     

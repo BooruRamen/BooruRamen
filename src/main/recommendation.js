@@ -16,6 +16,10 @@ class MonolithRecommendation {
     this.preloading = false; // Flag to prevent multiple concurrent preloads
     this.maxPreloadItems = 5; // Increase from 3 to 5 to preload more ahead
     this.preloadPriority = []; // Track priority of items to preload
+    
+    // New: Preferred and blacklisted tags
+    this.preferredTags = [];
+    this.blacklistedTags = [];
   }
 
   /**
@@ -48,9 +52,92 @@ class MonolithRecommendation {
       }
     }
 
+    // Load preferred tags and blacklisted tags
+    try {
+      await this.loadTagPreferences();
+    } catch (err) {
+      console.error("Error loading tag preferences:", err);
+    }
+
     this.initialized = true;
     console.log("Monolith recommendation system initialized");
     return this.userProfile;
+  }
+
+  /**
+   * Load user's preferred and blacklisted tags from database
+   */
+  async loadTagPreferences() {
+    if (!this.db) {
+      console.warn("Database not available, cannot load tag preferences");
+      return;
+    }
+
+    try {
+      // Get preferred tags
+      const preferredTagsSetting = this.db.prepare("SELECT value FROM settings WHERE key = 'preferred_tags'").get();
+      if (preferredTagsSetting && preferredTagsSetting.value) {
+        this.preferredTags = preferredTagsSetting.value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+      }
+      
+      // Get blacklisted tags
+      const blacklistedTagsSetting = this.db.prepare("SELECT value FROM settings WHERE key = 'blacklisted_tags'").get();
+      if (blacklistedTagsSetting && blacklistedTagsSetting.value) {
+        this.blacklistedTags = blacklistedTagsSetting.value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+      }
+      
+      console.log(`Loaded ${this.preferredTags.length} preferred tags and ${this.blacklistedTags.length} blacklisted tags`);
+    } catch (err) {
+      console.error("Error loading tag preferences from database:", err);
+      this.preferredTags = [];
+      this.blacklistedTags = [];
+    }
+  }
+
+  /**
+   * Update preferred tags
+   * @param {Array} tags - Array of preferred tags
+   */
+  async updatePreferredTags(tags) {
+    this.preferredTags = Array.isArray(tags) ? tags : [];
+    
+    // Clear cache as preferences have changed
+    this.postScoresCache.clear();
+    
+    // Save to database if available
+    if (this.db) {
+      try {
+        const tagsString = this.preferredTags.join(',');
+        this.db.prepare("INSERT OR REPLACE INTO settings (key, value, timestamp) VALUES (?, ?, CURRENT_TIMESTAMP)")
+          .run('preferred_tags', tagsString);
+        console.log(`Saved ${this.preferredTags.length} preferred tags`);
+      } catch (err) {
+        console.error("Error saving preferred tags to database:", err);
+      }
+    }
+  }
+
+  /**
+   * Update blacklisted tags
+   * @param {Array} tags - Array of blacklisted tags
+   */
+  async updateBlacklistedTags(tags) {
+    this.blacklistedTags = Array.isArray(tags) ? tags : [];
+    
+    // Clear cache as preferences have changed
+    this.postScoresCache.clear();
+    
+    // Save to database if available
+    if (this.db) {
+      try {
+        const tagsString = this.blacklistedTags.join(',');
+        this.db.prepare("INSERT OR REPLACE INTO settings (key, value, timestamp) VALUES (?, ?, CURRENT_TIMESTAMP)")
+          .run('blacklisted_tags', tagsString);
+        console.log(`Saved ${this.blacklistedTags.length} blacklisted tags`);
+      } catch (err) {
+        console.error("Error saving blacklisted tags to database:", err);
+      }
+    }
   }
 
   /**
@@ -305,8 +392,9 @@ class MonolithRecommendation {
 
   /**
    * Score a post based on multiple features (tag similarity, rating preference, embedding similarity)
+   * including preferred and blacklisted tags
    * @param {Object} post - The post to score
-   * @returns {number} Score between 0 and 1
+   * @returns {number} Score between 0 and 1, or -1 for blacklisted posts
    */
   scorePost(post) {
     if (!this.initialized || !this.userProfile) {
@@ -321,6 +409,16 @@ class MonolithRecommendation {
 
     const tags = post.tag_string ? post.tag_string.split(' ') : [];
     const rating = post.rating || '';
+    
+    // Check if post has any blacklisted tags - if so, return -1 to indicate it should be hidden
+    if (this.blacklistedTags.length > 0) {
+      const hasBlacklistedTags = tags.some(tag => this.blacklistedTags.includes(tag));
+      if (hasBlacklistedTags) {
+        // Cache the result
+        this.postScoresCache.set(postId, -1);
+        return -1; // Indicates the post should be completely filtered out
+      }
+    }
     
     // User-specific scores and totals
     const tagScores = this.userProfile.tag_scores || {};
@@ -379,9 +477,18 @@ class MonolithRecommendation {
       (tagWeight * tagScore + 
        ratingWeight * ratingScore + 
        embeddingWeight * embeddingScore) / totalWeight;
+       
+    // Boost score if post contains preferred tags
+    let finalScore = 1 / (1 + Math.exp(-5 * (weightedScore - 0.5)));
     
-    // Scale total score to a probability between 0 and 1 using sigmoid function
-    const finalScore = 1 / (1 + Math.exp(-5 * (weightedScore - 0.5)));
+    // Apply boost for preferred tags - significantly increase score if the post has any preferred tags
+    if (this.preferredTags.length > 0) {
+      const hasPreferredTags = tags.some(tag => this.preferredTags.includes(tag));
+      if (hasPreferredTags) {
+        // Boost the score significantly, but cap at 0.99 to avoid 1.0
+        finalScore = Math.min(0.99, finalScore * 1.5);
+      }
+    }
     
     // Cache the result
     this.postScoresCache.set(postId, finalScore);
@@ -406,15 +513,19 @@ class MonolithRecommendation {
 
     // Calculate scores for each post
     const scoredPosts = posts.map(post => {
+      const score = this.scorePost(post);
       return {
         post,
-        score: this.scorePost(post),
-        isExploration: Math.random() < this.explorationRate
+        score,
+        isExploration: score >= 0 && Math.random() < this.explorationRate // Only allow exploration for non-blacklisted posts
       };
     });
+    
+    // Filter out blacklisted posts (score < 0)
+    const filteredPosts = scoredPosts.filter(item => item.score >= 0);
 
     // Sort posts: exploration posts randomly, others by score
-    scoredPosts.sort((a, b) => {
+    filteredPosts.sort((a, b) => {
       if (a.isExploration && b.isExploration) {
         return Math.random() - 0.5; // Random order for exploration
       } else if (a.isExploration) {
@@ -426,11 +537,11 @@ class MonolithRecommendation {
     });
 
     // Trigger preloading for the top posts with higher priority
-    this.preloadPriority = scoredPosts.slice(0, this.maxPreloadItems).map(item => item.post.id);
-    this.preloadTopPosts(scoredPosts.slice(0, this.maxPreloadItems));
+    this.preloadPriority = filteredPosts.slice(0, this.maxPreloadItems).map(item => item.post.id);
+    this.preloadTopPosts(filteredPosts.slice(0, this.maxPreloadItems));
 
     // Return posts with their scores for debugging
-    return scoredPosts.map(item => ({
+    return filteredPosts.map(item => ({
       ...item.post,
       recommendationScore: item.score,
       isExploration: item.isExploration
@@ -590,7 +701,7 @@ class MonolithRecommendation {
    */
   shuffleArray(array) {
     const result = [...array];
-    for (let i = result.length - 1; i > 0; i--) {
+    for (let i = result.length - 1; i > 0; i++) {
       const j = Math.floor(Math.random() * (i + 1));
       [result[i], result[j]] = [result[j], result[i]];
     }
@@ -604,6 +715,8 @@ class MonolithRecommendation {
     return {
       userProfile: this.userProfile,
       explorationRate: this.explorationRate,
+      preferredTags: this.preferredTags,
+      blacklistedTags: this.blacklistedTags,
       timestamp: new Date().toISOString()
     };
   }
@@ -618,6 +731,16 @@ class MonolithRecommendation {
 
     this.userProfile = model.userProfile;
     this.explorationRate = model.explorationRate || this.explorationRate;
+    
+    // Import tag preferences if they exist
+    if (model.preferredTags) {
+      this.preferredTags = model.preferredTags;
+    }
+    
+    if (model.blacklistedTags) {
+      this.blacklistedTags = model.blacklistedTags;
+    }
+    
     this.initialized = true;
     return true;
   }
@@ -781,6 +904,22 @@ class MonolithRecommendation {
       console.error("Error getting tag combinations:", err);
       return [];
     }
+  }
+  
+  /**
+   * Get user's preferred tags
+   * @returns {Array} Array of preferred tags
+   */
+  getPreferredTags() {
+    return [...this.preferredTags];
+  }
+  
+  /**
+   * Get user's blacklisted tags
+   * @returns {Array} Array of blacklisted tags
+   */
+  getBlacklistedTags() {
+    return [...this.blacklistedTags];
   }
 }
 

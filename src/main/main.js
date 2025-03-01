@@ -211,7 +211,7 @@ function createWindow() {
   // Create the browser window
   mainWindow = new BrowserWindow({
     width: 1280,
-    height: 900,
+    height: 1000,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true, // Enable context isolation for better security
@@ -879,6 +879,70 @@ ipcMain.handle('get-preloaded-media', (event, postId) => {
   } catch (error) {
     console.error('Error getting preloaded media:', error);
     return null;
+  }
+});
+
+// Add these new IPC handlers after the existing recommendation system handlers
+
+// Get preferred tags
+ipcMain.handle('get-preferred-tags', async (event) => {
+  try {
+    if (!recommendationEngine) {
+      recommendationEngine = new MonolithRecommendation(db);
+      await recommendationEngine.initialize();
+    }
+    
+    return recommendationEngine.getPreferredTags();
+  } catch (error) {
+    console.error('Error getting preferred tags:', error);
+    return [];
+  }
+});
+
+// Update preferred tags
+ipcMain.handle('update-preferred-tags', async (event, tags) => {
+  try {
+    if (!recommendationEngine) {
+      recommendationEngine = new MonolithRecommendation(db);
+      await recommendationEngine.initialize();
+    }
+    
+    await recommendationEngine.updatePreferredTags(tags);
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating preferred tags:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get blacklisted tags
+ipcMain.handle('get-blacklisted-tags', async (event) => {
+  try {
+    if (!recommendationEngine) {
+      recommendationEngine = new MonolithRecommendation(db);
+      await recommendationEngine.initialize();
+    }
+    
+    return recommendationEngine.getBlacklistedTags();
+  } catch (error) {
+    console.error('Error getting blacklisted tags:', error);
+    return [];
+  }
+});
+
+// Update blacklisted tags
+ipcMain.handle('update-blacklisted-tags', async (event, tags) => {
+  try {
+    if (!recommendationEngine) {
+      recommendationEngine = new MonolithRecommendation(db);
+      await recommendationEngine.initialize();
+    }
+    
+    await recommendationEngine.updateBlacklistedTags(tags);
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating blacklisted tags:', error);
+    return { success: false, error: error.message };
   }
 });
 
