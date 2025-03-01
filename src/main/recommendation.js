@@ -11,10 +11,11 @@ class MonolithRecommendation {
     this.postScoresCache = new Map(); // Cache for post scores to avoid recalculation
     this.initialized = false;
     
-    // Add preloading cache
+    // Improved preloading system
     this.preloadCache = new Map(); // Cache for preloaded media data
     this.preloading = false; // Flag to prevent multiple concurrent preloads
-    this.maxPreloadItems = 3; // Maximum number of items to preload ahead
+    this.maxPreloadItems = 5; // Increase from 3 to 5 to preload more ahead
+    this.preloadPriority = []; // Track priority of items to preload
   }
 
   /**
@@ -424,7 +425,8 @@ class MonolithRecommendation {
       return b.score - a.score; // Higher scores first
     });
 
-    // Trigger preloading for the top posts
+    // Trigger preloading for the top posts with higher priority
+    this.preloadPriority = scoredPosts.slice(0, this.maxPreloadItems).map(item => item.post.id);
     this.preloadTopPosts(scoredPosts.slice(0, this.maxPreloadItems));
 
     // Return posts with their scores for debugging
@@ -436,57 +438,74 @@ class MonolithRecommendation {
   }
 
   /**
-   * Preload media for top recommended posts
+   * Preload media for top recommended posts with improved algorithm
    * @param {Array} topPosts - Array of top scored posts to preload
    */
   async preloadTopPosts(topPosts) {
-    if (this.preloading || !topPosts || topPosts.length === 0) {
+    if (!topPosts || topPosts.length === 0) {
       return;
     }
 
-    this.preloading = true;
+    // Don't block preloading with a single flag, allow multiple preloads
+    // but track each post individually
+    const postsToLoad = topPosts.filter(item => {
+      const postId = item.post.id;
+      // Only preload if not already in cache or being preloaded
+      return !this.preloadCache.has(postId) || 
+             (this.preloadCache.has(postId) && !this.preloadCache.get(postId).mediaData);
+    });
+    
+    if (postsToLoad.length === 0) return;
     
     try {
-      for (let i = 0; i < topPosts.length; i++) {
-        const post = topPosts[i].post;
+      for (let i = 0; i < postsToLoad.length; i++) {
+        const post = postsToLoad[i].post;
+        const postId = post.id;
         
-        // Skip if already in cache
-        if (this.preloadCache.has(post.id)) {
-          continue;
+        // Mark as "preloading in progress" to avoid duplicate requests
+        if (!this.preloadCache.has(postId)) {
+          this.preloadCache.set(postId, {
+            url: null,
+            mediaData: null,
+            loading: true,
+            timestamp: Date.now()
+          });
         }
         
         // Determine which URL to use for preloading
         const url = post.file_url || post.large_file_url;
         
         if (url) {
-          // Use setTimeout to stagger preload requests
+          // Calculate priority based on position in the recommendation list
+          // Lower delay for higher priority items
+          const delay = Math.min(i * 100, 500); // Max 500ms delay
+          
           setTimeout(async () => {
             try {
               // Use IPC to fetch media
               const mediaData = await global.fetchMediaForPreload(url);
               // Store in cache with timestamp for potential future cache management
-              this.preloadCache.set(post.id, {
+              this.preloadCache.set(postId, {
                 url: url,
                 mediaData: mediaData,
+                loading: false,
                 timestamp: Date.now()
               });
-              console.log(`Preloaded media for post ID: ${post.id}`);
+              console.log(`Preloaded media for post ID: ${postId}`);
               
               // Manage cache size to prevent memory issues
               this.managePreloadCache();
             } catch (err) {
-              console.error(`Error preloading media for post ID ${post.id}:`, err);
+              // Mark as failed but keep in cache to avoid repeated attempts
+              this.preloadCache.get(postId).loading = false;
+              this.preloadCache.get(postId).error = true;
+              console.error(`Error preloading media for post ID ${postId}:`, err);
             }
-          }, i * 300); // Stagger preloads with 300ms delay between each
+          }, delay); // Stagger preloads with variable delay based on priority
         }
       }
     } catch (err) {
       console.error("Error in preload operation:", err);
-    } finally {
-      // Reset preloading flag after a delay to allow all scheduled preloads to start
-      setTimeout(() => {
-        this.preloading = false;
-      }, topPosts.length * 300 + 100);
     }
   }
   
@@ -494,17 +513,31 @@ class MonolithRecommendation {
    * Manage preload cache size to prevent memory issues
    */
   managePreloadCache() {
-    if (this.preloadCache.size > 10) { // Keep max 10 items in cache
+    if (this.preloadCache.size > 20) { // Increased from 10 to 20
       // Convert to array for sorting
       const cacheEntries = Array.from(this.preloadCache.entries());
       
-      // Sort by timestamp (oldest first)
-      cacheEntries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+      // Sort first by priority (keep items in preloadPriority), then by timestamp (oldest first)
+      cacheEntries.sort((a, b) => {
+        const aPriority = this.preloadPriority.indexOf(a[0]);
+        const bPriority = this.preloadPriority.indexOf(b[0]);
+        
+        // If both are in priority list or both are not, sort by timestamp
+        if ((aPriority !== -1 && bPriority !== -1) || (aPriority === -1 && bPriority === -1)) {
+          return a[1].timestamp - b[1].timestamp;
+        }
+        
+        // Keep prioritized items
+        return aPriority === -1 ? -1 : 1;
+      });
       
-      // Remove oldest items to get back to size 5
-      const itemsToRemove = cacheEntries.slice(0, cacheEntries.length - 5);
+      // Remove oldest non-priority items to get back to size 10
+      const itemsToRemove = cacheEntries.slice(0, cacheEntries.length - 10);
       for (const [id] of itemsToRemove) {
-        this.preloadCache.delete(id);
+        // Don't remove if it's in the priority list
+        if (this.preloadPriority.indexOf(id) === -1) {
+          this.preloadCache.delete(id);
+        }
       }
       
       console.log(`Cleaned preload cache, removed ${itemsToRemove.length} old items`);
@@ -521,7 +554,11 @@ class MonolithRecommendation {
       const cachedData = this.preloadCache.get(postId);
       // Update timestamp to indicate recent usage
       cachedData.timestamp = Date.now();
-      return cachedData.mediaData;
+      
+      // If it's properly loaded (not still loading or errored)
+      if (cachedData.mediaData && !cachedData.loading && !cachedData.error) {
+        return cachedData.mediaData;
+      }
     }
     return null;
   }
