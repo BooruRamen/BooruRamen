@@ -126,8 +126,8 @@
       right: 0;
       z-index: 990;
       background-color: rgba(33, 37, 41, 0.75);
-      padding-top: 8px;
-      padding-bottom: 8px;
+      padding-top: 6px; /* Reduced padding */
+      padding-bottom: 6px; /* Reduced padding */
       pointer-events: auto !important; /* Ensure buttons are clickable */
       /* Added to center the settings container */
       display: flex;
@@ -420,6 +420,27 @@
       font-weight: bold;
       margin-bottom: 10px;
     }
+    
+    /* Compact layout for settings row */
+    .settings-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      column-gap: 64px; /* Reduced space between items */
+    }
+    
+    /* Make "My Favorites" and "Theater Mode" buttons smaller */
+    .small-btn {
+      font-size: 0.85rem;
+      padding: 0.2rem 0.5rem;
+      min-width: 70px !important; /* Smaller width */
+    }
+    
+    /* Auto Next toggle - more compact */
+    .form-check.compact-switch {
+      margin: 0;
+      padding-left: 2.5rem;
+    }
   </style>
 </head>
 <body class="bg-dark text-light">
@@ -520,8 +541,8 @@
     <!-- Secondary buttons (Share, Auto Next, Favorites, Theater Mode) moved below -->
     <div class="settings-area" v-if="!theaterMode">
       <div class="settings-container">
-        <div class="row justify-content-center">
-          <div class="col-md-3">
+        <div class="settings-row">
+          <div>
             <div class="dropdown">
               <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="shareDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="bi bi-share"></i> Share
@@ -540,22 +561,22 @@
             </div>
           </div>
           
-          <div class="col-md-3">
+          <div>
             <!-- Auto Next toggle -->
-            <div class="form-check form-switch">
+            <div class="form-check form-switch compact-switch">
               <input class="form-check-input" type="checkbox" id="autonext-switch" v-model="autonextEnabled" @change="toggleAutonext">
               <label class="form-check-label" for="autonext-switch">Auto Next</label>
             </div>
           </div>
           
-          <div class="col-md-3 text-center">
-            <button @click="showFavoriteTagsModal" class="btn btn-outline-light btn-sm w-100">
+          <div>
+            <button @click="showFavoriteTagsModal" class="btn btn-outline-light btn-sm small-btn">
               <i class="bi bi-star"></i> My Favorites
             </button>
           </div>
           
-          <div class="col-md-3 text-end">
-            <button @click="toggleTheaterMode" class="btn btn-outline-light btn-sm w-100">
+          <div>
+            <button @click="toggleTheaterMode" class="btn btn-outline-light btn-sm small-btn">
               <i class="bi bi-tv"></i> Theater Mode
             </button>
           </div>

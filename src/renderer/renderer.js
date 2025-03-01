@@ -283,10 +283,10 @@ const app = createApp({
             ratingTags = 'rating:general';
             break;
           case 'General and Sensitive':
-            ratingTags = 'rating:general..sensitive';
+            ratingTags = '(rating:general OR rating:sensitive)';
             break;
           case 'General, Sensitive, and Questionable':
-            ratingTags = 'rating:general..questionable';
+            ratingTags = '(rating:general OR rating:sensitive OR rating:questionable)';
             break;
           case 'General, Sensitive, Questionable, and Explicit':
             ratingTags = ''; // No rating filter
