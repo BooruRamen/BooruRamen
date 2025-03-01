@@ -84,39 +84,67 @@
       z-index: 20; /* Keep this higher for visibility */
     }
     
-    /* Control buttons positioned closer to the media */
+    /* Control buttons positioned closer to the media - updated to be fixed width and centered */
     .control-buttons {
       position: fixed;
       bottom: 50px; /* Moved up from 10px */
       left: 0;
       right: 0;
-      padding: 0 2rem;
       z-index: 1000;
       background-color: rgba(33, 37, 41, 0.85);
       padding-top: 8px;
       padding-bottom: 8px;
       pointer-events: auto !important; /* Ensure buttons are clickable */
+      /* Added to center the buttons container */
+      display: flex;
+      justify-content: center;
+      width: 100%;
     }
     
-    /* Compact buttons with reduced padding */
+    /* Button container for fixed width and center alignment */
+    .control-buttons-container {
+      max-width: 900px; /* Fixed maximum width */
+      width: 100%;
+      padding: 0 15px;
+    }
+    
+    /* Compact buttons with fixed widths */
     .control-buttons .btn {
       padding-top: 0.25rem;
       padding-bottom: 0.25rem;
       pointer-events: auto !important; /* Ensure buttons are clickable */
+      min-width: 100px; /* Fixed minimum width for buttons */
+      width: 100%; /* Fill container width */
+      max-width: 150px; /* Maximum width for consistency */
     }
     
-    /* Settings area positioned at the bottom */
+    /* Settings area positioned at the bottom - updated to be fixed width and centered */
     .settings-area {
       position: fixed;
       bottom: 10px; /* Position at the bottom */
       left: 0;
       right: 0;
-      padding: 0 2rem;
-      background-color: rgba(33, 37, 41, 0.75);
       z-index: 990;
+      background-color: rgba(33, 37, 41, 0.75);
       padding-top: 8px;
       padding-bottom: 8px;
       pointer-events: auto !important; /* Ensure buttons are clickable */
+      /* Added to center the settings container */
+      display: flex;
+      justify-content: center;
+      width: 100%;
+    }
+    
+    /* Settings container for fixed width and center alignment */
+    .settings-container {
+      max-width: 900px; /* Match control buttons container width */
+      width: 100%;
+      padding: 0 15px;
+    }
+    
+    /* Ensure fixed width for secondary buttons */
+    .settings-area .btn {
+      min-width: 80px; /* Smaller fixed minimum width for secondary buttons */
     }
     
     .custom-control-button {
@@ -458,75 +486,79 @@
 
     <!-- Primary Control Buttons (Previous, Dislike, Super Like, Like, Next) -->
     <div class="control-buttons" v-if="!theaterMode">
-      <div class="row">
-        <div class="col">
-          <button @click="previousPost" class="btn btn-secondary w-100">
-            <i class="bi bi-arrow-left"></i> Previous
-          </button>
-        </div>
-        <div class="col">
-          <button @click="dislikePost" class="btn btn-danger w-100">
-            <i class="bi bi-hand-thumbs-down"></i> Dislike
-          </button>
-        </div>
-        <div class="col">
-          <button @click="superLikePost" class="btn btn-primary w-100">
-            <i class="bi bi-heart"></i> Super Like
-          </button>
-        </div>
-        <div class="col">
-          <button @click="likePost" class="btn btn-success w-100">
-            <i class="bi bi-hand-thumbs-up"></i> Like
-          </button>
-        </div>
-        <div class="col">
-          <button @click="nextPost" class="btn btn-secondary w-100">
-            <i class="bi-arrow-right"></i> Next
-          </button>
+      <div class="control-buttons-container">
+        <div class="row justify-content-center">
+          <div class="col-auto">
+            <button @click="previousPost" class="btn btn-secondary">
+              <i class="bi bi-arrow-left"></i> Previous
+            </button>
+          </div>
+          <div class="col-auto">
+            <button @click="dislikePost" class="btn btn-danger">
+              <i class="bi bi-hand-thumbs-down"></i> Dislike
+            </button>
+          </div>
+          <div class="col-auto">
+            <button @click="superLikePost" class="btn btn-primary">
+              <i class="bi bi-heart"></i> Super Like
+            </button>
+          </div>
+          <div class="col-auto">
+            <button @click="likePost" class="btn btn-success">
+              <i class="bi bi-hand-thumbs-up"></i> Like
+            </button>
+          </div>
+          <div class="col-auto">
+            <button @click="nextPost" class="btn btn-secondary">
+              <i class="bi-arrow-right"></i> Next
+            </button>
+          </div>
         </div>
       </div>
     </div>
     
     <!-- Secondary buttons (Share, Auto Next, Favorites, Theater Mode) moved below -->
     <div class="settings-area" v-if="!theaterMode">
-      <div class="row">
-        <div class="col-md-3">
-          <div class="dropdown">
-            <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="shareDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-              <i class="bi bi-share"></i> Share
+      <div class="settings-container">
+        <div class="row justify-content-center">
+          <div class="col-md-3">
+            <div class="dropdown">
+              <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" id="shareDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-share"></i> Share
+              </button>
+              <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="shareDropdown">
+                <li><button class="dropdown-item" @click="openInBrowser(true)">
+                  <i class="bi bi-incognito"></i> Open in Private Window
+                </button></li>
+                <li><button class="dropdown-item" @click="openInBrowser(false)">
+                  <i class="bi bi-box-arrow-up-right"></i> Open in Browser
+                </button></li>
+                <li><button class="dropdown-item" @click="copyToClipboard">
+                  <i class="bi bi-clipboard"></i> Copy URL
+                </button></li>
+              </ul>
+            </div>
+          </div>
+          
+          <div class="col-md-3">
+            <!-- Auto Next toggle -->
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="autonext-switch" v-model="autonextEnabled" @change="toggleAutonext">
+              <label class="form-check-label" for="autonext-switch">Auto Next</label>
+            </div>
+          </div>
+          
+          <div class="col-md-3 text-center">
+            <button @click="showFavoriteTagsModal" class="btn btn-outline-light btn-sm w-100">
+              <i class="bi bi-star"></i> My Favorites
             </button>
-            <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="shareDropdown">
-              <li><button class="dropdown-item" @click="openInBrowser(true)">
-                <i class="bi bi-incognito"></i> Open in Private Window
-              </button></li>
-              <li><button class="dropdown-item" @click="openInBrowser(false)">
-                <i class="bi bi-box-arrow-up-right"></i> Open in Browser
-              </button></li>
-              <li><button class="dropdown-item" @click="copyToClipboard">
-                <i class="bi bi-clipboard"></i> Copy URL
-              </button></li>
-            </ul>
           </div>
-        </div>
-        
-        <div class="col-md-3">
-          <!-- Auto Next toggle -->
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" id="autonext-switch" v-model="autonextEnabled" @change="toggleAutonext">
-            <label class="form-check-label" for="autonext-switch">Auto Next</label>
+          
+          <div class="col-md-3 text-end">
+            <button @click="toggleTheaterMode" class="btn btn-outline-light btn-sm w-100">
+              <i class="bi bi-tv"></i> Theater Mode
+            </button>
           </div>
-        </div>
-        
-        <div class="col-md-3 text-center">
-          <button @click="showFavoriteTagsModal" class="btn btn-outline-light btn-sm w-100">
-            <i class="bi bi-star"></i> My Favorites
-          </button>
-        </div>
-        
-        <div class="col-md-3 text-end">
-          <button @click="toggleTheaterMode" class="btn btn-outline-light btn-sm w-100">
-            <i class="bi bi-tv"></i> Theater Mode
-          </button>
         </div>
       </div>
     </div>
