@@ -446,6 +446,98 @@
       margin: 0;
       padding-left: 2.5rem;
     }
+
+    /* Detailed stats toggle button */
+    .sidebar-footer {
+      position: absolute;
+      bottom: 15px;
+      left: 0;
+      right: 0;
+      padding: 10px 20px;
+      border-top: 1px solid #444;
+    }
+
+    /* Left sidebar for detailed stats */
+    .left-sidebar {
+      position: fixed;
+      top: 0;
+      left: -300px; /* Initially hidden off-screen */
+      width: 300px;
+      height: 100%;
+      background-color: rgba(34, 34, 34, 0.8);
+      z-index: 1005;
+      padding: 20px;
+      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+      overflow-y: auto;
+      transition: left 0.3s ease;
+      pointer-events: auto !important;
+    }
+
+    .left-sidebar.expanded {
+      left: 0; /* Show left sidebar when expanded */
+    }
+
+    .left-sidebar-heading {
+      border-bottom: 1px solid #444;
+      padding-bottom: 10px;
+      margin-bottom: 15px;
+    }
+
+    .stats-section {
+      margin-bottom: 15px;
+    }
+
+    .stats-title {
+      font-size: 0.9rem;
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #ccc;
+    }
+
+    .stats-content {
+      font-size: 0.85rem;
+      word-break: break-word;
+      background-color: rgba(20, 20, 20, 0.5);
+      padding: 8px;
+      border-radius: 4px;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+
+    .stats-tag {
+      display: inline-block;
+      background-color: #333;
+      color: #fff;
+      padding: 2px 6px;
+      margin: 2px;
+      border-radius: 3px;
+      font-size: 0.8rem;
+    }
+
+    .stats-copyright {
+      color: #77aaff;
+    }
+
+    .stats-artist {
+      color: #ff8888;
+    }
+
+    .stats-character {
+      color: #66dd66;
+    }
+
+    .stats-general {
+      color: #ffffff;
+    }
+
+    .stats-meta {
+      color: #ffcc55;
+    }
+
+    /* Make sure other UI elements account for left sidebar */
+    .theater-mode .left-sidebar {
+      display: none !important;
+    }
   </style>
 </head>
 <body class="bg-dark text-light">
@@ -602,6 +694,98 @@
       <i :class="sidebarExpanded ? 'bi bi-chevron-right toggle-icon' : 'bi bi-chevron-left toggle-icon'"></i>
     </button>
 
+    <!-- New Left Sidebar for Detailed Stats -->
+    <div class="left-sidebar" :class="{ expanded: detailedStatsVisible }">
+      <h5 class="left-sidebar-heading">Detailed Stats</h5>
+      
+      <div v-if="currentPost" class="stats-content-container">
+        <!-- Artist Info -->
+        <div class="stats-section">
+          <div class="stats-title">Artist</div>
+          <div class="stats-content">
+            <span v-if="postStats.artist.length > 0">
+              <span v-for="artist in postStats.artist" :key="artist" class="stats-tag stats-artist">{{ artist }}</span>
+            </span>
+            <span v-else>Unknown</span>
+          </div>
+        </div>
+        
+        <!-- Copyright Info -->
+        <div class="stats-section">
+          <div class="stats-title">Copyright</div>
+          <div class="stats-content">
+            <span v-if="postStats.copyright.length > 0">
+              <span v-for="copyright in postStats.copyright" :key="copyright" class="stats-tag stats-copyright">{{ copyright }}</span>
+            </span>
+            <span v-else>Original</span>
+          </div>
+        </div>
+        
+        <!-- Character Info -->
+        <div class="stats-section">
+          <div class="stats-title">Characters</div>
+          <div class="stats-content">
+            <span v-if="postStats.character.length > 0">
+              <span v-for="character in postStats.character" :key="character" class="stats-tag stats-character">{{ character }}</span>
+            </span>
+            <span v-else>None</span>
+          </div>
+        </div>
+        
+        <!-- Tags Info -->
+        <div class="stats-section">
+          <div class="stats-title">General Tags</div>
+          <div class="stats-content">
+            <span v-if="postStats.general.length > 0">
+              <span v-for="tag in postStats.general" :key="tag" class="stats-tag stats-general">{{ tag }}</span>
+            </span>
+            <span v-else>None</span>
+          </div>
+        </div>
+        
+        <!-- Rating Info -->
+        <div class="stats-section">
+          <div class="stats-title">Rating</div>
+          <div class="stats-content">{{ postStats.rating }}</div>
+        </div>
+        
+        <!-- Meta Tags -->
+        <div class="stats-section">
+          <div class="stats-title">Meta Tags</div>
+          <div class="stats-content">
+            <span v-if="postStats.meta.length > 0">
+              <span v-for="meta in postStats.meta" :key="meta" class="stats-tag stats-meta">{{ meta }}</span>
+            </span>
+            <span v-else>None</span>
+          </div>
+        </div>
+        
+        <!-- Media Info -->
+        <div class="stats-section">
+          <div class="stats-title">Media Type</div>
+          <div class="stats-content">{{ postStats.mediaType }}</div>
+        </div>
+        
+        <!-- Media Details -->
+        <div class="stats-section">
+          <div class="stats-title">Media Info</div>
+          <div class="stats-content">
+            <div>Dimensions: {{ postStats.width }} x {{ postStats.height }}</div>
+            <div>File Size: {{ postStats.fileSize }}</div>
+            <div>Format: {{ postStats.fileExt }}</div>
+            <div>ID: {{ currentPost.id }}</div>
+          </div>
+        </div>
+      </div>
+      
+      <div v-else class="text-center mt-3">
+        <div class="spinner-border text-primary" role="status" v-if="loading">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <div v-else>No post loaded</div>
+      </div>
+    </div>
+
     <!-- New Sidebar for Filters - X button removed -->
     <div class="sidebar" :class="{ expanded: sidebarExpanded }">
       <h4 class="sidebar-heading">Filters</h4>
@@ -677,6 +861,16 @@
           <button class="btn btn-success w-100" @click="applyTagPreferences">
             <i class="bi bi-arrow-clockwise"></i> Apply
           </button>
+        </div>
+      </div>
+
+      <!-- Add toggle for detailed stats at the bottom of the sidebar -->
+      <div class="sidebar-divider"></div>
+      
+      <div class="sidebar-footer">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="detailed-stats-switch" v-model="detailedStatsVisible">
+          <label class="form-check-label" for="detailed-stats-switch">Show detailed stats</label>
         </div>
       </div>
     </div>

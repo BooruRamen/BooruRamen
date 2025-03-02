@@ -176,7 +176,23 @@ const app = createApp({
       sidebarExpanded: false,
 
       preferredTags: '',
-      blacklistedTags: ''
+      blacklistedTags: '',
+      
+      // Detailed stats feature
+      detailedStatsVisible: false,
+      postStats: {
+        artist: [],
+        copyright: [],
+        character: [],
+        general: [],
+        meta: [],
+        rating: 'Unknown',
+        mediaType: 'Unknown',
+        width: 0,
+        height: 0,
+        fileSize: 'Unknown',
+        fileExt: 'Unknown'
+      }
     };
   },
   
@@ -593,14 +609,23 @@ const app = createApp({
           large_file_url: post.large_file_url,
           preview_file_url: post.preview_file_url,
           tag_string: post.tag_string || '',
+          tag_string_artist: post.tag_string_artist || '',
+          tag_string_character: post.tag_string_character || '',
+          tag_string_copyright: post.tag_string_copyright || '',
+          tag_string_general: post.tag_string_general || '',
+          tag_string_meta: post.tag_string_meta || '',
           rating: post.rating || '',
           score: post.score || 0,
           file_ext: post.file_ext || '',
-          image_height: post.image_height,
-          image_width: post.image_width
+          file_size: post.file_size || 0,
+          image_height: post.image_height || 0,
+          image_width: post.image_width || 0
         };
         
         this.currentPost = safePost;
+        
+        // Generate post stats for detailed stats view
+        this.updatePostStats(safePost);
         
         // Mark post as seen, use localStorage as fallback
         try {
@@ -690,6 +715,88 @@ const app = createApp({
         console.error("Error showing post:", error);
         this.loading = false;
       }
+    },
+    
+    // New method to update post stats for detailed stats view
+    updatePostStats(post) {
+      // Format the rating for display
+      let formattedRating = 'Unknown';
+      if (post.rating === 'g') formattedRating = 'General';
+      else if (post.rating === 's') formattedRating = 'Sensitive';
+      else if (post.rating === 'q') formattedRating = 'Questionable';
+      else if (post.rating === 'e') formattedRating = 'Explicit';
+      
+      // Determine media type
+      let mediaType = 'Unknown';
+      if (post.file_ext) {
+        if (['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(post.file_ext.toLowerCase())) {
+          mediaType = `Image (${post.file_ext.toUpperCase()})`;
+        } else if (['mp4', 'webm'].includes(post.file_ext.toLowerCase())) {
+          mediaType = `Video (${post.file_ext.toUpperCase()})`;
+        } else {
+          mediaType = `Other (${post.file_ext.toUpperCase()})`;
+        }
+      }
+      
+      // Format file size
+      let fileSize = 'Unknown';
+      if (post.file_size) {
+        if (post.file_size < 1024) {
+          fileSize = `${post.file_size} B`;
+        } else if (post.file_size < 1024 * 1024) {
+          fileSize = `${(post.file_size / 1024).toFixed(2)} KB`;
+        } else {
+          fileSize = `${(post.file_size / (1024 * 1024)).toFixed(2)} MB`;
+        }
+      }
+      
+      // Parse tag strings
+      const artists = post.tag_string_artist ? post.tag_string_artist.split(' ').filter(tag => tag.trim() !== '') : [];
+      const characters = post.tag_string_character ? post.tag_string_character.split(' ').filter(tag => tag.trim() !== '') : [];
+      const copyrights = post.tag_string_copyright ? post.tag_string_copyright.split(' ').filter(tag => tag.trim() !== '') : [];
+      const generalTags = post.tag_string_general ? post.tag_string_general.split(' ').filter(tag => tag.trim() !== '') : [];
+      const metaTags = post.tag_string_meta ? post.tag_string_meta.split(' ').filter(tag => tag.trim() !== '') : [];
+      
+      // If the specific tag fields are not available, try to extract from the combined tag_string
+      if (artists.length === 0 && characters.length === 0 && copyrights.length === 0 && 
+          generalTags.length === 0 && metaTags.length === 0 && post.tag_string) {
+        
+        const allTags = post.tag_string.split(' ').filter(tag => tag.trim() !== '');
+        
+        // Simple heuristic for identifying tag types without API info
+        allTags.forEach(tag => {
+          if (tag.startsWith('artist:')) {
+            artists.push(tag.replace('artist:', ''));
+          } else if (tag.startsWith('character:')) {
+            characters.push(tag.replace('character:', ''));
+          } else if (tag.startsWith('copyright:')) {
+            copyrights.push(tag.replace('copyright:', ''));
+          } else if (tag.startsWith('meta:')) {
+            metaTags.push(tag.replace('meta:', ''));
+          } else if (tag.includes(':')) {
+            metaTags.push(tag);
+          } else {
+            generalTags.push(tag);
+          }
+        });
+      }
+      
+      // Update the postStats object
+      this.postStats = {
+        artist: artists,
+        character: characters,
+        copyright: copyrights,
+        general: generalTags,
+        meta: metaTags,
+        rating: formattedRating,
+        mediaType: mediaType,
+        width: post.image_width || 0,
+        height: post.image_height || 0,
+        fileSize: fileSize,
+        fileExt: post.file_ext ? post.file_ext.toUpperCase() : 'Unknown'
+      };
+      
+      console.log("Updated post stats:", this.postStats);
     },
     
     // Media event handlers
@@ -1408,9 +1515,13 @@ const app = createApp({
         case 'F10': // Theater Mode (was Focus Mode)
           this.toggleTheaterMode();
           break;
-        case 'S': // Toggle Sidebar
         case 's':
+        case 'S': // Toggle Sidebar
           this.toggleSidebar();
+          break;
+        case 'd':
+        case 'D': // Toggle Detailed Stats
+          this.detailedStatsVisible = !this.detailedStatsVisible;
           break;
       }
     },
@@ -1504,6 +1615,13 @@ const app = createApp({
     currentPost() {
       if (this.autonextEnabled) {
         this.updateAutonextBehavior();
+      }
+    },
+    
+    // Hide left sidebar when theater mode is enabled
+    theaterMode(newVal) {
+      if (newVal && this.detailedStatsVisible) {
+        this.detailedStatsVisible = false;
       }
     }
   }
