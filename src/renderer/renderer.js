@@ -1417,14 +1417,26 @@ const app = createApp({
     
     // Theater Mode - replacing focusMode
     toggleTheaterMode() {
+      // Store the current state of detailed stats before changing theater mode
+      const wasDetailedStatsVisible = this.detailedStatsVisible;
+      
       this.theaterMode = !this.theaterMode;
+      
       if (this.theaterMode) {
         document.body.classList.add('theater-mode');
+        
         // Collapse the right sidebar if it's expanded
         if (this.sidebarExpanded) {
           this.sidebarExpanded = false;
           console.log('Right sidebar collapsed due to theater mode activation');
         }
+        
+        // Collapse the detailed stats sidebar when entering theater mode
+        if (wasDetailedStatsVisible) {
+          this.detailedStatsVisible = false;
+          console.log('Detailed stats sidebar collapsed due to theater mode activation');
+        }
+        
         console.log('Theater mode activated');
       } else {
         this.exitTheaterMode();
@@ -1458,6 +1470,25 @@ const app = createApp({
           this.exitTheaterMode();
         }
       }
+    },
+
+    // Theater mode detailed stats toggle button handler
+    toggleDetailedStats() {
+      this.detailedStatsVisible = !this.detailedStatsVisible;
+      
+      // Update the media content section class when in theater mode
+      if (this.theaterMode) {
+        const mediaContentSection = document.querySelector('.media-content-section');
+        if (mediaContentSection) {
+          if (this.detailedStatsVisible) {
+            mediaContentSection.classList.add('with-stats');
+          } else {
+            mediaContentSection.classList.remove('with-stats');
+          }
+        }
+      }
+      
+      console.log(`Detailed stats ${this.detailedStatsVisible ? 'shown' : 'hidden'}`);
     },
     
     // AutoNext functionality
@@ -1643,10 +1674,30 @@ const app = createApp({
       }
     },
     
-    // Hide left sidebar when theater mode is enabled
+    // Modified to preserve detailed stats visibility in theater mode
     theaterMode(newVal) {
-      if (newVal && this.detailedStatsVisible) {
-        this.detailedStatsVisible = false;
+      // When entering or exiting theater mode, update media content section class
+      const mediaContentSection = document.querySelector('.media-content-section');
+      if (mediaContentSection) {
+        if (newVal && this.detailedStatsVisible) {
+          mediaContentSection.classList.add('with-stats');
+        } else {
+          mediaContentSection.classList.remove('with-stats');
+        }
+      }
+    },
+
+    // Add watcher for detailedStatsVisible to update classes when it changes
+    detailedStatsVisible(newVal) {
+      if (this.theaterMode) {
+        const mediaContentSection = document.querySelector('.media-content-section');
+        if (mediaContentSection) {
+          if (newVal) {
+            mediaContentSection.classList.add('with-stats');
+          } else {
+            mediaContentSection.classList.remove('with-stats');
+          }
+        }
       }
     }
   }

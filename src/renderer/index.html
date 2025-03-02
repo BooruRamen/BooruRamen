@@ -13,7 +13,7 @@
   <div id="app">
     <div class="container-fluid main-content">
       <!-- Media Display Area - Enhanced to fill more space and center content -->
-      <div class="media-content-section" :class="{ 'theater-mode': theaterMode }">
+      <div class="media-content-section" :class="{ 'theater-mode': theaterMode, 'with-stats': detailedStatsVisible && theaterMode }">
         <div class="media-container">
           <div class="position-relative">
             <!-- Loading indicator -->
@@ -163,8 +163,8 @@
       <i :class="sidebarExpanded ? 'bi bi-chevron-right toggle-icon' : 'bi bi-chevron-left toggle-icon'"></i>
     </button>
 
-    <!-- New Left Sidebar for Detailed Stats -->
-    <div class="left-sidebar" :class="{ expanded: detailedStatsVisible }">
+    <!-- New Left Sidebar for Detailed Stats - Modified to work in theater mode -->
+    <div class="left-sidebar" :class="{ 'expanded': detailedStatsVisible, 'theater-stats': theaterMode }">
       <h5 class="left-sidebar-heading">Detailed Stats</h5>
       
       <div v-if="currentPost" class="stats-content-container">

@@ -533,11 +533,6 @@ video::-webkit-media-controls-panel {
   color: #ffcc55;
 }
 
-/* Make sure other UI elements account for left sidebar */
-.theater-mode .left-sidebar {
-  display: none !important;
-}
-
 /* Button Styles - Merging from original CSS */
 button {
   transition: all 0.2s ease;
@@ -585,4 +580,46 @@ button:hover {
   .video-wrapper {
     margin-bottom: 2rem !important;
   }
+}
+
+/* Theater mode detailed stats toggle button */
+.theater-stats-btn {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  z-index: 1050;
+  transition: all 0.2s ease;
+}
+
+.theater-stats-btn:hover {
+  background-color: rgba(0, 0, 0, 0.8);
+  transform: scale(1.1);
+}
+
+/* Left sidebar styles for theater mode */
+.left-sidebar.theater-stats {
+  background-color: rgba(34, 34, 34, 0.9);
+  z-index: 1049;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.7);
+}
+
+/* Ensure the left sidebar appears on top of other elements in theater mode */
+body.theater-mode .left-sidebar.expanded.theater-stats {
+  left: 0;
+}
+
+/* Adjust media display when showing stats in theater mode */
+body.theater-mode .media-content-section.with-stats {
+  margin-left: 300px;
+  width: calc(100% - 300px);
 }
