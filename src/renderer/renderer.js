@@ -1420,6 +1420,11 @@ const app = createApp({
       this.theaterMode = !this.theaterMode;
       if (this.theaterMode) {
         document.body.classList.add('theater-mode');
+        // Collapse the right sidebar if it's expanded
+        if (this.sidebarExpanded) {
+          this.sidebarExpanded = false;
+          console.log('Right sidebar collapsed due to theater mode activation');
+        }
         console.log('Theater mode activated');
       } else {
         this.exitTheaterMode();
