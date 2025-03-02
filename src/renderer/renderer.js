@@ -137,7 +137,12 @@ const app = createApp({
         questionable: false,
         explicit: false
       },
-      selectedMedia: 'Video and Images',
+      // New media filters object (replacing selectedMedia)
+      mediaFilters: {
+        images: true,
+        videos: true
+      },
+      selectedMedia: 'Video and Images', // Kept for backward compatibility
       selectedRating: 'General Only', // Add explicit default
       
       // Rating and media options - keeping for backward compatibility
@@ -352,14 +357,18 @@ const app = createApp({
             ratingTags = '';
         }
         
-        // Build the base tags parameter based on media option
+        // Build the base tags parameter based on media filters
         const baseTags = [];
         
-        if (this.selectedMedia === 'Video Only') {
+        // Use the checkbox filters directly instead of selectedMedia
+        if (this.mediaFilters.videos && !this.mediaFilters.images) {
+          // Only videos selected
           baseTags.push('animated');
-        } else if (this.selectedMedia === 'Images Only') {
+        } else if (this.mediaFilters.images && !this.mediaFilters.videos) {
+          // Only images selected
           baseTags.push('-animated');
         }
+        // Both or none selected: don't add any media type tag to fetch everything
         
         if (ratingTags) {
           baseTags.push(ratingTags);
@@ -522,13 +531,12 @@ const app = createApp({
           
           // Only include posts with score >= 0, not seen, not premium, and not containing blacklisted tags
           if (!isSeen && post.score >= 0 && !hasBlacklistedTag && !isPremiumContent) {
-            // Filter based on media type if needed
+            // Use the checkbox-based media filters
             const isVideo = this.isVideo(post);
-            return (
-              (this.selectedMedia === 'Video Only' && isVideo) ||
-              (this.selectedMedia === 'Images Only' && !isVideo) ||
-              this.selectedMedia === 'Video and Images'
-            );
+            
+            // If it's a video, we need videos checkbox enabled
+            // If it's an image, we need images checkbox enabled
+            return (isVideo && this.mediaFilters.videos) || (!isVideo && this.mediaFilters.images);
           }
           
           return false;
@@ -1291,43 +1299,47 @@ const app = createApp({
     },
     
     async mediaTypeChanged() {
-      console.log(`Media type changed to: ${this.selectedMedia}`);
+      console.log('Media filters changed:', this.mediaFilters);
       
-      const currentTime = new Date();
-      const dbTimestamp = await window.api.getSetting('last_time_app_accessed', currentTime.toString());
-      const dbTimestampObj = new Date(dbTimestamp);
+      // Reset page and clear current posts before fetching new ones
+      this.page = 1;
+      this.posts = [];
+      this.currentIndex = 0;
+      this.loading = true;
       
-      const timeDiff = currentTime - dbTimestampObj;
-      if (timeDiff > 30 * 60 * 1000) {
-        this.page = 1;
-        
-        // Create settings batch for all combinations
-        const settingsToUpdate = {};
-        for (const rating of this.ratingOptions) {
-          for (const media of this.mediaOptions) {
-            settingsToUpdate[`last_used_page_(${rating})_(${media})`] = 1;
-          }
-        }
-        settingsToUpdate['last_time_app_accessed'] = currentTime.toString();
-        
-        try {
-          await window.api.setSettingsBatch(settingsToUpdate);
-        } catch (err) {
-          console.warn("Failed to save settings to database, using localStorage:", err);
-          Object.entries(settingsToUpdate).forEach(([key, value]) => {
-            localStorage.setItem(key, value);
-          });
-        }
+      // Map the checkboxes to the selectedMedia value for compatibility
+      if (this.mediaFilters.images && this.mediaFilters.videos) {
+        this.selectedMedia = 'Video and Images';
+      } else if (this.mediaFilters.images && !this.mediaFilters.videos) {
+        this.selectedMedia = 'Images Only';
+      } else if (!this.mediaFilters.images && this.mediaFilters.videos) {
+        this.selectedMedia = 'Video Only';
       } else {
-        try {
-          this.page = parseInt(await window.api.getSetting(
-            `last_used_page_(${this.selectedRating})_(${this.selectedMedia})`, 1));
-        } catch (err) {
-          console.warn("Failed to get setting from database, using localStorage:", err);
-          this.page = parseInt(localStorage.getItem(`last_used_page_(${this.selectedRating})_(${this.selectedMedia})`) || '1');
-        }
+        // If nothing is selected, default to both (better user experience than showing nothing)
+        this.mediaFilters.images = true;
+        this.mediaFilters.videos = true;
+        this.selectedMedia = 'Video and Images';
       }
       
+      console.log(`Mapped to media preset: ${this.selectedMedia}`);
+      
+      // Update settings and fetch new posts in a single operation
+      const currentTime = new Date();
+      const settings = {
+        [`last_used_page_(${this.selectedRating})_(${this.selectedMedia})`]: this.page,
+        'last_time_app_accessed': currentTime.toString()
+      };
+      
+      try {
+        await window.api.setSettingsBatch(settings);
+      } catch (err) {
+        console.warn("Failed to save settings to database, using localStorage:", err);
+        Object.entries(settings).forEach(([key, value]) => {
+          localStorage.setItem(key, value);
+        });
+      }
+      
+      // Fetch posts with new media filter
       await this.fetchAndUpdatePosts();
     },
     
