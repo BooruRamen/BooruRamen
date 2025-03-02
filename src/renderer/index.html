@@ -811,14 +811,17 @@
         </div>
       </div>
       
-      <!-- Media Type Selection -->
+      <!-- Media Type Selection - Changed from dropdown to checkbox group -->
       <div class="mb-3">
-        <label for="media-select" class="form-label">Media Filter</label>
-        <select id="media-select" class="form-select bg-dark text-light" v-model="selectedMedia" @change="mediaTypeChanged">
-          <option v-for="media in mediaOptions" :key="media" :value="media">
-            {{ media }}
-          </option>
-        </select>
+        <div class="sidebar-section-title">Media Filter</div>
+        <div class="form-check">
+          <input class="form-check-input bg-dark" type="checkbox" id="media-images" v-model="mediaFilters.images" @change="mediaTypeChanged">
+          <label class="form-check-label" for="media-images">Images</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input bg-dark" type="checkbox" id="media-videos" v-model="mediaFilters.videos" @change="mediaTypeChanged">
+          <label class="form-check-label" for="media-videos">Videos</label>
+        </div>
       </div>
       
       <!-- Separator -->
