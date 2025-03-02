@@ -210,8 +210,8 @@ ipcMain.handle('open-in-browser', async (event, url) => {
 function createWindow() {
   // Create the browser window
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 1000,
+    width: 1920,
+    height: 1080,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true, // Enable context isolation for better security
