@@ -97,7 +97,7 @@ video::-webkit-media-controls-panel {
   bottom: 50px; /* Moved up from 10px */
   left: 0;
   right: 0;
-  z-index: 1000;
+  z-index: 990 !important; /* Lower than dropdowns */
   background-color: rgba(33, 37, 41, 0.85);
   padding-top: 8px;
   padding-bottom: 8px;
@@ -152,6 +152,28 @@ video::-webkit-media-controls-panel {
 /* Ensure fixed width for secondary buttons */
 .settings-area .btn {
   min-width: 80px; /* Smaller fixed minimum width for secondary buttons */
+}
+
+/* Share dropdown - ensure it appears on top of all other elements */
+.settings-area .dropdown {
+  position: relative;
+  z-index: 1500 !important; /* Very high z-index to ensure it's above everything */
+}
+
+.settings-area .dropdown-menu {
+  z-index: 1500 !important; /* Match the dropdown's z-index */
+  position: absolute !important;
+}
+
+/* Make sure the share dropdown menu appears on top of other elements */
+.dropdown-menu {
+  z-index: 1050 !important; /* Higher than control buttons (1000) */
+  position: absolute !important;
+}
+
+/* Ensure dropdowns appear above control buttons */
+.dropdown-menu.show {
+  z-index: 2000 !important; /* Much higher than the control buttons (1000) */
 }
 
 .custom-control-button {
