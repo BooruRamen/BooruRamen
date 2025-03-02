@@ -1512,6 +1512,14 @@ const app = createApp({
     
     // Keyboard event handlers
     handleKeyPress(event) {
+      // Skip hotkey processing if user is typing in an input field, textarea, or other form elements
+      if (event.target.tagName === 'INPUT' || 
+          event.target.tagName === 'TEXTAREA' || 
+          event.target.isContentEditable || 
+          event.target.tagName === 'SELECT') {
+        return; // Don't process hotkeys when typing in form fields
+      }
+      
       switch (event.key) {
         case 'ArrowRight': // Next post
           this.nextPost();
