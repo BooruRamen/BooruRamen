@@ -505,112 +505,134 @@ const recommendedTags = computed(() => {
 const fetchPosts = async () => {
   loading.value = true;
   try {
-    // Build query parameters
-    const params = new URLSearchParams();
-    params.append('limit', '20');
-    params.append('page', settings.page);
-    
-    // Build a complete tags query
-    let tagsQuery = [];
-    
-    // Add rating filters
-    if (settings.ratings.length > 0 && settings.ratings.length < 4) {
-      const ratingQuery = settings.ratings.map(r => `rating:${r}`).join(' OR ');
-      tagsQuery.push(`(${ratingQuery})`);
-    }
-    
-    // Add whitelist tags
-    if (settings.whitelistTags.length > 0) {
-      const whitelistQuery = settings.whitelistTags.join(' ');
-      tagsQuery.push(whitelistQuery);
-    }
-    
-    // Add blacklist tags
-    if (settings.blacklistTags.length > 0) {
-      const blacklistQuery = settings.blacklistTags.map(tag => `-${tag}`).join(' ');
-      tagsQuery.push(blacklistQuery);
-    }
-    
-    // Handle media type filtering with tags
-    const showImages = settings.mediaType.images;
-    const showVideos = settings.mediaType.videos;
-    
-    if (!showImages && showVideos) {
-      // Only videos - use the animated tag
-      tagsQuery.push('animated');
-    } else if (showImages && !showVideos) {
-      // Only images - exclude animated content
-      tagsQuery.push('-animated');
-    } else if (!showImages && !showVideos) {
-      // Neither - return nothing
-      tagsQuery.push('impossible_tag_to_ensure_no_results');
-    }
-    
-    // Add recommended tags if we don't have explicit whitelist tags
-    if (settings.whitelistTags.length === 0 && hasRecommendations.value) {
-      const recommendedParams = recommendationSystem.buildRecommendedQueryParams(
-        true, // include user tags
-        exploreMode.value // whether we're in explore mode
-      );
-      
-      if (recommendedParams.tags) {
-        tagsQuery.push(recommendedParams.tags);
-      }
-    }
-    
-    // Join all tag queries and append once
-    if (tagsQuery.length > 0) {
-      params.append('tags', tagsQuery.join(' '));
-    }
-    
-    console.log('Query URL:', `https://danbooru.donmai.us/posts.json?${params.toString()}`);
-    
-    // Fetch from Danbooru API
-    const response = await fetch(`https://danbooru.donmai.us/posts.json?${params.toString()}`);
-    const data = await response.json();
-    
-    if (Array.isArray(data)) {
+    if (exploreMode.value) {
+      // Use the curated explore feed when in explore mode
+      const fetchFunction = async (queryParams, limit) => {
+        const params = new URLSearchParams(queryParams);
+        params.append('limit', limit.toString());
+        
+        // Add rating filters
+        if (settings.ratings.length > 0 && settings.ratings.length < 4) {
+          const ratingQuery = settings.ratings.map(r => `rating:${r}`).join(' OR ');
+          params.append('tags', `${params.get('tags') || ''} (${ratingQuery})`.trim());
+        }
+        
+        // Add blacklist tags
+        if (settings.blacklistTags.length > 0) {
+          const blacklistQuery = settings.blacklistTags.map(tag => `-${tag}`).join(' ');
+          params.append('tags', `${params.get('tags') || ''} ${blacklistQuery}`.trim());
+        }
+        
+        const response = await fetch(`https://danbooru.donmai.us/posts.json?${params.toString()}`);
+        return response.json();
+      };
+
+      const curatedPosts = await recommendationSystem.getCuratedExploreFeed(fetchFunction, {
+        fetchCount: 3,
+        postsPerFetch: 20,
+        maxTotal: 50
+      });
+
       // Process posts
-      const newPosts = data.map(post => ({
+      const newPosts = curatedPosts.map(post => ({
         ...post,
         liked: false,
         disliked: false,
         favorited: false
       }));
+
+      // Replace existing posts in explore mode
+      posts.value = newPosts;
+      currentPostIndex.value = 0;
       
-      // If we're on page 1, replace posts; otherwise append
-      if (settings.page === 1) {
-        posts.value = newPosts;
-        currentPostIndex.value = 0; // Reset current post index when refreshing
-      } else {
-        posts.value = [...posts.value, ...newPosts];
-      }
-      
-      // Rerank posts if we have recommendations
-      if (hasRecommendations.value && posts.value.length > 1) {
-        // We'll rerank all posts except the current one (to avoid jarring UI changes)
-        const currentPost = posts.value[currentPostIndex.value];
-        const otherPosts = posts.value.filter((_, i) => i !== currentPostIndex.value);
-        
-        // Rank the other posts
-        const rankedOtherPosts = recommendationSystem.rankPosts(otherPosts);
-        
-        // Reinsert the current post at its position
-        posts.value = [
-          ...rankedOtherPosts.slice(0, currentPostIndex.value),
-          currentPost,
-          ...rankedOtherPosts.slice(currentPostIndex.value)
-        ];
-      }
-      
-      // Only increment page if we got some results from the API
-      if (data.length > 0) {
-        settings.page++;
-      }
-      
-      console.log(`Fetched ${data.length} posts`);
     } else {
-      console.log('API returned non-array response:', data);
+      // Regular post fetching logic for non-explore mode
+      // Build query parameters
+      const params = new URLSearchParams();
+      params.append('limit', '20');
+      params.append('page', settings.page);
+      
+      // Build a complete tags query
+      let tagsQuery = [];
+      
+      // Add rating filters
+      if (settings.ratings.length > 0 && settings.ratings.length < 4) {
+        const ratingQuery = settings.ratings.map(r => `rating:${r}`).join(' OR ');
+        tagsQuery.push(`(${ratingQuery})`);
+      }
+      
+      // Add whitelist tags
+      if (settings.whitelistTags.length > 0) {
+        const whitelistQuery = settings.whitelistTags.join(' ');
+        tagsQuery.push(whitelistQuery);
+      }
+      
+      // Add blacklist tags
+      if (settings.blacklistTags.length > 0) {
+        const blacklistQuery = settings.blacklistTags.map(tag => `-${tag}`).join(' ');
+        tagsQuery.push(blacklistQuery);
+      }
+      
+      // Handle media type filtering with tags
+      const showImages = settings.mediaType.images;
+      const showVideos = settings.mediaType.videos;
+      
+      if (!showImages && showVideos) {
+        // Only videos - use the animated tag
+        tagsQuery.push('animated');
+      } else if (showImages && !showVideos) {
+        // Only images - exclude animated content
+        tagsQuery.push('-animated');
+      } else if (!showImages && !showVideos) {
+        // Neither - return nothing
+        tagsQuery.push('impossible_tag_to_ensure_no_results');
+      }
+      
+      // Add recommended tags if we don't have explicit whitelist tags
+      if (settings.whitelistTags.length === 0 && hasRecommendations.value) {
+        const recommendedParams = recommendationSystem.buildRecommendedQueryParams(
+          true, // include user tags
+          false // not in explore mode
+        );
+        
+        if (recommendedParams.tags) {
+          tagsQuery.push(recommendedParams.tags);
+        }
+      }
+      
+      // Join all tag queries and append once
+      if (tagsQuery.length > 0) {
+        params.append('tags', tagsQuery.join(' '));
+      }
+      
+      console.log('Query URL:', `https://danbooru.donmai.us/posts.json?${params.toString()}`);
+      
+      // Fetch from Danbooru API
+      const response = await fetch(`https://danbooru.donmai.us/posts.json?${params.toString()}`);
+      const data = await response.json();
+      
+      if (Array.isArray(data)) {
+        // Process posts
+        const newPosts = data.map(post => ({
+          ...post,
+          liked: false,
+          disliked: false,
+          favorited: false
+        }));
+        
+        // If we're on page 1, replace posts; otherwise append
+        if (settings.page === 1) {
+          posts.value = newPosts;
+          currentPostIndex.value = 0; // Reset current post index when refreshing
+        } else {
+          posts.value = [...posts.value, ...newPosts];
+        }
+        
+        // Only increment page if we got some results from the API
+        if (data.length > 0) {
+          settings.page++;
+        }
+      }
     }
   } catch (error) {
     console.error('Error fetching posts:', error);

@@ -392,6 +392,154 @@ class RecommendationSystem {
       tags: tags.join(' ')
     };
   }
+
+  /**
+   * Generate diverse query sets for explore mode to cast a wider net
+   * @param {number} count - Number of different query sets to generate
+   * @returns {Array} - Array of query parameter objects
+   */
+  generateExploreQueries(count = 3) {
+    const queries = [];
+    
+    // Always include one query with the user's top preferences
+    queries.push(this.buildRecommendedQueryParams(true, true));
+    
+    if (count <= 1) return queries;
+    
+    // Get all tags with positive scores
+    const positiveTags = Object.entries(this.tagScores || {})
+      .filter(([_, score]) => score > 0)
+      .sort((a, b) => b[1] - a[1]);
+    
+    // Generate a query with some mid-tier tags
+    if (positiveTags.length > 5) {
+      const midIndex = Math.floor(positiveTags.length / 2);
+      const midTags = positiveTags.slice(midIndex, midIndex + 3)
+        .map(([tag]) => tag);
+      
+      if (midTags.length > 0) {
+        queries.push({
+          tags: `(${midTags.join(' OR ')}) order:random`
+        });
+      }
+    }
+    
+    if (count <= 2) return queries;
+    
+    // Generate a discovery query from tag categories the user likes
+    const tagCategoryScores = {};
+    
+    // Calculate scores for each tag category
+    Object.entries(this.tagScores || {}).forEach(([tag, score]) => {
+      // Try to identify the tag category
+      TAG_CATEGORIES.forEach(category => {
+        if (tag.startsWith(`${category}:`)) {
+          if (!tagCategoryScores[category]) {
+            tagCategoryScores[category] = 0;
+          }
+          tagCategoryScores[category] += score;
+        }
+      });
+    });
+    
+    // Find the top category
+    const topCategory = Object.entries(tagCategoryScores)
+      .sort((a, b) => b[1] - a[1])[0];
+    
+    if (topCategory) {
+      queries.push({
+        tags: `${topCategory[0]}:* order:random`
+      });
+    } else {
+      // If we can't find a category, use a popularity-based query
+      queries.push({
+        tags: 'order:rank'
+      });
+    }
+    
+    return queries;
+  }
+  
+  /**
+   * Curate the next best post for the user from a pool of fetched posts
+   * @param {Array} postPool - Array of posts to select from
+   * @returns {Object} - Selected post and remaining posts
+   */
+  selectNextBestPost(postPool) {
+    if (!postPool || postPool.length === 0) {
+      return { 
+        nextPost: null, 
+        remainingPosts: [] 
+      };
+    }
+    
+    // Score all posts in the pool
+    const scoredPosts = postPool.map(post => ({
+      post,
+      score: this.scorePost(post)
+    }));
+    
+    // Sort by score (descending)
+    scoredPosts.sort((a, b) => b.score - a.score);
+    
+    // Return the highest scoring post and the remaining posts
+    const [best, ...rest] = scoredPosts;
+    
+    return {
+      nextPost: best.post,
+      remainingPosts: rest.map(item => item.post)
+    };
+  }
+  
+  /**
+   * Get a curated feed for explore mode by fetching diverse content
+   * and selecting the best posts based on user preferences
+   * @param {Function} fetchFunction - Function to fetch posts with query params
+   * @param {Object} options - Configuration options
+   * @returns {Promise<Array>} - Curated list of posts
+   */
+  async getCuratedExploreFeed(fetchFunction, options = {}) {
+    const { 
+      fetchCount = 3,       // Number of different queries to run
+      postsPerFetch = 20,   // Number of posts to fetch per query
+      maxTotal = 50         // Maximum total posts to return
+    } = options;
+    
+    // Generate diverse query sets
+    const queries = this.generateExploreQueries(fetchCount);
+    console.log("Explore mode queries:", queries);
+    
+    // Fetch posts for each query in parallel
+    try {
+      const fetchPromises = queries.map(query => 
+        fetchFunction(query, postsPerFetch)
+      );
+      
+      const fetchResults = await Promise.all(fetchPromises);
+      
+      // Combine all fetched posts
+      let allPosts = [];
+      fetchResults.forEach(posts => {
+        if (posts && posts.length) {
+          allPosts = [...allPosts, ...posts];
+        }
+      });
+      
+      // Remove duplicates
+      const uniquePosts = Array.from(
+        new Map(allPosts.map(post => [post.id, post])).values()
+      );
+      
+      // Rank the combined posts using our recommendation system
+      const rankedPosts = this.rankPosts(uniquePosts);
+      
+      // Return the top posts up to maxTotal
+      return rankedPosts.slice(0, maxTotal);
+    } catch (error) {
+      console.error("Error fetching curated explore feed:", error);
+      return [];
+    }
+  }
 }
 
 // Create and export a singleton instance
