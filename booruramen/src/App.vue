@@ -114,8 +114,21 @@
                 rel="noopener noreferrer"
                 class="block w-full text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md mt-4"
               >
-                View on Danbooru
+                View in Browser
               </a>
+              <button 
+                @click="copyPostLink(currentPost)"
+                class="block w-full text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md mt-2 relative"
+              >
+                {{ linkCopied ? 'Copied!' : 'Copy Link' }}
+                <span 
+                  v-if="linkCopied" 
+                  class="absolute top-0 right-0 bottom-0 left-0 bg-green-600 rounded-md flex items-center justify-center"
+                  style="animation: fadeOut 1.5s forwards;"
+                >
+                  Copied!
+                </span>
+              </button>
             </div>
           </div>
         </div>
@@ -389,7 +402,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, watch, onUnmounted } from 'vue';
 import { Heart, ThumbsDown, Star, Settings, X } from 'lucide-vue-next';
 
 // State
@@ -401,6 +414,7 @@ const currentPostIndex = ref(0);
 const feedContainer = ref(null);
 const newWhitelistTag = ref('');
 const newBlacklistTag = ref('');
+const linkCopied = ref(false);
 
 // Settings
 const settings = reactive({
@@ -429,7 +443,7 @@ const fetchPosts = async () => {
     params.append('limit', '20');
     params.append('page', settings.page);
     
-    // Build a complete tags query, but exclude media type filters
+    // Build a complete tags query
     let tagsQuery = [];
     
     // Add rating filters
@@ -450,6 +464,21 @@ const fetchPosts = async () => {
       tagsQuery.push(blacklistQuery);
     }
     
+    // Handle media type filtering with tags
+    const showImages = settings.mediaType.images;
+    const showVideos = settings.mediaType.videos;
+    
+    if (!showImages && showVideos) {
+      // Only videos - use the animated tag
+      tagsQuery.push('animated');
+    } else if (showImages && !showVideos) {
+      // Only images - exclude animated content
+      tagsQuery.push('-animated');
+    } else if (!showImages && !showVideos) {
+      // Neither - return nothing
+      tagsQuery.push('impossible_tag_to_ensure_no_results');
+    }
+    
     // Join all tag queries and append once
     if (tagsQuery.length > 0) {
       params.append('tags', tagsQuery.join(' '));
@@ -462,27 +491,8 @@ const fetchPosts = async () => {
     const data = await response.json();
     
     if (Array.isArray(data)) {
-      // Apply media type filtering on the client side
-      let filteredData = data;
-
-      const showImages = settings.mediaType.images;
-      const showVideos = settings.mediaType.videos;
-
-      if (showImages && !showVideos) {
-        filteredData = data.filter(post => 
-          ['jpg', 'png', 'gif'].includes(post.file_ext?.toLowerCase())
-        );
-      } else if (!showImages && showVideos) {
-        filteredData = data.filter(post => 
-          ['mp4', 'webm'].includes(post.file_ext?.toLowerCase())
-        );
-      } else if (!showImages && !showVideos) {
-        // If neither is selected, show nothing
-        filteredData = [];
-      }
-      
-      // Process filtered posts
-      const newPosts = filteredData.map(post => ({
+      // Process posts (no need for client-side filtering by type anymore)
+      const newPosts = data.map(post => ({
         ...post,
         liked: false,
         disliked: false,
@@ -492,21 +502,17 @@ const fetchPosts = async () => {
       // If we're on page 1, replace posts; otherwise append
       if (settings.page === 1) {
         posts.value = newPosts;
+        currentPostIndex.value = 0; // Reset current post index when refreshing
       } else {
         posts.value = [...posts.value, ...newPosts];
       }
       
-      // Only increment page if we got some results
-      if (filteredData.length > 0) {
+      // Only increment page if we got some results from the API
+      if (data.length > 0) {
         settings.page++;
-      } else if (data.length > 0) {
-        // If we got API results but filtered all of them out, try another page
-        settings.page++;
-        fetchPosts(); // Recursive call to fetch more
-        return;
       }
       
-      console.log(`Filtered ${data.length} posts to ${filteredData.length} posts`);
+      console.log(`Fetched ${data.length} posts`);
     } else {
       console.log('API returned non-array response:', data);
     }
@@ -620,6 +626,25 @@ const scrollToCurrentPost = () => {
   }
 };
 
+// Navigate to previous post
+const prevPost = () => {
+  if (currentPostIndex.value > 0) {
+    currentPostIndex.value--;
+    scrollToCurrentPost();
+  }
+};
+
+// Navigate to next post
+const nextPost = () => {
+  if (currentPostIndex.value < posts.value.length - 1) {
+    currentPostIndex.value++;
+    scrollToCurrentPost();
+  } else if (!loading.value) {
+    // If we're at the end, try to fetch more posts
+    fetchPosts();
+  }
+};
+
 // Handle scroll events to update current post index
 const handleScroll = () => {
   if (!feedContainer.value) return;
@@ -628,7 +653,7 @@ const handleScroll = () => {
   const scrollTop = feedContainer.value.scrollTop;
   const postIndex = Math.round(scrollTop / containerHeight);
   
-  if (postIndex !== currentPostIndex.value) {
+  if (postIndex !== currentPostIndex.value && postIndex >= 0 && postIndex < posts.value.length) {
     currentPostIndex.value = postIndex;
   }
   
@@ -638,9 +663,79 @@ const handleScroll = () => {
   }
 };
 
+// Handle keyboard navigation
+const handleKeyDown = (event) => {
+  if (event.key === 'ArrowDown' || event.key === 'j') {
+    nextPost();
+  } else if (event.key === 'ArrowUp' || event.key === 'k') {
+    prevPost();
+  } else if (event.key === 'f') {
+    toggleFavorite(currentPost.value);
+  } else if (event.key === 'l') {
+    toggleLike(currentPost.value);
+  } else if (event.key === 'd') {
+    toggleDislike(currentPost.value);
+  }
+};
+
 // Toggle post details sidebar
 const togglePostDetails = () => {
   showPostDetails.value = !showPostDetails.value;
+};
+
+const copyPostLink = (post) => {
+  const url = `https://danbooru.donmai.us/posts/${post.id}`;
+  
+  // Check if the Clipboard API is available
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url)
+      .then(() => {
+        linkCopied.value = true;
+        setTimeout(() => {
+          linkCopied.value = false;
+        }, 1500);
+      })
+      .catch(err => {
+        console.error('Failed to copy text: ', err);
+        fallbackCopyTextToClipboard(url);
+      });
+  } else {
+    // Fallback for browsers without clipboard API
+    fallbackCopyTextToClipboard(url);
+  }
+};
+
+// Fallback method to copy text to clipboard
+const fallbackCopyTextToClipboard = (text) => {
+  try {
+    // Create a temporary textarea element
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    
+    // Make the textarea out of viewport
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    
+    // Select and copy the text
+    textArea.focus();
+    textArea.select();
+    
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    
+    if (successful) {
+      linkCopied.value = true;
+      setTimeout(() => {
+        linkCopied.value = false;
+      }, 1500);
+    } else {
+      console.error('Fallback: Could not copy text');
+    }
+  } catch (err) {
+    console.error('Fallback: Oops, unable to copy', err);
+  }
 };
 
 // Lifecycle hooks
@@ -650,6 +745,9 @@ onMounted(() => {
   if (feedContainer.value) {
     feedContainer.value.addEventListener('scroll', handleScroll);
   }
+  
+  // Add keyboard event listener
+  document.addEventListener('keydown', handleKeyDown);
 });
 
 // Clean up
@@ -659,6 +757,15 @@ watch(() => settings.autoScroll, (newValue) => {
   } else {
     stopAutoScroll();
   }
+});
+
+// Clean up event listeners on component unmount
+onUnmounted(() => {
+  if (feedContainer.value) {
+    feedContainer.value.removeEventListener('scroll', handleScroll);
+  }
+  document.removeEventListener('keydown', handleKeyDown);
+  stopAutoScroll();
 });
 </script>
 
@@ -688,6 +795,12 @@ watch(() => settings.autoScroll, (newValue) => {
   background-color: rgba(0, 0, 0, 0.5) !important;
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
+}
+
+@keyframes fadeOut {
+  0% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
 }
 </style>
 
