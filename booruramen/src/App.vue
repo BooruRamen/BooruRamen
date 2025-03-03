@@ -380,6 +380,64 @@
             </div>
           </div>
           
+          <!-- Recommendations section - Added from recommendation-ui.html -->
+          <div class="mb-4 border-t border-gray-700 pt-4">
+            <h3 class="text-sm font-medium block mb-2">Recommendations</h3>
+            
+            <!-- Explore Mode Toggle -->
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-sm">Explore Mode</label>
+              <button 
+                @click="toggleExploreMode" 
+                class="relative inline-flex h-6 w-11 items-center rounded-full"
+                :class="exploreMode ? 'bg-pink-600' : 'bg-gray-600'"
+              >
+                <span 
+                  class="inline-block h-4 w-4 transform rounded-full bg-white transition"
+                  :class="exploreMode ? 'translate-x-6' : 'translate-x-1'"
+                ></span>
+              </button>
+            </div>
+            <p class="text-xs text-gray-400 mb-3">Explore mode shows more diverse content to help improve recommendations</p>
+            
+            <!-- Recommended Tags Section -->
+            <div v-if="hasRecommendations" class="mb-3">
+              <h4 class="text-xs font-medium text-gray-400 mb-1">Recommended Tags</h4>
+              <div class="flex flex-wrap gap-1">
+                <span 
+                  v-for="tag in recommendedTags" 
+                  :key="tag"
+                  class="bg-pink-800 px-2 py-0.5 rounded text-xs inline-flex items-center"
+                >
+                  {{ tag }}
+                  <button 
+                    @click="settings.whitelistTags.push(tag); newWhitelistTag = ''" 
+                    class="ml-1 text-xs hover:text-white"
+                  >
+                    + Add
+                  </button>
+                </span>
+              </div>
+              <p v-if="recommendedTags.length === 0" class="text-xs text-gray-400">
+                Interact with more posts to get recommendations
+              </p>
+            </div>
+            
+            <!-- Recommendation Status -->
+            <div class="text-xs text-gray-400 mb-2">
+              <p v-if="hasRecommendations">Recommendations active</p>
+              <p v-else>Recommendations will activate after more interactions</p>
+            </div>
+            
+            <!-- Reset Recommendations Button -->
+            <button 
+              @click="recommendationSystem.updateUserProfile(); posts = []; settings.page = 1; fetchPosts()" 
+              class="w-full bg-gray-700 hover:bg-gray-600 text-white py-1.5 rounded-md text-xs"
+            >
+              Reset Recommendations
+            </button>
+          </div>
+          
           <button 
             @click="applySettings" 
             class="w-full bg-pink-600 hover:bg-pink-700 text-white py-2 rounded-md mt-4"
@@ -404,6 +462,8 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch, onUnmounted } from 'vue';
 import { Heart, ThumbsDown, Star, Settings, X } from 'lucide-vue-next';
+import StorageService from './services/StorageService';
+import recommendationSystem from './services/RecommendationSystem';
 
 // State
 const posts = ref([]);
@@ -415,6 +475,10 @@ const feedContainer = ref(null);
 const newWhitelistTag = ref('');
 const newBlacklistTag = ref('');
 const linkCopied = ref(false);
+
+const exploreMode = ref(false);
+const viewStartTime = ref(null);
+const hasRecommendations = ref(false);
 
 // Settings
 const settings = reactive({
@@ -432,6 +496,9 @@ const settings = reactive({
 // Computed
 const currentPost = computed(() => {
   return posts.value[currentPostIndex.value] || null;
+});
+const recommendedTags = computed(() => {
+  return recommendationSystem.getRecommendedTags(3);
 });
 
 // Methods
@@ -479,6 +546,18 @@ const fetchPosts = async () => {
       tagsQuery.push('impossible_tag_to_ensure_no_results');
     }
     
+    // Add recommended tags if we don't have explicit whitelist tags
+    if (settings.whitelistTags.length === 0 && hasRecommendations.value) {
+      const recommendedParams = recommendationSystem.buildRecommendedQueryParams(
+        true, // include user tags
+        exploreMode.value // whether we're in explore mode
+      );
+      
+      if (recommendedParams.tags) {
+        tagsQuery.push(recommendedParams.tags);
+      }
+    }
+    
     // Join all tag queries and append once
     if (tagsQuery.length > 0) {
       params.append('tags', tagsQuery.join(' '));
@@ -491,7 +570,7 @@ const fetchPosts = async () => {
     const data = await response.json();
     
     if (Array.isArray(data)) {
-      // Process posts (no need for client-side filtering by type anymore)
+      // Process posts
       const newPosts = data.map(post => ({
         ...post,
         liked: false,
@@ -505,6 +584,23 @@ const fetchPosts = async () => {
         currentPostIndex.value = 0; // Reset current post index when refreshing
       } else {
         posts.value = [...posts.value, ...newPosts];
+      }
+      
+      // Rerank posts if we have recommendations
+      if (hasRecommendations.value && posts.value.length > 1) {
+        // We'll rerank all posts except the current one (to avoid jarring UI changes)
+        const currentPost = posts.value[currentPostIndex.value];
+        const otherPosts = posts.value.filter((_, i) => i !== currentPostIndex.value);
+        
+        // Rank the other posts
+        const rankedOtherPosts = recommendationSystem.rankPosts(otherPosts);
+        
+        // Reinsert the current post at its position
+        posts.value = [
+          ...rankedOtherPosts.slice(0, currentPostIndex.value),
+          currentPost,
+          ...rankedOtherPosts.slice(currentPostIndex.value)
+        ];
       }
       
       // Only increment page if we got some results from the API
@@ -528,6 +624,14 @@ const toggleLike = (post) => {
   if (post.liked && post.disliked) {
     post.disliked = false;
   }
+  
+  // Track this interaction for recommendations
+  recommendationSystem.trackInteraction(
+    post.id, 
+    'like',
+    post.liked ? 1 : -1,
+    post
+  );
 };
 
 const toggleDislike = (post) => {
@@ -535,10 +639,44 @@ const toggleDislike = (post) => {
   if (post.disliked && post.liked) {
     post.liked = false;
   }
+  
+  // Track this interaction for recommendations
+  recommendationSystem.trackInteraction(
+    post.id, 
+    'dislike',
+    post.disliked ? 1 : -1,
+    post
+  );
 };
 
 const toggleFavorite = (post) => {
   post.favorited = !post.favorited;
+  
+  // Track this interaction for recommendations
+  recommendationSystem.trackInteraction(
+    post.id, 
+    'favorite',
+    post.favorited ? 1 : -1,
+    post,
+    true // update immediately since favorites are high-value signals
+  );
+};
+
+const trackViewTime = () => {
+  if (!viewStartTime.value || !currentPost.value) return;
+  
+  const timeSpent = Date.now() - viewStartTime.value;
+  if (timeSpent > 500) { // Only track if spent at least 500ms
+    recommendationSystem.trackInteraction(
+      currentPost.value.id,
+      'timeSpent',
+      timeSpent,
+      currentPost.value
+    );
+  }
+  
+  // Reset timer
+  viewStartTime.value = Date.now();
 };
 
 const formatFileSize = (bytes) => {
@@ -654,13 +792,39 @@ const handleScroll = () => {
   const postIndex = Math.round(scrollTop / containerHeight);
   
   if (postIndex !== currentPostIndex.value && postIndex >= 0 && postIndex < posts.value.length) {
+    // Track time spent on previous post before changing
+    trackViewTime();
+    
+    // Update the current post index
     currentPostIndex.value = postIndex;
+    
+    // Start timing for new post
+    viewStartTime.value = Date.now();
+    
+    // Track view of the new post
+    if (currentPost.value) {
+      recommendationSystem.trackInteraction(
+        currentPost.value.id,
+        'view',
+        1,
+        currentPost.value
+      );
+    }
   }
   
   // Load more posts when approaching the end
   if (posts.value.length - currentPostIndex.value < 5 && !loading.value) {
     fetchPosts();
   }
+};
+
+const toggleExploreMode = () => {
+  exploreMode.value = !exploreMode.value;
+  
+  // Refresh posts with new mode
+  posts.value = [];
+  settings.page = 1;
+  fetchPosts();
 };
 
 // Handle keyboard navigation
@@ -748,6 +912,18 @@ onMounted(() => {
   
   // Add keyboard event listener
   document.addEventListener('keydown', handleKeyDown);
+  
+  // Initialize view start time
+  viewStartTime.value = Date.now();
+  
+  // Check if we have enough interactions to enable recommendations
+  setTimeout(() => {
+    const interactions = StorageService.getInteractions();
+    hasRecommendations.value = interactions.length > 5;
+    
+    // Force user profile update
+    recommendationSystem.updateUserProfile();
+  }, 500);
 });
 
 // Clean up
@@ -761,6 +937,9 @@ watch(() => settings.autoScroll, (newValue) => {
 
 // Clean up event listeners on component unmount
 onUnmounted(() => {
+  // Track the final view time before leaving
+  trackViewTime();
+  
   if (feedContainer.value) {
     feedContainer.value.removeEventListener('scroll', handleScroll);
   }
