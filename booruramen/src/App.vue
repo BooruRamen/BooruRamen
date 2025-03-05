@@ -166,13 +166,13 @@
             <!-- Post media -->
             <div class="relative max-h-full max-w-full">
               <img 
-                v-if="post.file_ext === 'jpg' || post.file_ext === 'png' || post.file_ext === 'gif'" 
+                v-if="getFileExtension(post) === 'jpg' || getFileExtension(post) === 'jpeg' || getFileExtension(post) === 'png' || getFileExtension(post) === 'gif'" 
                 :src="post.file_url" 
                 :alt="post.tags" 
                 class="max-h-[calc(100vh-0px)] max-w-full object-contain"
               />
               <video 
-                v-else-if="post.file_ext === 'mp4' || post.file_ext === 'webm'" 
+                v-else-if="getFileExtension(post) === 'mp4' || getFileExtension(post) === 'webm' || isVideoPost(post)" 
                 :src="post.file_url" 
                 controls 
                 autoplay 
@@ -180,6 +180,12 @@
                 muted 
                 class="max-h-[calc(100vh-0px)] max-w-full"
               ></video>
+              <div 
+                v-else
+                class="flex items-center justify-center bg-gray-900 p-4 rounded"
+              >
+                <p>Unable to display media. <a :href="post.file_url" target="_blank" class="text-pink-500 underline">Open directly</a></p>
+              </div>
             </div>
             
             <!-- Post actions -->
@@ -501,39 +507,344 @@ const recommendedTags = computed(() => {
   return recommendationSystem.getRecommendedTags(3);
 });
 
-// Methods
+// Add this mapping function right after the computed properties
+// This maps between abbreviated rating codes and full rating names
+const getRatingFromCode = (ratingCode) => {
+  const ratingMap = {
+    'g': 'general',
+    'general': 'general',
+    's': 'sensitive',
+    'sensitive': 'sensitive', 
+    'q': 'questionable',
+    'questionable': 'questionable',
+    'e': 'explicit',
+    'explicit': 'explicit'
+  };
+  return ratingMap[ratingCode] || ratingCode;
+};
+
+// Update the isValidPost function to normalize ratings
+const normalizePostRating = (post) => {
+  if (post && post.rating) {
+    post.rating = getRatingFromCode(post.rating);
+  }
+  return post;
+};
+
+// Add this helper function back for explore mode
+const buildQueryFilters = (baseQuery = '') => {
+  let tagsQuery = baseQuery ? [baseQuery] : [];
+  
+  // Add rating filters
+  if (settings.ratings.length > 0 && settings.ratings.length < 4) {
+    const ratingQuery = settings.ratings.map(r => `rating:${r}`).join(' OR ');
+    tagsQuery.push(`(${ratingQuery})`);
+  }
+  
+  // Add blacklist tags
+  if (settings.blacklistTags.length > 0) {
+    const blacklistQuery = settings.blacklistTags.map(tag => `-${tag}`).join(' ');
+    tagsQuery.push(blacklistQuery);
+  }
+  
+  // Handle media type filtering
+  const showImages = settings.mediaType.images;
+  const showVideos = settings.mediaType.videos;
+  
+  if (!showImages && showVideos) {
+    tagsQuery.push('animated');
+  } else if (showImages && !showVideos) {
+    tagsQuery.push('-animated');
+  } else if (!showImages && !showVideos) {
+    tagsQuery.push('impossible_tag_to_ensure_no_results');
+  }
+  
+  return tagsQuery.join(' ');
+};
+
+/**
+ * Check if a post is valid for display (has viewable media)
+ */
+const isValidPost = (post) => {
+  // Only basic checks - don't be too restrictive
+  if (!post || !post.file_url) {
+    return false;
+  }
+
+  // If file_ext is missing, try to infer it from URL
+  if (!post.file_ext && post.file_url) {
+    const urlParts = post.file_url.split('.');
+    if (urlParts.length > 1) {
+      post.file_ext = urlParts[urlParts.length - 1].toLowerCase();
+    }
+  }
+  
+  // Ensure the post has a file_url that doesn't contain banned or restricted indicators
+  if (post.file_url.includes('banned') || post.file_url.includes('download_warning')) {
+    return false;
+  }
+
+  return true;
+};
+
+/**
+ * More reliably detect if a post contains video content
+ */
+const isVideoPost = (post) => {
+  // Check file_ext if available
+  if (post.file_ext && ['mp4', 'webm'].includes(post.file_ext.toLowerCase())) {
+    return true;
+  }
+  
+  // Check URL for video extensions
+  if (post.file_url && (post.file_url.toLowerCase().includes('.mp4') || 
+                       post.file_url.toLowerCase().includes('.webm'))) {
+    return true;
+  }
+  
+  // Check if tag_string contains animated tag
+  if (post.tag_string && post.tag_string.includes('animated')) {
+    // Additional check to ensure it's a video and not a gif
+    if (!post.file_url?.toLowerCase().includes('.gif')) {
+      return true;
+    }
+  }
+  
+  return false;
+};
+
+/**
+ * Get file extension reliably for a post
+ */
+const getFileExtension = (post) => {
+  // Use the post's file_ext if available
+  if (post.file_ext) {
+    return post.file_ext.toLowerCase();
+  }
+  
+  // Otherwise try to extract from URL
+  if (post.file_url) {
+    const urlParts = post.file_url.split('.');
+    if (urlParts.length > 1) {
+      return urlParts[urlParts.length - 1].toLowerCase();
+    }
+  }
+  
+  // Fallback to empty string if we can't determine
+  return '';
+};
+
 const fetchPosts = async () => {
   loading.value = true;
+  console.log('Fetching posts with settings:', {
+    exploreMode: exploreMode.value,
+    mediaType: settings.mediaType,
+    ratings: settings.ratings,
+    whitelistTags: settings.whitelistTags,
+    blacklistTags: settings.blacklistTags,
+    page: settings.page
+  });
+  
   try {
     if (exploreMode.value) {
       // Use the curated explore feed when in explore mode
       const fetchFunction = async (queryParams, limit) => {
-        const params = new URLSearchParams(queryParams);
+        const params = new URLSearchParams();
         params.append('limit', limit.toString());
         
-        // Add rating filters
-        if (settings.ratings.length > 0 && settings.ratings.length < 4) {
-          const ratingQuery = settings.ratings.map(r => `rating:${r}`).join(' OR ');
-          params.append('tags', `${params.get('tags') || ''} (${ratingQuery})`.trim());
+        // Check if we're in emergency mode (meaning we should try all ratings)
+        const isEmergencyMode = queryParams._emergencyMode === true;
+        if (isEmergencyMode) {
+          console.log("🚨 EMERGENCY MODE: Will try using all available ratings");
+          // Don't set any rating parameter to get all content
+        } 
+        else {
+          // Normal mode - Build the query for tags that count toward the 2-tag limit
+          let tags = [];
+          
+          // When videos-only mode is active, we must include 'animated' tag
+          const needsAnimatedTag = !settings.mediaType.images && settings.mediaType.videos;
+          
+          // Priority 1: For videos-only mode, the animated tag is essential
+          if (needsAnimatedTag) {
+            tags.push('animated');
+          }
+          
+          // Priority 2: Content tag from recommendation system or whitelist
+          if (queryParams.tags && tags.length < 2) {
+            // Take first tag from recommendation system query
+            const recTags = queryParams.tags.split(' ');
+            if (recTags.length > 0 && recTags[0]) {
+              // Add the first tag from recommendation system
+              tags.push(recTags[0]);
+              
+              // Check if the recommendation included an order parameter and keep it
+              const hasOrderParam = recTags.some(tag => tag.startsWith('order:'));
+              
+              // Add additional order parameter if it exists in the recommendation
+              if (hasOrderParam && tags.length < 2) {
+                const orderParam = recTags.find(tag => tag.startsWith('order:'));
+                if (orderParam && !tags.includes(orderParam)) {
+                  tags.push(orderParam);
+                }
+              }
+            }
+          } else if (settings.whitelistTags.length > 0 && tags.length < 2) {
+            // Use whitelist tag if no recommendation
+            tags.push(settings.whitelistTags[0]);
+          }
+          
+          // Priority 3: Add order parameter if we have room and no other order tag exists
+          if (tags.length < 2 && !tags.some(tag => tag.startsWith('order:'))) {
+            tags.push('order:score'); // Use score instead of random to avoid timeouts
+          }
+          
+          // CRITICAL: Handle rating filtering using combined format (doesn't count toward tag limit)
+          if (settings.ratings.length > 0) {
+            // Map rating full names to their single-letter codes for the API
+            const ratingCodes = settings.ratings.map(rating => {
+              switch(rating) {
+                case 'general': return 'g';
+                case 'sensitive': return 's';
+                case 'questionable': return 'q';
+                case 'explicit': return 'e';
+                default: return rating.charAt(0).toLowerCase(); // fallback
+              }
+            });
+            
+            // Create the combined rating parameter
+            const ratingParam = `rating:${ratingCodes.join(',')}`;
+            
+            // Remove any existing rating tags to avoid conflicts
+            tags = tags.filter(tag => !tag.startsWith('rating:'));
+            
+            // Add the combined rating parameter (doesn't count toward the 2-tag limit)
+            tags.push(ratingParam);
+            console.log(`Added combined rating parameter: ${ratingParam}`);
+          } else if (settings.ratings.length === 0) {
+            // No ratings selected, default to general
+            const defaultRatingTag = 'rating:general';
+            if (!tags.includes(defaultRatingTag)) {
+              tags.push(defaultRatingTag);
+            }
+            console.log("No ratings selected, defaulting to general rating tag");
+          }
+          
+          // Set the tags query
+          params.append('tags', tags.join(' '));
+          console.log('Explore mode final query:', params.toString());
         }
         
-        // Add blacklist tags
-        if (settings.blacklistTags.length > 0) {
-          const blacklistQuery = settings.blacklistTags.map(tag => `-${tag}`).join(' ');
-          params.append('tags', `${params.get('tags') || ''} ${blacklistQuery}`.trim());
+        try {
+          const response = await fetch(`https://danbooru.donmai.us/posts.json?${params.toString()}`);
+          const data = await response.json();
+          
+          if (!Array.isArray(data)) {
+            console.error('API error:', data);
+            return [];
+          }
+          
+          console.log(`Fetched ${data.length} posts before filtering`);
+          
+          // Log the first post to help diagnose issues
+          if (data.length > 0) {
+            const sample = data[0];
+            console.log('Sample post:', {
+              id: sample.id,
+              file_url: sample.file_url?.substring(0, 50) + '...',
+              file_ext: sample.file_ext,
+              tag_string: sample.tag_string?.substring(0, 50) + '...',
+              rating: sample.rating,
+              ratings_enabled: settings.ratings,
+              is_video: isVideoPost(sample)
+            });
+          }
+          
+          // Filter posts client-side based on user settings
+          const filteredPosts = data.filter(post => {
+            // Basic validation first
+            if (!isValidPost(post)) {
+              return false;
+            }
+            
+            // Normalize the post rating to handle both short and long formats
+            post.rating = getRatingFromCode(post.rating);
+            
+            // Apply media type filter
+            if (settings.mediaType.images && !settings.mediaType.videos) {
+              // Images only - make sure it's not a video
+              if (isVideoPost(post)) return false;
+            } else if (!settings.mediaType.images && settings.mediaType.videos) {
+              // Videos only - must be a video
+              if (!isVideoPost(post)) return false;
+            } else if (!settings.mediaType.images && !settings.mediaType.videos) {
+              // Neither enabled
+              return false;
+            }
+            
+            // Apply rating filter based on user settings WITH EMERGENCY MODE BYPASS
+            if (!isEmergencyMode && settings.ratings.length > 0) {
+              // Handle both full names and abbreviated codes
+              const normalizedSettingRatings = settings.ratings.map(r => getRatingFromCode(r));
+              
+              if (!normalizedSettingRatings.includes(post.rating)) {
+                console.log(`Filtering out post #${post.id} due to rating: ${post.rating} not in [${settings.ratings.join(', ')}]`);
+                return false;
+              }
+            } else if (isEmergencyMode) {
+              // In emergency mode, we bypass the rating filter but log it
+              const normalizedSettingRatings = settings.ratings.map(r => getRatingFromCode(r));
+              if (!normalizedSettingRatings.includes(post.rating)) {
+                console.log(`⚠️ Emergency mode: Including post #${post.id} with rating ${post.rating} despite user settings`);
+              }
+            }
+            
+            // Apply blacklist filter
+            if (settings.blacklistTags.some(tag => post.tag_string?.includes(tag))) {
+              console.log(`Filtering out post #${post.id} due to blacklisted tag`);
+              return false;
+            }
+            
+            // Post passed all filters
+            return true;
+          });
+          
+          console.log(`After filtering: ${filteredPosts.length} posts`);
+          
+          // If we've filtered out all posts but the original data had posts,
+          // suggest to the user to adjust their rating filters
+          if (filteredPosts.length === 0 && data.length > 0) {
+            // Log what ratings were available in the results
+            const availableRatings = [...new Set(data.map(post => post.rating))];
+            console.log(`Available ratings in results: ${availableRatings.join(', ')}`);
+            console.log("Consider updating rating filters in settings to see more content");
+            
+            // In emergency mode, try again with a different approach
+            if (isEmergencyMode) {
+              // If no posts passed filters in emergency mode, something else is wrong
+              // Let's try to return at least some content by ignoring all filters
+              console.log("🔥 CRITICAL: All filters failed. Returning original unfiltered content.");
+              return data.slice(0, Math.min(data.length, 10)); // Return up to 10 unfiltered posts
+            }
+          }
+          
+          return filteredPosts;
+        } catch (error) {
+          console.error('Error fetching posts:', error);
+          return [];
         }
-        
-        const response = await fetch(`https://danbooru.donmai.us/posts.json?${params.toString()}`);
-        return response.json();
       };
 
       const curatedPosts = await recommendationSystem.getCuratedExploreFeed(fetchFunction, {
-        fetchCount: 3,
+        fetchCount: 5, // Increased for better chances of finding videos
         postsPerFetch: 20,
-        maxTotal: 50
+        maxTotal: 50,
+        selectedRatings: settings.ratings // Pass the user's selected ratings
       });
+      
+      console.log(`Got ${curatedPosts.length} curated posts from recommendation system`);
 
-      // Process posts
+      // Process valid posts
       const newPosts = curatedPosts.map(post => ({
         ...post,
         liked: false,
@@ -545,97 +856,225 @@ const fetchPosts = async () => {
       posts.value = newPosts;
       currentPostIndex.value = 0;
       
+      // If no posts were found in explore mode with video filter, try a direct query
+      if (newPosts.length === 0 && !settings.mediaType.images && settings.mediaType.videos) {
+        console.log('No videos found in curated feed, trying direct video query...');
+        
+        // Make a direct query for videos
+        const params = new URLSearchParams();
+        
+        // *** CRITICAL CHANGE: Construct query with both video and rating requirements ***
+        const tags = ['animated'];
+        
+        // Always append tags parameter
+        params.append('tags', tags.join(' '));
+        params.append('limit', '20');
+        
+        // If only one rating is selected, use the dedicated rating parameter
+        if (settings.ratings.length === 1) {
+          params.append('rating', settings.ratings[0]);
+        }
+        
+        console.log('Direct video query:', params.toString());
+        
+        try {
+          const response = await fetch(`https://danbooru.donmai.us/posts.json?${params.toString()}`);
+          const data = await response.json();
+          
+          if (Array.isArray(data)) {
+            // Filter for actual videos and apply rating filter
+            const videoOnly = data.filter(post => {
+              // Normalize rating
+              post.rating = getRatingFromCode(post.rating);
+              
+              return isVideoPost(post) && 
+                isValidPost(post) &&
+                (settings.ratings.length === 0 || 
+                  settings.ratings.map(r => getRatingFromCode(r)).includes(post.rating));
+            });
+            
+            if (videoOnly.length > 0) {
+              console.log(`Found ${videoOnly.length} videos with direct query`);
+              posts.value = videoOnly.map(post => ({
+                ...post,
+                liked: false,
+                disliked: false,
+                favorited: false
+              }));
+            }
+          }
+        } catch (error) {
+          console.error('Error in direct video query:', error);
+        }
+      }
+      
     } else {
       // Regular post fetching logic for non-explore mode
-      // Build query parameters
-      const params = new URLSearchParams();
-      params.append('limit', '20');
-      params.append('page', settings.page);
+      const allNewPosts = [];
+      const maxFetches = 3; // Maximum number of API calls
+      let fetchCount = 0;
       
-      // Build a complete tags query
-      let tagsQuery = [];
+      // Prioritize different tag combinations
+      const queryPriorities = [];
       
-      // Add rating filters
-      if (settings.ratings.length > 0 && settings.ratings.length < 4) {
-        const ratingQuery = settings.ratings.map(r => `rating:${r}`).join(' OR ');
-        tagsQuery.push(`(${ratingQuery})`);
+      // Priority 1: Whitelist tag + Rating
+      if (settings.whitelistTags.length > 0 && settings.ratings.length > 0) {
+        queryPriorities.push([settings.whitelistTags[0], `rating:${settings.ratings[0]}`]);
       }
       
-      // Add whitelist tags
+      // Priority 2: Just whitelist tag
       if (settings.whitelistTags.length > 0) {
-        const whitelistQuery = settings.whitelistTags.join(' ');
-        tagsQuery.push(whitelistQuery);
+        queryPriorities.push([settings.whitelistTags[0]]);
       }
       
-      // Add blacklist tags
-      if (settings.blacklistTags.length > 0) {
-        const blacklistQuery = settings.blacklistTags.map(tag => `-${tag}`).join(' ');
-        tagsQuery.push(blacklistQuery);
+      // Priority 3: Just rating
+      if (settings.ratings.length > 0) {
+        queryPriorities.push([`rating:${settings.ratings[0]}`]);
       }
       
-      // Handle media type filtering with tags
-      const showImages = settings.mediaType.images;
-      const showVideos = settings.mediaType.videos;
-      
-      if (!showImages && showVideos) {
-        // Only videos - use the animated tag
-        tagsQuery.push('animated');
-      } else if (showImages && !showVideos) {
-        // Only images - exclude animated content
-        tagsQuery.push('-animated');
-      } else if (!showImages && !showVideos) {
-        // Neither - return nothing
-        tagsQuery.push('impossible_tag_to_ensure_no_results');
-      }
-      
-      // Add recommended tags if we don't have explicit whitelist tags
-      if (settings.whitelistTags.length === 0 && hasRecommendations.value) {
-        const recommendedParams = recommendationSystem.buildRecommendedQueryParams(
-          true, // include user tags
-          false // not in explore mode
-        );
-        
-        if (recommendedParams.tags) {
-          tagsQuery.push(recommendedParams.tags);
+      // Priority 4: Recommendations if available
+      if (hasRecommendations.value) {
+        const recommendedTags = recommendationSystem.getRecommendedTags(1);
+        if (recommendedTags.length > 0) {
+          queryPriorities.push([recommendedTags[0]]);
         }
       }
       
-      // Join all tag queries and append once
-      if (tagsQuery.length > 0) {
-        params.append('tags', tagsQuery.join(' '));
+      // Priority 5: Fallback to popular content
+      queryPriorities.push(['order:rank']);
+      
+      // Ensure we have at least one query
+      if (queryPriorities.length === 0) {
+        queryPriorities.push(['order:popular']);
       }
       
-      console.log('Query URL:', `https://danbooru.donmai.us/posts.json?${params.toString()}`);
-      
-      // Fetch from Danbooru API
-      const response = await fetch(`https://danbooru.donmai.us/posts.json?${params.toString()}`);
-      const data = await response.json();
-      
-      if (Array.isArray(data)) {
-        // Process posts
-        const newPosts = data.map(post => ({
-          ...post,
-          liked: false,
-          disliked: false,
-          favorited: false
-        }));
+      // Helper function for a single fetch
+      const fetchPostsWithTags = async (tags) => {
+        console.log('Fetching with tags:', tags);
+        const params = new URLSearchParams();
+        params.append('limit', '20');
+        params.append('page', settings.page.toString());
         
-        // If we're on page 1, replace posts; otherwise append
-        if (settings.page === 1) {
-          posts.value = newPosts;
-          currentPostIndex.value = 0; // Reset current post index when refreshing
-        } else {
-          posts.value = [...posts.value, ...newPosts];
+        // For videos only, we need to add animated tag in the query
+        if (!settings.mediaType.images && settings.mediaType.videos) {
+          // Add 'animated' tag to fetch videos from the server
+          if (tags.length < 2) {
+            tags = [...tags, 'animated'];
+          }
         }
         
-        // Only increment page if we got some results from the API
-        if (data.length > 0) {
-          settings.page++;
+        // Handle ratings using the combined format (doesn't count toward tag limit)
+        // Convert user's selected ratings to the combined format: rating:g,s,q
+        if (settings.ratings.length > 0) {
+          // Map rating full names to their single-letter codes for the API
+          const ratingCodes = settings.ratings.map(rating => {
+            switch(rating) {
+              case 'general': return 'g';
+              case 'sensitive': return 's';
+              case 'questionable': return 'q';
+              case 'explicit': return 'e';
+              default: return rating.charAt(0).toLowerCase(); // fallback
+            }
+          });
+          
+          // Create the combined rating parameter and add it to the query
+          const ratingParam = `rating:${ratingCodes.join(',')}`;
+          
+          // Remove any existing rating tags to avoid conflicts
+          tags = tags.filter(tag => !tag.startsWith('rating:'));
+          
+          // Add the combined rating parameter
+          tags.push(ratingParam);
+          console.log(`Added combined rating parameter: ${ratingParam}`);
         }
+        
+        params.append('tags', tags.join(' '));
+        
+        try {
+          const response = await fetch(`https://danbooru.donmai.us/posts.json?${params.toString()}`);
+          const data = await response.json();
+          
+          if (!Array.isArray(data)) {
+            console.error('API error:', data);
+            return [];
+          }
+          
+          console.log(`Fetched ${data.length} posts for query: ${params.toString()}`);
+          
+          // Filter client-side for constraints not included in the query
+          return data.filter(post => {
+            // Determine if post is a video based on file_ext or URL
+            const isVideo = (post.file_ext && ['mp4', 'webm'].includes(post.file_ext.toLowerCase())) ||
+                            (post.file_url && (post.file_url.toLowerCase().includes('.mp4') || 
+                                               post.file_url.toLowerCase().includes('.webm')));
+            
+            // Apply media type filter
+            if (settings.mediaType.images && !settings.mediaType.videos) {
+              // Only images
+              if (isVideo) return false;
+            } else if (!settings.mediaType.images && settings.mediaType.videos) {
+              // Only videos
+              if (!isVideo) return false;
+            } else if (!settings.mediaType.images && !settings.mediaType.videos) {
+              // Neither enabled
+              return false;
+            }
+            
+            // Filter by blacklist tags
+            if (settings.blacklistTags.some(tag => post.tag_string?.includes(tag))) {
+              return false;
+            }
+            
+            return isValidPost(post);
+          });
+        } catch (error) {
+          console.error('Error fetching posts:', error);
+          return [];
+        }
+      };
+      
+      // Try each query priority until we get enough posts or reach max fetches
+      for (const tags of queryPriorities) {
+        if (fetchCount >= maxFetches || allNewPosts.length >= 40) break;
+        
+        const fetchedPosts = await fetchPostsWithTags(tags);
+        
+        if (fetchedPosts.length > 0) {
+          allNewPosts.push(...fetchedPosts);
+          fetchCount++;
+        }
+      }
+      
+      console.log(`Total posts fetched: ${allNewPosts.length}`);
+      
+      // Process all fetched posts
+      const uniquePosts = Array.from(
+        new Map(allNewPosts.map(post => [post.id, post])).values()
+      );
+      
+      // Map to view model with interaction states
+      const newPosts = uniquePosts.map(post => ({
+        ...post,
+        liked: false,
+        disliked: false,
+        favorited: false
+      }));
+      
+      // Replace or append to existing posts
+      if (settings.page === 1) {
+        posts.value = newPosts;
+        currentPostIndex.value = 0;
+      } else {
+        posts.value = [...posts.value, ...newPosts];
+      }
+      
+      // Increment page for next fetch
+      if (allNewPosts.length > 0) {
+        settings.page++;
       }
     }
   } catch (error) {
-    console.error('Error fetching posts:', error);
+    console.error('Error in fetchPosts:', error);
   } finally {
     loading.value = false;
   }
@@ -717,6 +1156,10 @@ const toggleRating = (rating) => {
 
 const addWhitelistTag = () => {
   if (newWhitelistTag.value.trim() && !settings.whitelistTags.includes(newWhitelistTag.value.trim())) {
+    if (settings.whitelistTags.length >= 2) {
+      // Remove the oldest tag if we're at the limit
+      settings.whitelistTags.shift();
+    }
     settings.whitelistTags.push(newWhitelistTag.value.trim());
     newWhitelistTag.value = '';
   }
@@ -738,6 +1181,20 @@ const removeBlacklistTag = (index) => {
 };
 
 const applySettings = () => {
+  // Make sure we have at least one rating selected
+  if (settings.ratings.length === 0) {
+    settings.ratings = ['general'];
+  }
+  
+  // Make sure at least one media type is selected
+  if (!settings.mediaType.images && !settings.mediaType.videos) {
+    settings.mediaType.images = true;
+  }
+  
+  // REMOVING THE AUTO-ADDITION OF RATINGS FOR VIDEO MODE
+  // Only use the ratings explicitly selected by the user
+  // This prevents automatically enabling all ratings when only general is selected
+  
   // Clear existing posts and fetch with new settings
   posts.value = [];
   settings.page = 1;
