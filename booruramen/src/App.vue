@@ -187,33 +187,6 @@
                 <p>Unable to display media. <a :href="post.file_url" target="_blank" class="text-pink-500 underline">Open directly</a></p>
               </div>
             </div>
-            
-            <!-- Post actions -->
-            <div class="absolute right-4 bottom-24 flex flex-col items-center gap-4">
-              <button 
-                @click="toggleLike(post)"
-                class="p-3 rounded-full bg-black bg-opacity-70 hover:bg-pink-600 transition-colors"
-                :class="{ 'bg-pink-600': post.liked }"
-              >
-                <Heart :fill="post.liked ? 'currentColor' : 'none'" class="h-6 w-6" />
-              </button>
-              
-              <button 
-                @click="toggleDislike(post)"
-                class="p-3 rounded-full bg-black bg-opacity-70 hover:bg-gray-900 transition-colors"
-                :class="{ 'bg-gray-700': post.disliked }"
-              >
-                <ThumbsDown :fill="post.disliked ? 'currentColor' : 'none'" class="h-6 w-6" />
-              </button>
-              
-              <button 
-                @click="toggleFavorite(post)"
-                class="p-3 rounded-full bg-black bg-opacity-70 hover:bg-yellow-600 transition-colors"
-                :class="{ 'bg-yellow-600': post.favorited }"
-              >
-                <Star :fill="post.favorited ? 'currentColor' : 'none'" class="h-6 w-6" />
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -461,6 +434,36 @@
       >
         <Settings class="h-6 w-6" />
       </button>
+      
+      <!-- Floating post action buttons - repositioned to appear below sidebar but above content -->
+      <div 
+        class="fixed right-4 bottom-24 flex flex-col items-center gap-4 z-15" 
+        v-if="currentPost"
+      >
+        <button 
+          @click="toggleLike(currentPost)"
+          class="p-3 rounded-full bg-black bg-opacity-70 hover:bg-pink-600 transition-colors backdrop-blur-sm"
+          :class="{ 'bg-pink-600': currentPost.liked }"
+        >
+          <Heart :fill="currentPost.liked ? 'currentColor' : 'none'" class="h-6 w-6" />
+        </button>
+        
+        <button 
+          @click="toggleDislike(currentPost)"
+          class="p-3 rounded-full bg-black bg-opacity-70 hover:bg-gray-900 transition-colors backdrop-blur-sm"
+          :class="{ 'bg-gray-700': currentPost.disliked }"
+        >
+          <ThumbsDown :fill="currentPost.disliked ? 'currentColor' : 'none'" class="h-6 w-6" />
+        </button>
+        
+        <button 
+          @click="toggleFavorite(currentPost)"
+          class="p-3 rounded-full bg-black bg-opacity-70 hover:bg-yellow-600 transition-colors backdrop-blur-sm"
+          :class="{ 'bg-yellow-600': currentPost.favorited }"
+        >
+          <Star :fill="currentPost.favorited ? 'currentColor' : 'none'" class="h-6 w-6" />
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -1459,6 +1462,33 @@ onUnmounted(() => {
   0% { opacity: 1; }
   70% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/* Add a subtle animation for the action buttons */
+@keyframes fadeIn {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Apply the animation to the fixed buttons */
+.fixed.flex.flex-col button {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Stagger the animations for each button */
+.fixed.flex.flex-col button:nth-child(1) {
+  animation-delay: 0s;
+}
+.fixed.flex.flex-col button:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.fixed.flex.flex-col button:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+/* Add a box-shadow to the buttons to make them stand out against any background */
+.fixed.flex.flex-col button {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 </style>
 
