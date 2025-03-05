@@ -7,7 +7,7 @@
         class="absolute top-0 left-0 w-80 h-full bg-transparent backdrop-blur-sm border-r border-gray-700 overflow-y-auto z-20 transition-transform duration-300 ease-in-out"
         :style="{ transform: showPostDetails ? 'translateX(0)' : 'translateX(-100%)' }"
       >
-        <div class="p-4">
+        <div class="p-4 pb-20">
           <h2 class="text-xl font-bold mb-4">Post Details</h2>
           
           <div class="space-y-4" v-if="currentPost">
@@ -174,11 +174,12 @@
               <video 
                 v-else-if="getFileExtension(post) === 'mp4' || getFileExtension(post) === 'webm' || isVideoPost(post)" 
                 :src="post.file_url" 
-                controls 
+                ref="videoPlayer"
                 autoplay 
                 loop 
                 muted 
                 class="max-h-[calc(100vh-0px)] max-w-full"
+                @click="togglePlayPause"
               ></video>
               <div 
                 v-else
@@ -189,6 +190,84 @@
             </div>
           </div>
         </div>
+        
+        <!-- Custom Video Controls -->
+        <div 
+          v-if="isCurrentPostVideo && currentPost" 
+          class="fixed bottom-0 left-0 right-0 bg-black bg-opacity-60 backdrop-blur-sm py-2 px-4 flex items-center gap-4 transition-opacity duration-300 z-40"
+          :class="{ 'opacity-0': !showVideoControls && !isVideoControlsHovered, 'opacity-100': showVideoControls || isVideoControlsHovered }"
+          @mouseenter="isVideoControlsHovered = true"
+          @mouseleave="isVideoControlsHovered = false"
+        >
+          <button @click="togglePlayPause" class="text-white p-2 w-8 h-8 flex items-center justify-center">
+            <svg v-if="isPlaying" viewBox="0 0 24 24" class="w-6 h-6 fill-white">
+              <rect x="6" y="4" width="4" height="16" rx="1" />
+              <rect x="14" y="4" width="4" height="16" rx="1" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" class="w-6 h-6 fill-white">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </button>
+          
+          <!-- Progress bar - Updated with drag functionality -->
+          <div class="flex-grow relative h-2 bg-gray-700 rounded cursor-pointer" 
+            @click="seekVideo"
+            @mousedown="startProgressDrag"
+            ref="progressBar">
+            <div 
+              class="absolute top-0 left-0 h-full bg-pink-600 rounded transition-[width]" 
+              :class="{ 'transition-none': isProgressDragging }"
+              :style="{ width: `${videoProgress}%` }"
+            ></div>
+          </div>
+          
+          <!-- Volume control section - Modified for better hover behavior -->
+          <div class="flex items-center group relative">
+            <!-- Improved hover area for volume slider -->
+            <div 
+              class="absolute bottom-full w-8 h-28 group-hover:block cursor-pointer"
+              style="left: 50%; transform: translateX(-50%);"
+              @mouseenter="isVolumeSliderHovered = true"
+              @mouseleave="isVolumeSliderHovered = false"
+            >
+              <!-- Vertical volume slider - positioned above the mute button -->
+              <div 
+                class="absolute bottom-2 left-1/2 transform -translate-x-1/2 h-24 w-2 bg-gray-700 rounded cursor-pointer"
+                :class="{ 'hidden': !isVolumeSliderHovered && !isVolumeHovered }"
+                @mousedown="startVolumeChange"
+                @click="changeVolumeVertical"
+                ref="volumeSlider"
+              >
+                <div 
+                  class="absolute bottom-0 left-0 w-full bg-pink-600 rounded" 
+                  :style="{ height: `${volumeLevel * 100}%` }"
+                ></div>
+              </div>
+            </div>
+            
+            <!-- Mute button with improved hover behavior -->
+            <button 
+              @click="toggleMute" 
+              @mouseenter="isVolumeHovered = true"
+              @mouseleave="isVolumeHovered = false"
+              class="text-white p-2 w-8 h-8 flex items-center justify-center"
+            >
+              <svg v-if="isMuted || volumeLevel === 0" viewBox="0 0 24 24" class="w-6 h-6 fill-white">
+                <path d="M12 4L6 10H2v4h4l6 6z" />
+                <line x1="18" y1="6" x2="6" y2="18" stroke="white" stroke-width="2" />
+              </svg>
+              <svg v-else-if="volumeLevel < 0.5" viewBox="0 0 24 24" class="w-6 h-6 fill-white">
+                <path d="M12 4L6 10H2v4h4l6 6z" />
+                <path d="M15 12c0-1.7-1-3-2-3.5" stroke="white" stroke-width="2" fill="none" />
+              </svg>
+              <svg v-else viewBox="0 0 24 24" class="w-6 h-6 fill-white">
+                <path d="M12 4L6 10H2v4h4l6 6z" />
+                <path d="M15 12c0-1.7-1-3-2-3.5" stroke="white" stroke-width="2" fill="none" />
+                <path d="M18 8c1 1.5 1.5 3 1.5 4s-.5 2.5-1.5 4" stroke="white" stroke-width="2" fill="none" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Settings sidebar -->
@@ -196,7 +275,7 @@
         class="absolute top-0 right-0 w-80 h-full bg-transparent backdrop-blur-sm border-l border-gray-700 overflow-y-auto z-20 transition-transform duration-300 ease-in-out"
         :style="{ transform: showSettingsSidebar ? 'translateX(0)' : 'translateX(100%)' }"
       >
-      <div class="p-4">
+      <div class="p-4 pb-20">
           <h2 class="text-xl font-bold mb-4">Settings</h2>
           
           <!-- Auto-scroll toggle -->
@@ -489,6 +568,31 @@ const exploreMode = ref(false);
 const viewStartTime = ref(null);
 const hasRecommendations = ref(false);
 
+// Video control state
+const videoPlayer = ref(null);
+const isPlaying = ref(true);
+const isMuted = ref(true);
+const currentTime = ref(0);
+const videoDuration = ref(0);
+const videoProgress = ref(0);
+const showVideoControls = ref(false);
+const videoControlsTimeout = ref(null);
+const isVideoControlsHovered = ref(false);
+const volumeLevel = ref(0.7); // Default volume level (0.0 to 1.0)
+const volumeSlider = ref(null);
+const isDraggingVolume = ref(false);
+
+// Add this to the existing state variables
+const isVolumeHovered = ref(false);
+const isVolumeSliderHovered = ref(false);
+
+// Add these to the state variables section
+const isProgressDragging = ref(false);
+const progressBar = ref(null);
+
+// Add this to the state variables section
+const wasPlayingBeforeDrag = ref(false);
+
 // Settings
 const settings = reactive({
   autoScroll: false,
@@ -508,6 +612,12 @@ const currentPost = computed(() => {
 });
 const recommendedTags = computed(() => {
   return recommendationSystem.getRecommendedTags(3);
+});
+
+// Check if current post is a video
+const isCurrentPostVideo = computed(() => {
+  if (!currentPost.value) return false;
+  return isVideoPost(currentPost.value);
 });
 
 // Add this mapping function right after the computed properties
@@ -1291,6 +1401,9 @@ const handleScroll = () => {
         1,
         currentPost.value
       );
+      
+      // Handle audio for the new current video
+      handleVideoVisibilityChange();
     }
   }
   
@@ -1384,6 +1497,310 @@ const fallbackCopyTextToClipboard = (text) => {
   }
 };
 
+// Format time for video player (mm:ss)
+const formatTime = (seconds) => {
+  if (!seconds || isNaN(seconds)) return '00:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
+// Video control functions
+const togglePlayPause = () => {
+  if (!videoPlayer.value) return;
+  
+  // Find the currently visible video element
+  const currentVideo = getCurrentVideoElement();
+  if (!currentVideo) return;
+  
+  if (currentVideo.paused) {
+    currentVideo.play();
+    isPlaying.value = true;
+  } else {
+    currentVideo.pause();
+    isPlaying.value = false;
+  }
+  
+  // Show controls briefly when toggling play/pause
+  showControls();
+};
+
+const toggleMute = () => {
+  isMuted.value = !isMuted.value;
+  
+  // Apply to current video
+  applyVolumeToCurrentVideo();
+  
+  // Store mute preference
+  try {
+    localStorage.setItem('booruramen_muted', isMuted.value.toString());
+  } catch (e) {
+    console.error('Failed to save mute setting', e);
+  }
+  
+  // Show controls briefly when toggling mute
+  showControls();
+};
+
+const startVolumeChange = (event) => {
+  isDraggingVolume.value = true;
+  changeVolumeVertical(event);
+  
+  // Add event listeners for drag
+  document.addEventListener('mousemove', handleVolumeDrag);
+  document.addEventListener('mouseup', stopVolumeChange);
+  
+  // Prevent text selection during drag
+  event.preventDefault();
+};
+
+const handleVolumeDrag = (event) => {
+  if (isDraggingVolume.value) {
+    changeVolumeVertical(event);
+  }
+};
+
+const stopVolumeChange = () => {
+  isDraggingVolume.value = false;
+  document.removeEventListener('mousemove', handleVolumeDrag);
+  document.removeEventListener('mouseup', stopVolumeChange);
+  
+  // Remove active class when done dragging
+  if (volumeSlider.value) {
+    const sliderFill = volumeSlider.value.querySelector('.bg-pink-600');
+    if (sliderFill) {
+      sliderFill.classList.remove('active');
+    }
+  }
+};
+
+const changeVolumeVertical = (event) => {
+  if (!volumeSlider.value) return;
+  
+  const rect = volumeSlider.value.getBoundingClientRect();
+  // For vertical slider, calculate position from bottom (1) to top (0)
+  const pos = 1 - Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+  const newVolume = Math.max(0, Math.min(1, pos)); // Clamp between 0 and 1
+  
+  volumeLevel.value = newVolume;
+  
+  // Apply the volume level to all videos so it's ready when they become visible
+  const videos = document.querySelectorAll('video');
+  videos.forEach(video => {
+    video.volume = volumeLevel.value;
+  });
+  
+  // Apply mute state only to the current video
+  applyVolumeToCurrentVideo();
+  
+  // Store volume preference in localStorage to persist across sessions
+  try {
+    localStorage.setItem('booruramen_volume', newVolume.toString());
+  } catch (e) {
+    console.error('Failed to save volume setting', e);
+  }
+  
+  // Ensure the slider handle is visible during dragging
+  if (volumeSlider.value) {
+    const sliderFill = volumeSlider.value.querySelector('.bg-pink-600');
+    if (sliderFill) {
+      sliderFill.classList.add('active');
+    }
+  }
+  
+  // Show controls briefly when changing volume
+  showControls();
+};
+
+const applyVolumeToCurrentVideo = () => {
+  // Find the currently visible video element
+  const currentVideo = getCurrentVideoElement();
+  if (!currentVideo) return;
+  
+  // Apply current volume settings
+  currentVideo.volume = volumeLevel.value;
+  currentVideo.muted = isMuted.value;
+  
+  // If volume is set to 0, mute the video
+  // Otherwise, make sure it's unmuted if volume > 0
+  if (volumeLevel.value === 0) {
+    currentVideo.muted = true;
+    isMuted.value = true;
+  } else if (!isMuted.value) {
+    currentVideo.muted = false;
+  }
+};
+
+const seekVideo = (event) => {
+  // Just use the same logic as updateProgressDrag
+  updateProgressDrag(event);
+};
+
+const startProgressDrag = (event) => {
+  isProgressDragging.value = true;
+  
+  // Pause the video during dragging for smoother experience
+  const currentVideo = getCurrentVideoElement();
+  if (currentVideo) {
+    wasPlayingBeforeDrag.value = !currentVideo.paused;
+    currentVideo.pause();
+  }
+  
+  updateProgressDrag(event);
+  
+  // Add event listeners for drag
+  document.addEventListener('mousemove', handleProgressDrag);
+  document.addEventListener('mouseup', stopProgressDrag);
+  
+  // Prevent text selection during drag
+  event.preventDefault();
+};
+
+const handleProgressDrag = (event) => {
+  if (isProgressDragging.value) {
+    updateProgressDrag(event);
+  }
+};
+
+const stopProgressDrag = () => {
+  isProgressDragging.value = false;
+  document.removeEventListener('mousemove', handleProgressDrag);
+  document.removeEventListener('mouseup', stopProgressDrag);
+  
+  // Resume playback if it was playing before dragging started
+  const currentVideo = getCurrentVideoElement();
+  if (currentVideo && wasPlayingBeforeDrag.value) {
+    currentVideo.play().catch(err => console.error('Error resuming playback:', err));
+    isPlaying.value = true;
+  }
+};
+
+const updateProgressDrag = (event) => {
+  if (!progressBar.value) return;
+  
+  const currentVideo = getCurrentVideoElement();
+  if (!currentVideo) return;
+  
+  const rect = progressBar.value.getBoundingClientRect();
+  const pos = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+  
+  // Set the current time of the video
+  currentVideo.currentTime = pos * currentVideo.duration;
+  
+  // Update progress indicators immediately for visual feedback
+  currentTime.value = currentVideo.currentTime;
+  videoProgress.value = (currentTime.value / videoDuration.value) * 100;
+  
+  // Show controls while dragging
+  showControls();
+};
+
+const toggleFullscreen = () => {
+  // Find the currently visible video element
+  const currentVideo = getCurrentVideoElement();
+  if (!currentVideo) return;
+  
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+  } else {
+    currentVideo.requestFullscreen();
+  }
+  
+  // Show controls briefly when toggling fullscreen
+  showControls();
+};
+
+const updateVideoProgress = () => {
+  // Find the currently visible video element
+  const currentVideo = getCurrentVideoElement();
+  if (!currentVideo) return;
+  
+  currentTime.value = currentVideo.currentTime;
+  videoDuration.value = currentVideo.duration;
+  videoProgress.value = (currentTime.value / videoDuration.value) * 100;
+  
+  // Update volume level if it changed externally
+  if (!isMuted.value && volumeLevel.value !== currentVideo.volume) {
+    volumeLevel.value = currentVideo.volume;
+  }
+};
+
+const showControls = () => {
+  showVideoControls.value = true;
+  
+  // Clear any existing timeout
+  if (videoControlsTimeout.value) {
+    clearTimeout(videoControlsTimeout.value);
+  }
+  
+  // Hide controls after 3 seconds of inactivity
+  videoControlsTimeout.value = setTimeout(() => {
+    if (!isVideoControlsHovered.value) {
+      showVideoControls.value = false;
+    }
+  }, 3000);
+};
+
+const getCurrentVideoElement = () => {
+  // Find all video elements and locate the one that's currently visible
+  const videos = document.querySelectorAll('video');
+  for (const video of videos) {
+    const rect = video.getBoundingClientRect();
+    if (rect.top < window.innerHeight && rect.bottom > 0) {
+      return video;
+    }
+  }
+  return null;
+};
+
+// Handle mouse movement to show video controls
+const handleMouseMove = () => {
+  if (isCurrentPostVideo.value) {
+    showControls();
+  }
+};
+
+// Handle video element visibility changes
+const handleVideoVisibilityChange = () => {
+  // Find all videos and mute those that are not currently visible
+  const videos = document.querySelectorAll('video');
+  const currentVideo = getCurrentVideoElement();
+  
+  videos.forEach(video => {
+    if (video === currentVideo) {
+      // Apply stored volume settings to current video
+      video.volume = volumeLevel.value;
+      video.muted = isMuted.value;
+      
+      // If the video should be playing, ensure it's playing
+      if (isPlaying.value) {
+        video.play().catch(err => console.error('Error playing video:', err));
+      } else {
+        video.pause();
+      }
+    } else {
+      // Mute and pause other videos
+      video.muted = true;
+      video.pause();
+    }
+  });
+};
+
+// New function to initialize all videos with the correct volume settings
+const initializeAllVideoVolumes = () => {
+  const videos = document.querySelectorAll('video');
+  videos.forEach(video => {
+    // Set volume level for all videos so it's ready when they become visible
+    video.volume = volumeLevel.value;
+    // Only set muted state for active video - others stay muted
+    if (video === getCurrentVideoElement()) {
+      video.muted = isMuted.value;
+    } else {
+      video.muted = true;
+    }
+  });
+};
+
 // Lifecycle hooks
 onMounted(() => {
   fetchPosts();
@@ -1395,8 +1812,14 @@ onMounted(() => {
   // Add keyboard event listener
   document.addEventListener('keydown', handleKeyDown);
   
+  // Add mouse movement listener for video controls
+  document.addEventListener('mousemove', handleMouseMove);
+  
   // Initialize view start time
   viewStartTime.value = Date.now();
+  
+  // Set up interval to update video progress
+  const videoProgressInterval = setInterval(updateVideoProgress, 250);
   
   // Check if we have enough interactions to enable recommendations
   setTimeout(() => {
@@ -1406,6 +1829,46 @@ onMounted(() => {
     // Force user profile update
     recommendationSystem.updateUserProfile();
   }, 500);
+  
+  // Initialize volume level for any video
+  setTimeout(() => {
+    const video = getCurrentVideoElement();
+    if (video) {
+      video.volume = volumeLevel.value;
+    }
+  }, 1000);
+  
+  // Load volume settings from localStorage
+  try {
+    const savedVolume = localStorage.getItem('booruramen_volume');
+    const savedMuted = localStorage.getItem('booruramen_muted');
+    
+    if (savedVolume !== null) {
+      volumeLevel.value = parseFloat(savedVolume);
+    }
+    
+    if (savedMuted !== null) {
+      isMuted.value = savedMuted === 'true';
+    }
+    
+    console.log('Loaded volume settings:', { volume: volumeLevel.value, muted: isMuted.value });
+  } catch (e) {
+    console.error('Failed to load volume settings', e);
+  }
+  
+  // Initialize videos with correct volume settings when posts are loaded
+  watch(posts, () => {
+    // Small delay to ensure videos are rendered
+    setTimeout(() => {
+      initializeAllVideoVolumes();
+    }, 200);
+  }, { immediate: true });
+  
+  // Clean up on unmount
+  onUnmounted(() => {
+    clearInterval(videoProgressInterval);
+    document.removeEventListener('mousemove', handleMouseMove);
+  });
 });
 
 // Clean up
@@ -1417,16 +1880,59 @@ watch(() => settings.autoScroll, (newValue) => {
   }
 });
 
-// Clean up event listeners on component unmount
-onUnmounted(() => {
-  // Track the final view time before leaving
-  trackViewTime();
+// Watch for changes in current post index to handle audio for the visible post
+watch(currentPostIndex, (newIndex, oldIndex) => {
+  // Apply volume settings to newly visible video with a slight delay to ensure DOM updates
+  setTimeout(() => {
+    // Make sure to preserve the volume level while navigating
+    handleVideoVisibilityChange();
+    
+    // Also initialize any newly loaded videos
+    initializeAllVideoVolumes();
+  }, 100);
+}, { immediate: true });
+
+// Add a new MutationObserver to handle dynamically added videos
+onMounted(() => {
+  // ...existing code...
   
-  if (feedContainer.value) {
-    feedContainer.value.removeEventListener('scroll', handleScroll);
-  }
-  document.removeEventListener('keydown', handleKeyDown);
-  stopAutoScroll();
+  // Setup observer for new videos being added to the DOM
+  const videoObserver = new MutationObserver((mutations) => {
+    let videoAdded = false;
+    
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        // Check if a video was added directly
+        if (node.nodeName === 'VIDEO') {
+          videoAdded = true;
+        }
+        // Or if a container with a video was added
+        else if (node.nodeType === 1) { // Element node
+          const hasVideo = node.querySelector('video');
+          if (hasVideo) videoAdded = true;
+        }
+      });
+    });
+    
+    if (videoAdded) {
+      // Initialize all videos with the correct volume
+      initializeAllVideoVolumes();
+    }
+  });
+  
+  // Start observing the document body for video changes
+  videoObserver.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+  
+  // Clean up observer on unmount
+  onUnmounted(() => {
+    videoObserver.disconnect();
+    // ...existing cleanup code...
+  });
+  
+  // ...existing code...
 });
 </script>
 
@@ -1489,6 +1995,120 @@ onUnmounted(() => {
 /* Add a box-shadow to the buttons to make them stand out against any background */
 .fixed.flex.flex-col button {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Video controls styling */
+.video-progress {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.video-progress-filled {
+  background: #EC4899;
+  height: 100%;
+}
+
+/* Add a shadow above the video controls for better visibility */
+.fixed.bottom-0 {
+  box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Add more refined video control styling */
+.fixed.bottom-0 {
+  box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Add hover effects for video control buttons */
+.fixed.bottom-0 button {
+  transition: transform 0.2s ease;
+  border-radius: 50%;
+}
+
+.fixed.bottom-0 button:hover {
+  transform: scale(1.15);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Improved progress bar appearance */
+.flex-grow.relative.h-2 {
+  height: 4px;
+  overflow: hidden;
+  transition: height 0.2s ease;
+}
+
+.flex-grow.relative.h-2:hover {
+  height: 6px;
+}
+
+/* Volume control styling */
+.group:hover .hidden.group-hover\:block {
+  display: block;
+}
+
+/* Improved progress and volume bars */
+.flex-grow.relative.h-2,
+.group-hover\:block.w-24.h-2 {
+  height: 4px;
+  overflow: hidden;
+  transition: height 0.2s ease;
+}
+
+.flex-grow.relative.h-2:hover,
+.group-hover\:block.w-24.h-2:hover {
+  height: 6px;
+}
+
+/* Make volume slider handle more visible when dragging */
+.group-hover\:block.w-24.h-2 {
+  position: relative;
+  height: 4px;
+  overflow: visible;
+  transition: height 0.2s ease;
+}
+
+.group-hover\:block.w-24.h-2:hover,
+.group-hover\:block.w-24.h-2:active {
+  height: 6px;
+}
+
+/* Change volume slider drag handle to appear at current position */
+.group-hover\:block.w-24.h-2 .bg-pink-600::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translate(50%, -50%);
+  width: 12px;
+  height: 12px;
+  background-color: #EC4899;
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(0,0,0,0.5);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.group-hover\:block.w-24.h-2:hover .bg-pink-600::after {
+  opacity: 1;
+}
+
+.group-hover\:block.w-24.h-2:active .bg-pink-600::after {
+  opacity: 1;
+}
+
+/* Remove the old right-edge-only handle style */
+.group-hover\:block.w-24.h-2:active::after {
+  content: none;
+}
+
+/* Prevent text selection during volume dragging */
+.user-select-none {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 </style>
 
