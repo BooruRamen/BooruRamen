@@ -367,25 +367,27 @@ class RecommendationSystem {
     // Start with an empty tag query
     let tags = [];
     
-    // Add user's favorite tags if requested
+    // Add user's favorite tag if requested (limited to 1 tag to stay under API limit)
     if (includeUserTags && this.tagScores) {
-      const recommendedTags = this.getRecommendedTags(3);
+      const recommendedTags = this.getRecommendedTags(1);
       if (recommendedTags.length > 0) {
-        // If we have multiple tags, use them as "any of these" query
-        if (recommendedTags.length > 1 && !exploreMode) {
-          tags.push(`(${recommendedTags.join(' OR ')})`);
-        } 
-        // In explore mode or with just one tag, add it directly
-        else {
-          tags.push(recommendedTags[0]);
-        }
+        tags.push(recommendedTags[0]);
       }
     }
     
-    // In explore mode, intentionally get more diverse content
-    if (exploreMode) {
-      // Add diversity by using order:random
-      tags.push('order:random');
+    // In explore mode, add diversity via time-based query or popularity
+    // Completely avoid order:random as it causes timeouts
+    if (exploreMode && tags.length < 2) {
+      // Only use safe strategies that won't timeout the database
+      const saferStrategies = [
+        'date:>1d', // Last day
+        'date:>3d', // Last 3 days
+        'date:>7d', // Last week
+        'order:score', // High scoring posts
+        'order:popular' // Popular posts
+      ];
+      
+      tags.push(saferStrategies[Math.floor(Math.random() * saferStrategies.length)]);
     }
     
     return {
@@ -396,68 +398,61 @@ class RecommendationSystem {
   /**
    * Generate diverse query sets for explore mode to cast a wider net
    * @param {number} count - Number of different query sets to generate
+   * @param {Array} selectedRatings - Array of rating values to include
    * @returns {Array} - Array of query parameter objects
    */
-  generateExploreQueries(count = 3) {
+  generateExploreQueries(count = 3, selectedRatings = ['general']) {
     const queries = [];
-    
-    // Always include one query with the user's top preferences
-    queries.push(this.buildRecommendedQueryParams(true, true));
-    
-    if (count <= 1) return queries;
     
     // Get all tags with positive scores
     const positiveTags = Object.entries(this.tagScores || {})
       .filter(([_, score]) => score > 0)
       .sort((a, b) => b[1] - a[1]);
     
-    // Generate a query with some mid-tier tags
-    if (positiveTags.length > 5) {
-      const midIndex = Math.floor(positiveTags.length / 2);
-      const midTags = positiveTags.slice(midIndex, midIndex + 3)
-        .map(([tag]) => tag);
-      
-      if (midTags.length > 0) {
-        queries.push({
-          tags: `(${midTags.join(' OR ')}) order:random`
-        });
-      }
+    // Always include one query with the user's top preference
+    if (positiveTags.length > 0) {
+      // Just use the single top tag for maximum compatibility
+      queries.push({
+        tags: positiveTags[0][0]
+      });
+    } else {
+      // If no positive tags, use a safe ordering option
+      queries.push({
+        tags: 'order:score'
+      });
     }
+    
+    if (count <= 1) return queries;
+    
+    // Generate a query with a safer ordering parameter
+    const safeOrderOptions = [
+      'order:popular',
+      'order:score', 
+      'date:>1w'
+    ];
+    // Pick a random safe ordering option
+    const randomOrder = safeOrderOptions[Math.floor(Math.random() * safeOrderOptions.length)];
+    queries.push({ tags: randomOrder });
     
     if (count <= 2) return queries;
     
-    // Generate a discovery query from tag categories the user likes
-    const tagCategoryScores = {};
-    
-    // Calculate scores for each tag category
-    Object.entries(this.tagScores || {}).forEach(([tag, score]) => {
-      // Try to identify the tag category
-      TAG_CATEGORIES.forEach(category => {
-        if (tag.startsWith(`${category}:`)) {
-          if (!tagCategoryScores[category]) {
-            tagCategoryScores[category] = 0;
-          }
-          tagCategoryScores[category] += score;
-        }
-      });
-    });
-    
-    // Find the top category
-    const topCategory = Object.entries(tagCategoryScores)
-      .sort((a, b) => b[1] - a[1])[0];
-    
-    if (topCategory) {
-      queries.push({
-        tags: `${topCategory[0]}:* order:random`
-      });
+    // For the third query, try to use a mid-tier tag if available
+    if (positiveTags.length > 5) {
+      const midIndex = Math.floor(positiveTags.length / 3); // Use tag from first third
+      queries.push({ tags: positiveTags[midIndex][0] });
     } else {
-      // If we can't find a category, use a popularity-based query
-      queries.push({
-        tags: 'order:rank'
-      });
+      // Otherwise use a different ordering strategy
+      const alternateOrder = safeOrderOptions.find(order => 
+        !queries.some(q => q.tags.includes(order))
+      ) || 'order:favcount';
+      
+      queries.push({ tags: alternateOrder });
     }
     
-    return queries;
+    // Return only unique queries
+    return queries.filter((query, index, self) => 
+      self.findIndex(q => q.tags === query.tags) === index
+    );
   }
   
   /**
@@ -502,33 +497,142 @@ class RecommendationSystem {
     const { 
       fetchCount = 3,       // Number of different queries to run
       postsPerFetch = 20,   // Number of posts to fetch per query
-      maxTotal = 50         // Maximum total posts to return
+      maxTotal = 50,        // Maximum total posts to return
+      selectedRatings = ['general'] // Rating filters to apply
     } = options;
     
-    // Generate diverse query sets
-    const queries = this.generateExploreQueries(fetchCount);
-    console.log("Explore mode queries:", queries);
+    // Generate diverse query sets - these queries will be simple (1 tag each maximum)
+    const queries = this.generateExploreQueries(fetchCount, selectedRatings);
+    console.log("Explore mode base queries:", queries);
+    
+    // Helper function to ensure query doesn't have conflicting order tags
+    const sanitizeQuery = (query) => {
+      // Create a clean copy of the query
+      const sanitizedQuery = { ...query };
+      
+      // If the query contains order:random, remove any other order: tags
+      if (sanitizedQuery.tags && sanitizedQuery.tags.includes('order:random')) {
+        // Keep only the order:random tag, remove other order: tags
+        const tags = sanitizedQuery.tags.split(' ');
+        const filteredTags = tags.filter(tag => 
+          tag === 'order:random' || !tag.startsWith('order:')
+        );
+        sanitizedQuery.tags = filteredTags.join(' ');
+      }
+      
+      // CRITICAL FIX: Add explicit rating tag to the query instead of using rating parameter
+      if (selectedRatings && selectedRatings.length === 1) {
+        // Build rating tag (e.g., rating:general)
+        const ratingTag = `rating:${selectedRatings[0]}`;
+        
+        // Add rating to the tags if not already present
+        if (!sanitizedQuery.tags.includes(ratingTag)) {
+          sanitizedQuery.tags = sanitizedQuery.tags ? 
+            `${sanitizedQuery.tags} ${ratingTag}` : 
+            ratingTag;
+        }
+        
+        console.log(`Adding rating tag to query: ${ratingTag}`);
+      }
+      
+      return sanitizedQuery;
+    };
     
     // Fetch posts for each query in parallel
     try {
-      const fetchPromises = queries.map(query => 
-        fetchFunction(query, postsPerFetch)
-      );
+      const fetchPromises = queries.map(query => {
+        // Create a clean sanitized query
+        const cleanQuery = sanitizeQuery(query);
+        console.log(`Processing query: "${cleanQuery.tags}"`);
+        
+        // Execute fetch with the sanitized query
+        return fetchFunction(cleanQuery, postsPerFetch)
+          .catch(error => {
+            console.warn(`Query failed: ${cleanQuery.tags}`, error);
+            return []; // Return empty array for failed queries
+          });
+      });
       
       const fetchResults = await Promise.all(fetchPromises);
       
       // Combine all fetched posts
       let allPosts = [];
-      fetchResults.forEach(posts => {
+      fetchResults.forEach((posts, index) => {
         if (posts && posts.length) {
+          console.log(`Query "${queries[index].tags}" returned ${posts.length} posts`);
           allPosts = [...allPosts, ...posts];
+        } else {
+          console.log(`Query "${queries[index].tags}" returned no posts`);
         }
       });
+      
+      // If we didn't get enough posts, try fallback queries
+      if (allPosts.length < 10) {
+        console.log(`Only found ${allPosts.length} posts, trying fallback query`);
+        
+        // Fallback: Simple order:score query (very reliable)
+        try {
+          // Build rating tags for the fallback query
+          let fallbackRatingTags = '';
+          if (selectedRatings && selectedRatings.length === 1) {
+            fallbackRatingTags = `rating:${selectedRatings[0]}`;
+          }
+
+          const fallbackQuery = { 
+            tags: fallbackRatingTags ? `order:score ${fallbackRatingTags}` : 'order:score'
+          };
+          
+          console.log("Running fallback query:", fallbackQuery);
+          
+          const fallbackPosts = await fetchFunction(
+            fallbackQuery,
+            postsPerFetch
+          );
+          
+          if (fallbackPosts && fallbackPosts.length) {
+            console.log(`Fallback query found ${fallbackPosts.length} posts`);
+            allPosts = [...allPosts, ...fallbackPosts];
+          }
+        } catch (fallbackError) {
+          console.error("Fallback query failed:", fallbackError);
+        }
+      }
+      
+      // Check if we have posts
+      if (allPosts.length === 0) {
+        console.warn("All queries returned no posts. This should not happen with our conservative approach.");
+        
+        // Last resort: Try with only the rating tag
+        try {
+          let ratingTag = '';
+          if (selectedRatings && selectedRatings.length === 1) {
+            ratingTag = `rating:${selectedRatings[0]}`;
+          }
+          
+          const lastResortQuery = { 
+            tags: ratingTag || ''
+          };
+          
+          console.log("Trying last resort query with just rating:", lastResortQuery);
+          const lastResortPosts = await fetchFunction(lastResortQuery, postsPerFetch);
+          
+          if (lastResortPosts && lastResortPosts.length) {
+            console.log(`Last resort query found ${lastResortPosts.length} posts`);
+            allPosts = lastResortPosts;
+          } else {
+            console.error("Last resort query returned no posts. API may be down.");
+          }
+        } catch (lastResortError) {
+          console.error("Last resort query failed:", lastResortError);
+        }
+      }
       
       // Remove duplicates
       const uniquePosts = Array.from(
         new Map(allPosts.map(post => [post.id, post])).values()
       );
+      
+      console.log(`Found ${uniquePosts.length} unique posts after deduplication`);
       
       // Rank the combined posts using our recommendation system
       const rankedPosts = this.rankPosts(uniquePosts);
@@ -539,6 +643,25 @@ class RecommendationSystem {
       console.error("Error fetching curated explore feed:", error);
       return [];
     }
+  }
+
+  /**
+   * Normalize rating code from short form to full form
+   * @param {string} ratingCode - The rating code to normalize
+   * @returns {string} - Normalized rating
+   */
+  normalizeRatingCode(ratingCode) {
+    const ratingMap = {
+      'g': 'general',
+      'general': 'general',
+      's': 'sensitive',
+      'sensitive': 'sensitive', 
+      'q': 'questionable',
+      'questionable': 'questionable',
+      'e': 'explicit',
+      'explicit': 'explicit'
+    };
+    return ratingMap[ratingCode] || ratingCode;
   }
 }
 
