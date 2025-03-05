@@ -7,7 +7,7 @@
         class="absolute top-0 left-0 w-80 h-full bg-transparent backdrop-blur-sm border-r border-gray-700 overflow-y-auto z-20 transition-transform duration-300 ease-in-out"
         :style="{ transform: showPostDetails ? 'translateX(0)' : 'translateX(-100%)' }"
       >
-        <div class="p-4">
+        <div class="p-4 pb-20">
           <h2 class="text-xl font-bold mb-4">Post Details</h2>
           
           <div class="space-y-4" v-if="currentPost">
@@ -275,7 +275,7 @@
         class="absolute top-0 right-0 w-80 h-full bg-transparent backdrop-blur-sm border-l border-gray-700 overflow-y-auto z-20 transition-transform duration-300 ease-in-out"
         :style="{ transform: showSettingsSidebar ? 'translateX(0)' : 'translateX(100%)' }"
       >
-      <div class="p-4">
+      <div class="p-4 pb-20">
           <h2 class="text-xl font-bold mb-4">Settings</h2>
           
           <!-- Auto-scroll toggle -->
