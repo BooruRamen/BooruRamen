@@ -209,9 +209,14 @@
             </svg>
           </button>
           
-          <div class="flex-grow relative h-2 bg-gray-700 rounded cursor-pointer" @click="seekVideo">
+          <!-- Progress bar - Updated with drag functionality -->
+          <div class="flex-grow relative h-2 bg-gray-700 rounded cursor-pointer" 
+            @click="seekVideo"
+            @mousedown="startProgressDrag"
+            ref="progressBar">
             <div 
-              class="absolute top-0 left-0 h-full bg-pink-600 rounded" 
+              class="absolute top-0 left-0 h-full bg-pink-600 rounded transition-[width]" 
+              :class="{ 'transition-none': isProgressDragging }"
               :style="{ width: `${videoProgress}%` }"
             ></div>
           </div>
@@ -580,6 +585,13 @@ const isDraggingVolume = ref(false);
 // Add this to the existing state variables
 const isVolumeHovered = ref(false);
 const isVolumeSliderHovered = ref(false);
+
+// Add these to the state variables section
+const isProgressDragging = ref(false);
+const progressBar = ref(null);
+
+// Add this to the state variables section
+const wasPlayingBeforeDrag = ref(false);
 
 // Settings
 const settings = reactive({
@@ -1620,15 +1632,66 @@ const applyVolumeToCurrentVideo = () => {
 };
 
 const seekVideo = (event) => {
-  // Find the currently visible video element
+  // Just use the same logic as updateProgressDrag
+  updateProgressDrag(event);
+};
+
+const startProgressDrag = (event) => {
+  isProgressDragging.value = true;
+  
+  // Pause the video during dragging for smoother experience
+  const currentVideo = getCurrentVideoElement();
+  if (currentVideo) {
+    wasPlayingBeforeDrag.value = !currentVideo.paused;
+    currentVideo.pause();
+  }
+  
+  updateProgressDrag(event);
+  
+  // Add event listeners for drag
+  document.addEventListener('mousemove', handleProgressDrag);
+  document.addEventListener('mouseup', stopProgressDrag);
+  
+  // Prevent text selection during drag
+  event.preventDefault();
+};
+
+const handleProgressDrag = (event) => {
+  if (isProgressDragging.value) {
+    updateProgressDrag(event);
+  }
+};
+
+const stopProgressDrag = () => {
+  isProgressDragging.value = false;
+  document.removeEventListener('mousemove', handleProgressDrag);
+  document.removeEventListener('mouseup', stopProgressDrag);
+  
+  // Resume playback if it was playing before dragging started
+  const currentVideo = getCurrentVideoElement();
+  if (currentVideo && wasPlayingBeforeDrag.value) {
+    currentVideo.play().catch(err => console.error('Error resuming playback:', err));
+    isPlaying.value = true;
+  }
+};
+
+const updateProgressDrag = (event) => {
+  if (!progressBar.value) return;
+  
   const currentVideo = getCurrentVideoElement();
   if (!currentVideo) return;
   
-  const rect = event.target.getBoundingClientRect();
-  const pos = (event.clientX - rect.left) / rect.width;
+  const rect = progressBar.value.getBoundingClientRect();
+  const pos = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+  
+  // Set the current time of the video
   currentVideo.currentTime = pos * currentVideo.duration;
   
-  // Show controls briefly when seeking
+  // Update progress indicators immediately for visual feedback
+  currentTime.value = currentVideo.currentTime;
+  videoProgress.value = (currentTime.value / videoDuration.value) * 100;
+  
+  // Show controls while dragging
   showControls();
 };
 
