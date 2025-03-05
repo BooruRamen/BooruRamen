@@ -660,7 +660,7 @@ const fetchPosts = async () => {
         } 
         else {
           // Normal mode - Build the query for tags that count toward the 2-tag limit
-          const tags = [];
+          let tags = [];
           
           // When videos-only mode is active, we must include 'animated' tag
           const needsAnimatedTag = !settings.mediaType.images && settings.mediaType.videos;
@@ -695,36 +695,33 @@ const fetchPosts = async () => {
           }
           
           // Priority 3: Add order parameter if we have room and no other order tag exists
-          // Fix the typo on this line
           if (tags.length < 2 && !tags.some(tag => tag.startsWith('order:'))) {
             tags.push('order:score'); // Use score instead of random to avoid timeouts
           }
           
-          // CRITICAL: Handle rating filtering based on user settings
-          // For API efficiency, we need a different approach based on selected ratings
-          
-          // Log current rating settings for debugging
-          console.log("Current rating settings:", settings.ratings);
-          
-          if (settings.ratings.length === 1) {
-            // If only one rating is selected, include it directly in the tags query
-            // instead of as a separate rating parameter (which doesn't seem reliable)
-            const ratingTag = `rating:${settings.ratings[0]}`;
-            if (!tags.includes(ratingTag)) {
-              tags.push(ratingTag);
-            }
-            console.log(`Added rating tag to query: ${ratingTag}`);
-          } 
-          else if (settings.ratings.length > 1 && settings.ratings.length < 4) {
-            // If multiple ratings but not all ratings are selected, 
-            // we need to use rating:s OR rating:q etc. in the query
-            // But we need to be careful with the 2-tag limit
-            console.log(`Multiple ratings selected: ${settings.ratings.join(', ')}`);
+          // CRITICAL: Handle rating filtering using combined format (doesn't count toward tag limit)
+          if (settings.ratings.length > 0) {
+            // Map rating full names to their single-letter codes for the API
+            const ratingCodes = settings.ratings.map(rating => {
+              switch(rating) {
+                case 'general': return 'g';
+                case 'sensitive': return 's';
+                case 'questionable': return 'q';
+                case 'explicit': return 'e';
+                default: return rating.charAt(0).toLowerCase(); // fallback
+              }
+            });
             
-            // We already have tags, can't add rating to the API query
-            // Will filter client-side instead
-          }
-          else if (settings.ratings.length === 0) {
+            // Create the combined rating parameter
+            const ratingParam = `rating:${ratingCodes.join(',')}`;
+            
+            // Remove any existing rating tags to avoid conflicts
+            tags = tags.filter(tag => !tag.startsWith('rating:'));
+            
+            // Add the combined rating parameter (doesn't count toward the 2-tag limit)
+            tags.push(ratingParam);
+            console.log(`Added combined rating parameter: ${ratingParam}`);
+          } else if (settings.ratings.length === 0) {
             // No ratings selected, default to general
             const defaultRatingTag = 'rating:general';
             if (!tags.includes(defaultRatingTag)) {
@@ -966,6 +963,31 @@ const fetchPosts = async () => {
           }
         }
         
+        // Handle ratings using the combined format (doesn't count toward tag limit)
+        // Convert user's selected ratings to the combined format: rating:g,s,q
+        if (settings.ratings.length > 0) {
+          // Map rating full names to their single-letter codes for the API
+          const ratingCodes = settings.ratings.map(rating => {
+            switch(rating) {
+              case 'general': return 'g';
+              case 'sensitive': return 's';
+              case 'questionable': return 'q';
+              case 'explicit': return 'e';
+              default: return rating.charAt(0).toLowerCase(); // fallback
+            }
+          });
+          
+          // Create the combined rating parameter and add it to the query
+          const ratingParam = `rating:${ratingCodes.join(',')}`;
+          
+          // Remove any existing rating tags to avoid conflicts
+          tags = tags.filter(tag => !tag.startsWith('rating:'));
+          
+          // Add the combined rating parameter
+          tags.push(ratingParam);
+          console.log(`Added combined rating parameter: ${ratingParam}`);
+        }
+        
         params.append('tags', tags.join(' '));
         
         try {
@@ -996,13 +1018,6 @@ const fetchPosts = async () => {
             } else if (!settings.mediaType.images && !settings.mediaType.videos) {
               // Neither enabled
               return false;
-            }
-            
-            // Filter by rating if not included in the query
-            if (settings.ratings.length > 0 && tags.every(t => !t.startsWith('rating:'))) {
-              if (!settings.ratings.includes(post.rating)) {
-                return false;
-              }
             }
             
             // Filter by blacklist tags
