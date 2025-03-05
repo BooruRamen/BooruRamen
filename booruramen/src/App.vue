@@ -216,13 +216,37 @@
             ></div>
           </div>
           
-          <div class="text-white text-sm">
-            {{ formatTime(currentTime) }} / {{ formatTime(videoDuration) }}
-          </div>
-          
-          <!-- Volume control section -->
-          <div class="flex items-center gap-2 group relative">
-            <button @click="toggleMute" class="text-white p-2 w-8 h-8 flex items-center justify-center">
+          <!-- Volume control section - Modified for better hover behavior -->
+          <div class="flex items-center group relative">
+            <!-- Improved hover area for volume slider -->
+            <div 
+              class="absolute bottom-full w-8 h-28 group-hover:block cursor-pointer"
+              style="left: 50%; transform: translateX(-50%);"
+              @mouseenter="isVolumeSliderHovered = true"
+              @mouseleave="isVolumeSliderHovered = false"
+            >
+              <!-- Vertical volume slider - positioned above the mute button -->
+              <div 
+                class="absolute bottom-2 left-1/2 transform -translate-x-1/2 h-24 w-2 bg-gray-700 rounded cursor-pointer"
+                :class="{ 'hidden': !isVolumeSliderHovered && !isVolumeHovered }"
+                @mousedown="startVolumeChange"
+                @click="changeVolumeVertical"
+                ref="volumeSlider"
+              >
+                <div 
+                  class="absolute bottom-0 left-0 w-full bg-pink-600 rounded" 
+                  :style="{ height: `${volumeLevel * 100}%` }"
+                ></div>
+              </div>
+            </div>
+            
+            <!-- Mute button with improved hover behavior -->
+            <button 
+              @click="toggleMute" 
+              @mouseenter="isVolumeHovered = true"
+              @mouseleave="isVolumeHovered = false"
+              class="text-white p-2 w-8 h-8 flex items-center justify-center"
+            >
               <svg v-if="isMuted || volumeLevel === 0" viewBox="0 0 24 24" class="w-6 h-6 fill-white">
                 <path d="M12 4L6 10H2v4h4l6 6z" />
                 <line x1="18" y1="6" x2="6" y2="18" stroke="white" stroke-width="2" />
@@ -237,26 +261,7 @@
                 <path d="M18 8c1 1.5 1.5 3 1.5 4s-.5 2.5-1.5 4" stroke="white" stroke-width="2" fill="none" />
               </svg>
             </button>
-            
-            <!-- Volume slider - hidden by default, shown on hover -->
-            <div 
-              class="hidden group-hover:block w-24 h-2 bg-gray-700 rounded cursor-pointer" 
-              @mousedown="startVolumeChange"
-              @click="changeVolume"
-              ref="volumeSlider"
-            >
-              <div 
-                class="h-full bg-pink-600 rounded relative" 
-                :style="{ width: `${volumeLevel * 100}%` }"
-              ></div>
-            </div>
           </div>
-          
-          <button @click="toggleFullscreen" class="text-white p-2 w-8 h-8 flex items-center justify-center">
-            <svg viewBox="0 0 24 24" class="w-6 h-6 fill-white">
-              <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
-            </svg>
-          </button>
         </div>
       </div>
 
@@ -571,6 +576,10 @@ const isVideoControlsHovered = ref(false);
 const volumeLevel = ref(0.7); // Default volume level (0.0 to 1.0)
 const volumeSlider = ref(null);
 const isDraggingVolume = ref(false);
+
+// Add this to the existing state variables
+const isVolumeHovered = ref(false);
+const isVolumeSliderHovered = ref(false);
 
 // Settings
 const settings = reactive({
@@ -1523,7 +1532,7 @@ const toggleMute = () => {
 
 const startVolumeChange = (event) => {
   isDraggingVolume.value = true;
-  changeVolume(event);
+  changeVolumeVertical(event);
   
   // Add event listeners for drag
   document.addEventListener('mousemove', handleVolumeDrag);
@@ -1535,7 +1544,7 @@ const startVolumeChange = (event) => {
 
 const handleVolumeDrag = (event) => {
   if (isDraggingVolume.value) {
-    changeVolume(event);
+    changeVolumeVertical(event);
   }
 };
 
@@ -1553,11 +1562,12 @@ const stopVolumeChange = () => {
   }
 };
 
-const changeVolume = (event) => {
+const changeVolumeVertical = (event) => {
   if (!volumeSlider.value) return;
   
   const rect = volumeSlider.value.getBoundingClientRect();
-  const pos = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+  // For vertical slider, calculate position from bottom (1) to top (0)
+  const pos = 1 - Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
   const newVolume = Math.max(0, Math.min(1, pos)); // Clamp between 0 and 1
   
   volumeLevel.value = newVolume;
