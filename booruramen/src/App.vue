@@ -23,7 +23,7 @@
             
             <div>
               <h3 class="text-sm font-medium text-gray-400">Rating</h3>
-              <p class="capitalize">{{ currentPost.rating }}</p>
+              <p class="capitalize">{{ getRatingFromCode(currentPost.rating) }}</p>
             </div>
             
             <div>
