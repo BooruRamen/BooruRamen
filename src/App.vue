@@ -680,7 +680,25 @@ const buildQueryFilters = (baseQuery = '') => {
  */
 const isValidPost = (post) => {
   // Only basic checks - don't be too restrictive
-  if (!post || !post.file_url) {
+  if (!post) {
+    return false;
+  }
+
+  // Handle zip files by replacing the url with large_file_url if available
+  if (post.file_ext === 'zip' && post.large_file_url) {
+    post.file_url = post.large_file_url;
+    
+    // Update the file_ext to match the new URL
+    const urlParts = post.large_file_url.split('.');
+    if (urlParts.length > 1) {
+      post.file_ext = urlParts[urlParts.length - 1].toLowerCase();
+    }
+    
+    console.log(`Replaced zip file with large_file_url: ${post.large_file_url}`);
+  }
+
+  // If file_url is still missing after trying large_file_url, reject the post
+  if (!post.file_url) {
     return false;
   }
 
