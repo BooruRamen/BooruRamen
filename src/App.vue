@@ -503,7 +503,7 @@
         </button>
       </div>
     </div>
-    <BottomNavBar />
+    <BottomNavBar @navigate-feed="navigateToFeed" />
   </div>
 </template>
 
@@ -523,27 +523,27 @@ export default {
     BottomNavBar,
   },
   data() {
+    const savedSettings = StorageService.loadAppSettings();
+    const defaultSettings = {
+      autoScroll: false,
+      autoScrollSpeed: 'medium',
+      disableHistory: false,
+      mediaType: { images: true, videos: true },
+      ratings: ['general', 'sensitive'],
+      whitelistTags: [],
+      blacklistTags: [],
+    };
+
     return {
       currentPost: null,
       currentVideoElement: null,
       showPostDetails: false,
       linkCopied: false,
       showSettingsSidebar: false,
-      settings: {
-        autoScroll: false,
-        autoScrollSeconds: 5,
-        disableScrollAnimation: false,
-        mediaType: {
-          images: true,
-          videos: true,
-        },
-        ratings: ['general', 'sensitive'],
-        whitelistTags: [],
-        blacklistTags: [],
-      },
+      settings: savedSettings ? savedSettings.settings : defaultSettings,
       newWhitelistTag: '',
       newBlacklistTag: '',
-      exploreMode: false,
+      exploreMode: savedSettings ? savedSettings.exploreMode : false,
       
       // Video player state
       isPlaying: true,
@@ -570,6 +570,13 @@ export default {
     // ... (keep other computed properties)
   },
   methods: {
+    navigateToFeed() {
+      // Prevents navigation if already on the feed with the correct query
+      if (this.$route.name === 'Home' && JSON.stringify(this.$route.query) === JSON.stringify(this.generateQueryFromSettings())) {
+        return;
+      }
+      this.$router.push({ name: 'Home', query: this.generateQueryFromSettings() });
+    },
     updateCurrentPost(post, videoEl) {
       if (post) {
         const interactions = StorageService.getPostInteractions(post.id);
@@ -590,6 +597,9 @@ export default {
             this.videoProgress = 0;
         }
       }
+
+      // If we load with a query, sync our settings state to it.
+      // this.syncSettingsFromQuery(this.$route.query); // This was causing the bug
     },
     getRatingFromCode(rating) {
       const ratingMap = { 'g': 'General', 's': 'Sensitive', 'q': 'Questionable', 'e': 'Explicit' };
@@ -644,30 +654,55 @@ export default {
     },
     toggleExploreMode() {
       this.exploreMode = !this.exploreMode;
+      this.saveSettingsToStorage();
     },
-    applySettings() {
-      this.showSettingsSidebar = false;
-      
+
+    saveSettingsToStorage() {
+      StorageService.saveAppSettings({
+        settings: this.settings,
+        exploreMode: this.exploreMode
+      });
+    },
+
+    syncSettingsFromQuery(query) {
+      this.settings.ratings = query.ratings ? query.ratings.split(',') : ['general', 'sensitive'];
+      this.settings.mediaType.images = query.images !== '0';
+      this.settings.mediaType.videos = query.videos !== '0';
+      this.settings.whitelistTags = query.whitelist ? query.whitelist.split(',') : [];
+      this.settings.blacklistTags = query.blacklist ? query.blacklist.split(',') : [];
+      this.exploreMode = query.explore === '1';
+    },
+
+    generateQueryFromSettings() {
       const query = {};
       
       if (this.settings.ratings.length > 0) {
-        query.ratings = this.settings.ratings.join(',');
+        query.ratings = this.settings.ratings.slice().sort().join(',');
       }
       
       query.images = this.settings.mediaType.images ? '1' : '0';
       query.videos = this.settings.mediaType.videos ? '1' : '0';
 
       if (this.settings.whitelistTags.length > 0) {
-        query.whitelist = this.settings.whitelistTags.join(',');
+        query.whitelist = this.settings.whitelistTags.slice().sort().join(',');
       }
       
       if (this.settings.blacklistTags.length > 0) {
-        query.blacklist = this.settings.blacklistTags.join(',');
+        query.blacklist = this.settings.blacklistTags.slice().sort().join(',');
       }
       
       query.explore = this.exploreMode ? '1' : '0';
 
-      this.$router.push({ name: 'Home', query });
+      return query;
+    },
+
+    applySettings() {
+      this.showSettingsSidebar = false;
+      this.saveSettingsToStorage();
+      const newQuery = this.generateQueryFromSettings();
+      if (JSON.stringify(newQuery) !== JSON.stringify(this.$route.query)) {
+        this.$router.push({ name: 'Home', query: newQuery });
+      }
     },
 
     handleVideoStateChange(state) {
@@ -804,9 +839,13 @@ export default {
   },
   mounted() {
     window.addEventListener('keydown', this.handleKeydown);
-    // If the app loads on the root path with no query, apply default settings
-    if (this.$route.path === '/' && Object.keys(this.$route.query).length === 0) {
-      this.applySettings();
+    // On initial load, if we are on the Home page, make sure the URL
+    // reflects the currently loaded (or default) settings.
+    if (this.$route.name === 'Home') {
+      const currentQuery = this.generateQueryFromSettings();
+      if (JSON.stringify(this.$route.query) !== JSON.stringify(currentQuery)) {
+        this.$router.replace({ name: 'Home', query: currentQuery });
+      }
     }
   },
   beforeUnmount() {

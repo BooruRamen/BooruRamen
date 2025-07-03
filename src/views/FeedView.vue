@@ -278,12 +278,14 @@ export default {
       },
       { threshold: 0.5 }
     );
+    this.fetchPosts(true);
   },
   beforeUnmount() {
     this.$refs.feedContainer.removeEventListener('scroll', this.handleScroll);
     if (this.observer) {
         this.observer.disconnect();
     }
+    this.$emit('current-post-changed', null, null);
   },
   watch: {
     '$route.query': {
