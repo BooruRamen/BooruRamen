@@ -59,6 +59,20 @@ import recommendationSystem from '../services/RecommendationSystem';
 
 export default {
   name: 'FeedView',
+  props: {
+    autoScroll: {
+      type: Boolean,
+      default: false
+    },
+    autoScrollSeconds: {
+      type: Number,
+      default: 5
+    },
+    disableScrollAnimation: {
+      type: Boolean,
+      default: false
+    }
+  },
   data() {
     return {
       posts: [],
@@ -72,6 +86,7 @@ export default {
       lastPostY: 0,
       observer: null,
       videoElements: {},
+      autoScrollInterval: null,
     }
   },
   beforeUpdate() {
@@ -256,10 +271,31 @@ export default {
     onVideoVolumeChange(event) {
       const { volume, muted } = event.target;
       this.$emit('video-state-change', { volume, muted });
-    }
+    },
+    startAutoScroll() {
+      if (this.autoScrollInterval) {
+        clearInterval(this.autoScrollInterval);
+      }
+      this.autoScrollInterval = setInterval(() => {
+        const container = this.$refs.feedContainer;
+        if (container) {
+          const nextScrollTop = container.scrollTop + container.clientHeight;
+          container.scrollTo({
+            top: nextScrollTop,
+            behavior: this.disableScrollAnimation ? 'auto' : 'smooth'
+          });
+        }
+      }, this.autoScrollSeconds * 1000);
+    },
+    stopAutoScroll() {
+      if (this.autoScrollInterval) {
+        clearInterval(this.autoScrollInterval);
+        this.autoScrollInterval = null;
+      }
+    },
   },
   mounted() {
-    this.$refs.feedContainer.addEventListener('scroll', this.handleScroll);
+    this.$refs.feedContainer.addEventListener('scroll', this.handleScroll, { passive: true });
 
     this.observer = new IntersectionObserver(
       (entries) => {
@@ -279,6 +315,12 @@ export default {
       { threshold: 0.5 }
     );
     this.fetchPosts(true);
+
+    this.$nextTick(() => {
+        if(this.posts.length > 0) {
+            this.determineCurrentPost();
+        }
+    });
   },
   beforeUnmount() {
     this.$refs.feedContainer.removeEventListener('scroll', this.handleScroll);
@@ -286,14 +328,29 @@ export default {
         this.observer.disconnect();
     }
     this.$emit('current-post-changed', null, null);
+    this.stopAutoScroll();
   },
   watch: {
     '$route.query': {
-      handler() {
-        this.fetchPosts(true);
+      handler(newQuery, oldQuery) {
+        const newQueryStr = JSON.stringify(newQuery);
+        const oldQueryStr = JSON.stringify(oldQuery);
+        if (newQueryStr !== oldQueryStr) {
+          this.fetchPosts(true);
+        }
       },
       deep: true,
-      immediate: true,
+      immediate: true
+    },
+    autoScroll: {
+      handler(newValue) {
+        if (newValue) {
+          this.startAutoScroll();
+        } else {
+          this.stopAutoScroll();
+        }
+      },
+      immediate: true
     },
     posts() {
       this.$nextTick(() => {

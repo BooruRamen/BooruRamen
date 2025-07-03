@@ -148,6 +148,9 @@
         <router-view 
           @current-post-changed="updateCurrentPost"
           @video-state-change="handleVideoStateChange"
+          :auto-scroll="settings.autoScroll"
+          :auto-scroll-seconds="settings.autoScrollSeconds"
+          :disable-scroll-animation="settings.disableScrollAnimation"
         ></router-view>
       </div>
         
@@ -526,6 +529,7 @@ export default {
     const savedSettings = StorageService.loadAppSettings();
     const defaultSettings = {
       autoScroll: false,
+      autoScrollSeconds: 5,
       autoScrollSpeed: 'medium',
       disableHistory: false,
       mediaType: { images: true, videos: true },
@@ -846,6 +850,12 @@ export default {
       if (JSON.stringify(this.$route.query) !== JSON.stringify(currentQuery)) {
         this.$router.replace({ name: 'Home', query: currentQuery });
       }
+    }
+
+    const savedSettings = StorageService.loadAppSettings();
+    if (savedSettings) {
+      this.settings = savedSettings.settings;
+      this.exploreMode = savedSettings.exploreMode;
     }
   },
   beforeUnmount() {
