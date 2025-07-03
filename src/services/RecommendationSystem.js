@@ -498,7 +498,8 @@ class RecommendationSystem {
       fetchCount = 3,       // Number of different queries to run
       postsPerFetch = 20,   // Number of posts to fetch per query
       maxTotal = 50,        // Maximum total posts to return
-      selectedRatings = ['general'] // Rating filters to apply
+      selectedRatings = ['general'], // Rating filters to apply
+      existingPostIds = new Set()
     } = options;
     
     // Generate diverse query sets - these queries will be simple (1 tag each maximum)
@@ -628,11 +629,16 @@ class RecommendationSystem {
       }
       
       // Remove duplicates
-      const uniquePosts = Array.from(
+      let uniquePosts = Array.from(
         new Map(allPosts.map(post => [post.id, post])).values()
       );
       
       console.log(`Found ${uniquePosts.length} unique posts after deduplication`);
+      
+      // Filter out posts that have already been seen
+      if (existingPostIds.size > 0) {
+        uniquePosts = uniquePosts.filter(post => !existingPostIds.has(post.id));
+      }
       
       // Rank the combined posts using our recommendation system
       const rankedPosts = this.rankPosts(uniquePosts);
