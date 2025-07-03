@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="h-screen overflow-y-auto pb-16">
     <h1 class="text-2xl font-bold p-4">History</h1>
     <PostGrid :posts="posts" @post-clicked="onPostClicked" />
   </div>

@@ -1,6 +1,6 @@
 <template>
-  <div>
-    <h1 class="text-2xl font-bold p-4">Liked Posts</h1>
+  <div class="h-screen overflow-y-auto pb-16">
+    <h1 class="text-2xl font-bold p-4">Likes</h1>
     <PostGrid :posts="posts" @post-clicked="onPostClicked" />
   </div>
 </template>
