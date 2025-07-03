@@ -136,6 +136,7 @@
       
       <!-- Floating toggle button for post details sidebar -->
       <button 
+        v-if="currentPost"
         @click="togglePostDetails" 
         class="absolute top-4 left-0 z-30 p-2 rounded-r-md bg-black hover:bg-gray-900 transition-all duration-300 ease-in-out"
         :style="{ transform: showPostDetails ? 'translateX(320px)' : 'translateX(0)' }"
@@ -564,6 +565,13 @@ export default {
       // ... (keep this)
       hasRecommendations: false,
     };
+  },
+  watch: {
+    currentPost(newPost) {
+      if (!newPost) {
+        this.showPostDetails = false;
+      }
+    }
   },
   computed: {
     isCurrentPostVideo() {
