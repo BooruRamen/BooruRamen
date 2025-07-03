@@ -697,6 +697,19 @@ const isValidPost = (post) => {
     console.log(`Replaced zip file with large_file_url: ${post.large_file_url}`);
   }
 
+  // Handle swf files by replacing the url with large_file_url if available
+  if (post.file_ext === 'swf' && post.large_file_url) {
+    post.file_url = post.large_file_url;
+    
+    // Update the file_ext to match the new URL
+    const urlParts = post.large_file_url.split('.');
+    if (urlParts.length > 1) {
+      post.file_ext = urlParts[urlParts.length - 1].toLowerCase();
+    }
+    
+    console.log(`Replaced swf file with large_file_url: ${post.large_file_url}`);
+  }
+
   // If file_url is still missing after trying large_file_url, reject the post
   if (!post.file_url) {
     return false;
@@ -708,6 +721,11 @@ const isValidPost = (post) => {
     if (urlParts.length > 1) {
       post.file_ext = urlParts[urlParts.length - 1].toLowerCase();
     }
+  }
+  
+  // Do not show swf files
+  if (post.file_ext === 'swf') {
+    return false;
   }
   
   // Ensure the post has a file_url that doesn't contain banned or restricted indicators
@@ -966,11 +984,13 @@ const fetchPosts = async () => {
         }
       };
 
+      const existingPostIds = new Set(posts.value.map(p => p.id));
       const curatedPosts = await recommendationSystem.getCuratedExploreFeed(fetchFunction, {
         fetchCount: 5, // Increased for better chances of finding videos
         postsPerFetch: 20,
         maxTotal: 50,
-        selectedRatings: settings.ratings // Pass the user's selected ratings
+        selectedRatings: settings.ratings, // Pass the user's selected ratings
+        existingPostIds
       });
       
       console.log(`Got ${curatedPosts.length} curated posts from recommendation system`);
@@ -983,9 +1003,20 @@ const fetchPosts = async () => {
         favorited: false
       }));
 
-      // Replace existing posts in explore mode
-      posts.value = newPosts;
-      currentPostIndex.value = 0;
+      // Replace or append to existing posts
+      if (settings.page === 1) {
+        posts.value = newPosts;
+        currentPostIndex.value = 0;
+      } else {
+        const existingPostIdsClient = new Set(posts.value.map(p => p.id));
+        const trulyNewPosts = newPosts.filter(p => !existingPostIdsClient.has(p.id));
+        posts.value = [...posts.value, ...trulyNewPosts];
+      }
+      
+      // Increment page for next fetch
+      if (newPosts.length > 0) {
+        settings.page++;
+      }
       
       // If no posts were found in explore mode with video filter, try a direct query
       if (newPosts.length === 0 && !settings.mediaType.images && settings.mediaType.videos) {
@@ -1196,7 +1227,10 @@ const fetchPosts = async () => {
         posts.value = newPosts;
         currentPostIndex.value = 0;
       } else {
-        posts.value = [...posts.value, ...newPosts];
+        const existingPostIds = new Set(posts.value.map(p => p.id));
+        const trulyNewPosts = newPosts.filter(p => !existingPostIds.has(p.id));
+        console.log(`Adding ${trulyNewPosts.length} new unique posts to the feed.`);
+        posts.value = [...posts.value, ...trulyNewPosts];
       }
       
       // Increment page for next fetch
