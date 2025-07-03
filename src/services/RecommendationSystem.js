@@ -4,6 +4,7 @@
  * based on interaction history and preferences.
  */
 
+import * as tf from '@tensorflow/tfjs';
 import StorageService from './StorageService';
 
 // Constants for recommendation system
@@ -499,6 +500,8 @@ class RecommendationSystem {
       postsPerFetch = 20,   // Number of posts to fetch per query
       maxTotal = 50,        // Maximum total posts to return
       selectedRatings = ['general'], // Rating filters to apply
+      whitelist = [],
+      blacklist = [],
       existingPostIds = new Set()
     } = options;
     
@@ -510,31 +513,32 @@ class RecommendationSystem {
     const sanitizeQuery = (query) => {
       // Create a clean copy of the query
       const sanitizedQuery = { ...query };
+      let tags = sanitizedQuery.tags ? sanitizedQuery.tags.split(' ') : [];
       
       // If the query contains order:random, remove any other order: tags
-      if (sanitizedQuery.tags && sanitizedQuery.tags.includes('order:random')) {
-        // Keep only the order:random tag, remove other order: tags
-        const tags = sanitizedQuery.tags.split(' ');
-        const filteredTags = tags.filter(tag => 
+      if (tags.includes('order:random')) {
+        tags = tags.filter(tag => 
           tag === 'order:random' || !tag.startsWith('order:')
         );
-        sanitizedQuery.tags = filteredTags.join(' ');
       }
       
-      // CRITICAL FIX: Add explicit rating tag to the query instead of using rating parameter
-      if (selectedRatings && selectedRatings.length === 1) {
-        // Build rating tag (e.g., rating:general)
-        const ratingTag = `rating:${selectedRatings[0]}`;
-        
-        // Add rating to the tags if not already present
-        if (!sanitizedQuery.tags.includes(ratingTag)) {
-          sanitizedQuery.tags = sanitizedQuery.tags ? 
-            `${sanitizedQuery.tags} ${ratingTag}` : 
-            ratingTag;
+      // CRITICAL FIX: Add explicit rating tag to the query
+      if (selectedRatings && selectedRatings.length > 0) {
+        const ratingTag = `rating:${selectedRatings.join(',')}`;
+        if (!tags.some(t => t.startsWith('rating:'))) {
+          tags.push(ratingTag);
         }
-        
-        console.log(`Adding rating tag to query: ${ratingTag}`);
       }
+      
+      // Add whitelist and blacklist tags
+      if (whitelist.length > 0) {
+        tags.push(...whitelist);
+      }
+      if (blacklist.length > 0) {
+        tags.push(...blacklist.map(t => `-${t}`));
+      }
+
+      sanitizedQuery.tags = tags.join(' ');
       
       return sanitizedQuery;
     };
@@ -574,13 +578,20 @@ class RecommendationSystem {
         // Fallback: Simple order:score query (very reliable)
         try {
           // Build rating tags for the fallback query
-          let fallbackRatingTags = '';
-          if (selectedRatings && selectedRatings.length === 1) {
-            fallbackRatingTags = `rating:${selectedRatings[0]}`;
+          let fallbackTags = ['order:score'];
+
+          if (selectedRatings && selectedRatings.length > 0) {
+            fallbackTags.push(`rating:${selectedRatings.join(',')}`);
+          }
+          if (whitelist.length > 0) {
+            fallbackTags.push(...whitelist);
+          }
+          if (blacklist.length > 0) {
+            fallbackTags.push(...blacklist.map(t => `-${t}`));
           }
 
           const fallbackQuery = { 
-            tags: fallbackRatingTags ? `order:score ${fallbackRatingTags}` : 'order:score'
+            tags: fallbackTags.join(' ')
           };
           
           console.log("Running fallback query:", fallbackQuery);
@@ -605,13 +616,19 @@ class RecommendationSystem {
         
         // Last resort: Try with only the rating tag
         try {
-          let ratingTag = '';
-          if (selectedRatings && selectedRatings.length === 1) {
-            ratingTag = `rating:${selectedRatings[0]}`;
+          let lastResortTags = [];
+          if (selectedRatings && selectedRatings.length > 0) {
+            lastResortTags.push(`rating:${selectedRatings.join(',')}`);
+          }
+          if (whitelist.length > 0) {
+            lastResortTags.push(...whitelist);
+          }
+          if (blacklist.length > 0) {
+            lastResortTags.push(...blacklist.map(t => `-${t}`));
           }
           
           const lastResortQuery = { 
-            tags: ratingTag || ''
+            tags: lastResortTags.join(' ') || ''
           };
           
           console.log("Trying last resort query with just rating:", lastResortQuery);
@@ -671,6 +688,5 @@ class RecommendationSystem {
   }
 }
 
-// Create and export a singleton instance
 const recommendationSystem = new RecommendationSystem();
 export default recommendationSystem;

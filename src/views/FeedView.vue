@@ -51,6 +51,7 @@
 <script>
 import DanbooruService from '../services/DanbooruService';
 import StorageService from '../services/StorageService';
+import recommendationSystem from '../services/RecommendationSystem';
 
 export default {
   name: 'FeedView',
@@ -68,23 +69,26 @@ export default {
       observer: null,
     }
   },
+  created() {
+    this.recommendationSystem = recommendationSystem;
+  },
   methods: {
-    buildTagsFromRouteQuery() {
-      const query = this.$route.query;
+    buildTagsFromRouteQuery(overrideQuery = null) {
+      const query = overrideQuery || this.$route.query;
       const tags = [];
 
       const ratings = query.ratings ? query.ratings.split(',') : ['general'];
       if (ratings.length > 0) {
-        tags.push(...ratings.map(r => `rating:${r}`));
+        tags.push(`rating:${ratings.join(',')}`);
       }
 
       const wantsImages = 'images' in query ? query.images === '1' : true;
       const wantsVideos = 'videos' in query ? query.videos === '1' : true;
 
       if (wantsVideos && !wantsImages) {
-        tags.push('animated:true');
+        tags.push('filetype:mp4,webm');
       } else if (!wantsVideos && wantsImages) {
-        tags.push('-animated:true');
+        tags.push('-filetype:mp4,webm');
       }
 
       if (query.whitelist) {
@@ -110,17 +114,49 @@ export default {
         }
       }
 
+      const exploreMode = this.$route.query.explore === '1';
+
       try {
-        const tagsForApi = this.buildTagsFromRouteQuery();
-        const newPosts = await DanbooruService.getPosts({
-          tags: tagsForApi,
-          page: this.page,
-          limit: 10,
-          sort: this.sort,
-          sortOrder: this.sortOrder,
-        });
+        let newPosts = [];
+        if (exploreMode) {
+          const fetchFunction = (queryParams, limit) => {
+            let combinedTags = queryParams.tags || '';
+
+            // Manually add media type filters, as the recommendation system doesn't handle them.
+            const wantsImages = 'images' in this.$route.query ? this.$route.query.images === '1' : true;
+            const wantsVideos = 'videos' in this.$route.query ? this.$route.query.videos === '1' : true;
+
+            if (wantsVideos && !wantsImages) {
+              combinedTags += ' filetype:mp4,webm';
+            } else if (!wantsVideos && wantsImages) {
+              combinedTags += ' -filetype:mp4,webm';
+            }
+
+            return DanbooruService.getPosts({ tags: combinedTags.trim(), limit, page: this.page, sort: this.sort, sortOrder: this.sortOrder });
+          };
+          
+          const { ratings, whitelist, blacklist } = this.$route.query;
+
+          newPosts = await this.recommendationSystem.getCuratedExploreFeed(fetchFunction, {
+            fetchCount: 5,
+            postsPerFetch: 20,
+            selectedRatings: ratings ? ratings.split(',') : ['general'],
+            whitelist: whitelist ? whitelist.split(',') : [],
+            blacklist: blacklist ? blacklist.split(',') : [],
+          });
+
+        } else {
+          const tagsForApi = this.buildTagsFromRouteQuery();
+          newPosts = await DanbooruService.getPosts({
+            tags: tagsForApi,
+            page: this.page,
+            limit: 10,
+            sort: this.sort,
+            sortOrder: this.sortOrder,
+          });
+        }
         
-        if (newPosts.length > 0) {
+        if (newPosts && newPosts.length > 0) {
           this.posts = [...this.posts, ...newPosts];
           this.page++;
         }

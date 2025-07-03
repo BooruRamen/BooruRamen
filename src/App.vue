@@ -554,6 +554,7 @@ export default {
       
       // Sidebar filter state
       // ... (keep this)
+      hasRecommendations: false,
     };
   },
   computed: {
@@ -648,6 +649,8 @@ export default {
         query.blacklist = this.settings.blacklistTags.join(',');
       }
       
+      query.explore = this.exploreMode ? '1' : '0';
+
       this.$router.push({ name: 'Home', query });
     },
 
@@ -705,6 +708,10 @@ export default {
   },
   mounted() {
     window.addEventListener('keydown', this.handleKeydown);
+    // If the app loads on the root path with no query, apply default settings
+    if (this.$route.path === '/' && Object.keys(this.$route.query).length === 0) {
+      this.applySettings();
+    }
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this.handleKeydown);
