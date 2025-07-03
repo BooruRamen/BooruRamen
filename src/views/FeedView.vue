@@ -24,17 +24,21 @@
             v-if="getFileExtension(post) === 'jpg' || getFileExtension(post) === 'jpeg' || getFileExtension(post) === 'png' || getFileExtension(post) === 'gif'" 
             :src="post.file_url" 
             :alt="post.tags" 
-            class="max-h-[calc(100vh-0px)] max-w-full object-contain"
+            class="max-h-[calc(100vh-56px)] max-w-full object-contain"
           />
           <video 
             v-else-if="getFileExtension(post) === 'mp4' || getFileExtension(post) === 'webm' || isVideoPost(post)" 
             :src="post.file_url" 
-            ref="videoPlayer"
+            :ref="(el) => { if (el) videoElements[post.id] = el }"
             autoplay 
             loop 
             muted 
-            class="max-h-[calc(100vh-0px)] max-w-full"
+            class="max-h-[calc(100vh-56px)] max-w-full"
             @click="togglePlayPause"
+            @play="onVideoPlay"
+            @pause="onVideoPause"
+            @timeupdate="onVideoTimeUpdate"
+            @volumechange="onVideoVolumeChange"
           ></video>
           <div 
             v-else
@@ -67,7 +71,11 @@ export default {
       isFetching: false,
       lastPostY: 0,
       observer: null,
+      videoElements: {},
     }
+  },
+  beforeUpdate() {
+    this.videoElements = {};
   },
   created() {
     this.recommendationSystem = recommendationSystem;
@@ -201,7 +209,8 @@ export default {
         this.currentPostIndex = closestPostIndex;
         const currentPost = this.posts[this.currentPostIndex];
         if (currentPost) {
-          this.$emit('current-post-changed', currentPost);
+          const videoEl = this.videoElements[currentPost.id] || null;
+          this.$emit('current-post-changed', currentPost, videoEl);
           StorageService.trackPostView(currentPost.id, currentPost);
         }
       }
@@ -231,6 +240,22 @@ export default {
         } else {
             video.pause();
         }
+    },
+    onVideoPlay() {
+      this.$emit('video-state-change', { isPlaying: true });
+    },
+    onVideoPause() {
+      this.$emit('video-state-change', { isPlaying: false });
+    },
+    onVideoTimeUpdate(event) {
+      const { currentTime, duration } = event.target;
+      if (duration > 0) {
+        this.$emit('video-state-change', { progress: (currentTime / duration) * 100 });
+      }
+    },
+    onVideoVolumeChange(event) {
+      const { volume, muted } = event.target;
+      this.$emit('video-state-change', { volume, muted });
     }
   },
   mounted() {

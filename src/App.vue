@@ -4,7 +4,7 @@
     
       <!-- Post details sidebar -->
       <div 
-        class="absolute top-0 left-0 w-80 h-full bg-transparent backdrop-blur-sm border-r border-gray-700 overflow-y-auto z-20 transition-transform duration-300 ease-in-out"
+        class="absolute top-0 left-0 w-80 h-full bg-transparent backdrop-blur-sm border-r border-gray-700 overflow-y-auto z-50 transition-transform duration-300 ease-in-out"
         :style="{ transform: showPostDetails ? 'translateX(0)' : 'translateX(-100%)' }"
       >
         <div class="p-4 pb-20">
@@ -144,14 +144,17 @@
       </button>
       
       <!-- Main content area -->
-      <div class="h-full w-full relative overflow-hidden">
-        <router-view @current-post-changed="updateCurrentPost"></router-view>
+      <div class="h-full w-full relative overflow-hidden pb-14">
+        <router-view 
+          @current-post-changed="updateCurrentPost"
+          @video-state-change="handleVideoStateChange"
+        ></router-view>
       </div>
         
       <!-- Custom Video Controls -->
       <div 
         v-if="isCurrentPostVideo && currentPost" 
-        class="fixed bottom-0 left-0 right-0 bg-black bg-opacity-60 backdrop-blur-sm py-2 px-4 flex items-center gap-4 transition-opacity duration-300 z-40"
+        class="fixed bottom-14 left-0 right-0 bg-black bg-opacity-60 backdrop-blur-sm py-2 px-4 flex items-center gap-4 transition-opacity duration-300 z-40"
         :class="{ 'opacity-0': !showVideoControls && !isVideoControlsHovered, 'opacity-100': showVideoControls || isVideoControlsHovered }"
         @mouseenter="isVideoControlsHovered = true"
         @mouseleave="isVideoControlsHovered = false"
@@ -228,7 +231,7 @@
 
       <!-- Settings sidebar -->
       <div 
-        class="absolute top-0 right-0 w-80 h-full bg-transparent backdrop-blur-sm border-l border-gray-700 overflow-y-auto z-20 transition-transform duration-300 ease-in-out"
+        class="absolute top-0 right-0 w-80 h-full bg-transparent backdrop-blur-sm border-l border-gray-700 overflow-y-auto z-50 transition-transform duration-300 ease-in-out"
         :style="{ transform: showSettingsSidebar ? 'translateX(0)' : 'translateX(100%)' }"
       >
       <div class="p-4 pb-20">
@@ -522,6 +525,7 @@ export default {
   data() {
     return {
       currentPost: null,
+      currentVideoElement: null,
       showPostDetails: false,
       linkCopied: false,
       showSettingsSidebar: false,
@@ -566,7 +570,7 @@ export default {
     // ... (keep other computed properties)
   },
   methods: {
-    updateCurrentPost(post) {
+    updateCurrentPost(post, videoEl) {
       if (post) {
         const interactions = StorageService.getPostInteractions(post.id);
         post.liked = interactions.some(i => i.type === 'like' && i.value > 0);
@@ -574,6 +578,18 @@ export default {
         post.favorited = interactions.some(i => i.type === 'favorite' && i.value > 0);
       }
       this.currentPost = post;
+      this.currentVideoElement = videoEl;
+
+      if (videoEl) {
+        this.isPlaying = !videoEl.paused;
+        this.isMuted = videoEl.muted;
+        this.volumeLevel = videoEl.volume;
+        if (videoEl.duration > 0) {
+            this.videoProgress = (videoEl.currentTime / videoEl.duration) * 100;
+        } else {
+            this.videoProgress = 0;
+        }
+      }
     },
     getRatingFromCode(rating) {
       const ratingMap = { 'g': 'General', 's': 'Sensitive', 'q': 'Questionable', 'e': 'Explicit' };
@@ -654,11 +670,91 @@ export default {
       this.$router.push({ name: 'Home', query });
     },
 
+    handleVideoStateChange(state) {
+      if (state.isPlaying !== undefined) this.isPlaying = state.isPlaying;
+      if (state.progress !== undefined) this.videoProgress = state.progress;
+      if (state.volume !== undefined) this.volumeLevel = state.volume;
+      if (state.muted !== undefined) this.isMuted = state.muted;
+    },
+
     // All video methods remain
     togglePlayPause() {
-        // ...
+      if (!this.currentVideoElement) return;
+      if (this.currentVideoElement.paused) {
+        this.currentVideoElement.play();
+      } else {
+        this.currentVideoElement.pause();
+      }
     },
-    // ...
+    
+    seekVideo(event) {
+      if (!this.currentVideoElement || !this.currentVideoElement.duration) return;
+      const progressBar = this.$refs.progressBar;
+      const rect = progressBar.getBoundingClientRect();
+      const percent = (event.clientX - rect.left) / rect.width;
+      this.currentVideoElement.currentTime = this.currentVideoElement.duration * percent;
+    },
+
+    startProgressDrag(e) {
+      if (!this.currentVideoElement || !this.currentVideoElement.duration) return;
+      this.isProgressDragging = true;
+      document.addEventListener('mousemove', this.handleProgressDrag);
+      document.addEventListener('mouseup', this.stopProgressDrag);
+    },
+
+    handleProgressDrag(e) {
+      if (!this.isProgressDragging || !this.currentVideoElement) return;
+      const progressBar = this.$refs.progressBar;
+      const rect = progressBar.getBoundingClientRect();
+      const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      this.videoProgress = percent * 100;
+      this.currentVideoElement.currentTime = this.currentVideoElement.duration * percent;
+    },
+
+    stopProgressDrag() {
+      this.isProgressDragging = false;
+      document.removeEventListener('mousemove', this.handleProgressDrag);
+      document.removeEventListener('mouseup', this.stopProgressDrag);
+    },
+
+    toggleMute() {
+      if (!this.currentVideoElement) return;
+      this.currentVideoElement.muted = !this.currentVideoElement.muted;
+    },
+    
+    changeVolumeVertical(event) {
+      if (!this.currentVideoElement) return;
+      const slider = this.$refs.volumeSlider;
+      const rect = slider.getBoundingClientRect();
+      const percent = 1 - (event.clientY - rect.top) / rect.height;
+      const newVolume = Math.max(0, Math.min(1, percent));
+      this.currentVideoElement.volume = newVolume;
+      this.currentVideoElement.muted = newVolume === 0;
+    },
+
+    startVolumeChange(e) {
+      if (!this.currentVideoElement) return;
+      this.isVolumeDragging = true;
+      // Prevent text selection
+      e.preventDefault();
+      document.body.classList.add('user-select-none');
+
+      // Add listeners
+      document.addEventListener('mousemove', this.handleVolumeChange);
+      document.addEventListener('mouseup', this.stopVolumeChange);
+    },
+
+    handleVolumeChange(e) {
+      if (!this.isVolumeDragging || !this.currentVideoElement) return;
+      this.changeVolumeVertical(e);
+    },
+
+    stopVolumeChange() {
+      this.isVolumeDragging = false;
+      document.body.classList.remove('user-select-none');
+      document.removeEventListener('mousemove', this.handleVolumeChange);
+      document.removeEventListener('mouseup', this.stopVolumeChange);
+    },
 
     // All sidebar/filter methods remain
     // ...
