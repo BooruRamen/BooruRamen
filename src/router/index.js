@@ -4,6 +4,8 @@ import HistoryView from '../views/HistoryView.vue';
 import LikesView from '../views/LikesView.vue';
 import FavoritesView from '../views/FavoritesView.vue';
 import PostViewerView from '../views/PostViewerView.vue';
+import ProfileView from '../views/ProfileView.vue';
+import ProfileSettingsView from '../views/ProfileSettingsView.vue';
 
 const routes = [
   {
@@ -31,6 +33,16 @@ const routes = [
     name: 'Viewer',
     component: PostViewerView,
     props: true,
+  },
+  {
+    path: '/profile',
+    name: 'Profile',
+    component: ProfileView,
+  },
+  {
+    path: '/profile/settings',
+    name: 'ProfileSettings',
+    component: ProfileSettingsView,
   },
 ];
 

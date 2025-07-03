@@ -8,12 +8,6 @@
         :style="{ transform: showPostDetails ? 'translateX(0)' : 'translateX(-100%)' }"
       >
         <div class="p-4 pb-20">
-          <nav class="mb-4">
-            <router-link to="/" class="block py-2 text-lg hover:text-pink-500">Home</router-link>
-            <router-link to="/history" class="block py-2 text-lg hover:text-pink-500">History</router-link>
-            <router-link to="/likes" class="block py-2 text-lg hover:text-pink-500">Likes</router-link>
-            <router-link to="/favorites" class="block py-2 text-lg hover:text-pink-500">Favorites</router-link>
-          </nav>
           <h2 class="text-xl font-bold mb-4">Post Details</h2>
           
           <div class="space-y-4" v-if="currentPost">
@@ -506,12 +500,14 @@
         </button>
       </div>
     </div>
+    <BottomNavBar />
   </div>
 </template>
 
 <script>
 import { X, Settings, Heart, ThumbsDown, Star } from 'lucide-vue-next';
 import StorageService from './services/StorageService.js';
+import BottomNavBar from './components/BottomNavBar.vue';
 
 export default {
   name: 'App',
@@ -521,6 +517,7 @@ export default {
     Heart,
     ThumbsDown,
     Star,
+    BottomNavBar,
   },
   data() {
     return {

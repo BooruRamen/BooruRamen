@@ -118,6 +118,11 @@ const getPreferences = () => {
  * Track posts that have been viewed
  */
 const trackPostView = (postId, postData) => {
+  const preferences = getPreferences();
+  if (preferences.disableHistory) {
+    return false;
+  }
+  
   const history = getStoredData(STORAGE_KEYS.POST_HISTORY, {});
   
   history[postId] = {
@@ -194,6 +199,32 @@ const clearAllData = () => {
 };
 
 /**
+ * Clear only the post history
+ */
+const clearHistory = () => {
+  localStorage.removeItem(STORAGE_KEYS.POST_HISTORY);
+  return true;
+};
+
+/**
+ * Clear only the 'like' interactions
+ */
+const clearLikes = () => {
+  const interactions = getStoredData(STORAGE_KEYS.INTERACTIONS, []);
+  const filteredInteractions = interactions.filter(i => i.type !== 'like');
+  return saveData(STORAGE_KEYS.INTERACTIONS, filteredInteractions);
+};
+
+/**
+ * Clear only the 'favorite' interactions
+ */
+const clearFavorites = () => {
+  const interactions = getStoredData(STORAGE_KEYS.INTERACTIONS, []);
+  const filteredInteractions = interactions.filter(i => i.type !== 'favorite');
+  return saveData(STORAGE_KEYS.INTERACTIONS, filteredInteractions);
+};
+
+/**
  * Export analytics data for recommendations
  */
 const exportAnalytics = () => {
@@ -220,5 +251,8 @@ export default {
     getViewedPosts,
     getMostInteractedTags,
     exportAnalytics,
-    clearAllData
+    clearAllData,
+    clearHistory,
+    clearLikes,
+    clearFavorites,
   };
