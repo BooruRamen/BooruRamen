@@ -668,22 +668,36 @@ export default {
     },
     toggleLike(post) {
       if (!post) return;
-      post.liked = !post.liked;
-      if (post.liked) post.disliked = false;
-      
-      StorageService.storeInteraction({ postId: post.id, type: 'like', value: post.liked ? 1 : 0, metadata: { post } });
-      if (post.disliked) {
-        StorageService.storeInteraction({ postId: post.id, type: 'dislike', value: 0, metadata: { post } });
+      if (post.liked) {
+        // Unlike the post
+        post.liked = false;
+        StorageService.storeInteraction({ postId: post.id, type: 'like', value: 0, metadata: { post } });
+      } else {
+        // Like the post
+        post.liked = true;
+        StorageService.storeInteraction({ postId: post.id, type: 'like', value: 1, metadata: { post } });
+        if (post.disliked) {
+          // If it was disliked, remove the dislike
+          post.disliked = false;
+          StorageService.storeInteraction({ postId: post.id, type: 'dislike', value: 0, metadata: { post } });
+        }
       }
     },
     toggleDislike(post) {
       if (!post) return;
-      post.disliked = !post.disliked;
-      if (post.disliked) post.liked = false;
-      
-      StorageService.storeInteraction({ postId: post.id, type: 'dislike', value: post.disliked ? 1 : 0, metadata: { post } });
-      if (post.liked) {
-        StorageService.storeInteraction({ postId: post.id, type: 'like', value: 0, metadata: { post } });
+      if (post.disliked) {
+        // Undislike the post
+        post.disliked = false;
+        StorageService.storeInteraction({ postId: post.id, type: 'dislike', value: 0, metadata: { post } });
+      } else {
+        // Dislike the post
+        post.disliked = true;
+        StorageService.storeInteraction({ postId: post.id, type: 'dislike', value: 1, metadata: { post } });
+        if (post.liked) {
+          // If it was liked, remove the like
+          post.liked = false;
+          StorageService.storeInteraction({ postId: post.id, type: 'like', value: 0, metadata: { post } });
+        }
       }
     },
     toggleFavorite(post) {

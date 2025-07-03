@@ -19,19 +19,12 @@ export default {
       posts: [],
     };
   },
-  mounted() {
-    this.loadFavoritedPosts();
-    document.addEventListener('visibilitychange', this.handleVisibilityChange);
-  },
-  beforeUnmount() {
-    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+  beforeRouteEnter(to, from, next) {
+    next(vm => {
+      vm.loadFavoritedPosts();
+    });
   },
   methods: {
-    handleVisibilityChange() {
-      if (document.visibilityState === 'visible') {
-        this.loadFavoritedPosts();
-      }
-    },
     loadFavoritedPosts() {
       const favoritedInteractions = StorageService.getInteractions('favorite');
       // We only want to show favorited posts, so we filter for value > 0

@@ -56,11 +56,24 @@ const storeInteraction = (interaction) => {
   const timestamp = Date.now();
   const interactions = getStoredData(STORAGE_KEYS.INTERACTIONS, []);
   
-  // Add new interaction with timestamp
-  interactions.push({
-    ...interaction,
-    timestamp
-  });
+  const existingIndex = interactions.findIndex(
+    (i) => i.postId === interaction.postId && i.type === interaction.type
+  );
+
+  if (existingIndex > -1) {
+    // Update the existing interaction
+    interactions[existingIndex] = {
+      ...interactions[existingIndex],
+      ...interaction,
+      timestamp, // Always update the timestamp
+    };
+  } else {
+    // Add new interaction with timestamp
+    interactions.push({
+      ...interaction,
+      timestamp,
+    });
+  }
   
   // Keep only the most recent interactions if we exceed the max
   if (interactions.length > MAX_INTERACTIONS) {

@@ -19,19 +19,12 @@ export default {
       posts: [],
     };
   },
-  mounted() {
-    this.loadLikedPosts();
-    document.addEventListener('visibilitychange', this.handleVisibilityChange);
-  },
-  beforeUnmount() {
-    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+  beforeRouteEnter(to, from, next) {
+    next(vm => {
+      vm.loadLikedPosts();
+    });
   },
   methods: {
-    handleVisibilityChange() {
-      if (document.visibilityState === 'visible') {
-        this.loadLikedPosts();
-      }
-    },
     loadLikedPosts() {
       const likedInteractions = StorageService.getInteractions('like');
       // We only want to show liked posts, so we filter for value > 0
