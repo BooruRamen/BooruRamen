@@ -28,9 +28,9 @@
             v-else-if="isVideo(post)" 
             :src="post.file_url" 
             ref="videoPlayer"
-            autoplay 
+            :autoplay="autoplayVideos"
+            :muted="isMuted"
             loop 
-            muted 
             class="max-h-[calc(100vh-0px)] max-w-full"
             @click="togglePlayPause"
           ></video>
@@ -56,6 +56,14 @@ export default {
       type: String,
       required: true,
     },
+    autoplayVideos: {
+      type: Boolean,
+      default: true,
+    },
+    isMuted: {
+      type: Boolean,
+      default: true,
+    }
   },
   data() {
     return {

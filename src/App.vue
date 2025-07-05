@@ -153,6 +153,8 @@
           :auto-scroll="settings.autoScroll"
           :auto-scroll-seconds="settings.autoScrollSeconds"
           :disable-scroll-animation="settings.disableScrollAnimation"
+          :autoplay-videos="settings.autoplayVideos"
+          :is-muted="isMuted"
         ></router-view>
       </div>
         
@@ -281,6 +283,23 @@
                 <span 
                   class="inline-block h-4 w-4 transform rounded-full bg-white transition"
                   :class="settings.disableScrollAnimation ? 'translate-x-6' : 'translate-x-1'"
+                ></span>
+              </button>
+            </div>
+          </div>
+          
+          <!-- Autoplay videos toggle -->
+          <div class="mb-4">
+            <div class="flex items-center justify-between">
+              <label class="text-sm font-medium">Autoplay Videos</label>
+              <button 
+                @click="settings.autoplayVideos = !settings.autoplayVideos" 
+                class="relative inline-flex h-6 w-11 items-center rounded-full"
+                :class="settings.autoplayVideos ? 'bg-pink-600' : 'bg-gray-600'"
+              >
+                <span 
+                  class="inline-block h-4 w-4 transform rounded-full bg-white transition"
+                  :class="settings.autoplayVideos ? 'translate-x-6' : 'translate-x-1'"
                 ></span>
               </button>
             </div>
@@ -534,6 +553,7 @@ export default {
       autoScrollSeconds: 5,
       autoScrollSpeed: 'medium',
       disableHistory: false,
+      autoplayVideos: true,
       mediaType: { images: true, videos: true },
       ratings: ['general', 'sensitive'],
       whitelistTags: [],
@@ -612,6 +632,15 @@ export default {
         // Apply persisted volume and mute settings to the new video element
         videoEl.volume = this.volumeLevel;
         videoEl.muted = this.isMuted;
+        
+        // Autoplay if enabled
+        if (this.settings.autoplayVideos) {
+          videoEl.play().catch(error => {
+            console.warn("Autoplay was prevented:", error);
+            // If autoplay fails (e.g., on first load), we can't force it.
+            // The IntersectionObserver in PostViewerView should handle subsequent plays.
+          });
+        }
         
         // Now update the UI state from the element
         this.isPlaying = !videoEl.paused;
