@@ -4,11 +4,10 @@
  */
 
 // Constants
-const STORAGE_KEYS = {
-  INTERACTIONS: 'booru-interactions',
-  USER_PREFERENCES: 'booru-preferences',
-  POST_HISTORY: 'booru-history'
-};
+const INTERACTIONS_KEY = 'booruRamenInteractions';
+const PREFERENCES_KEY = 'booruRamenPreferences';
+const VIEW_HISTORY_KEY = 'booruRamenViewHistory';
+const APP_SETTINGS_KEY = 'booruRamenAppSettings';
 
 // Maximum number of interactions to store
 const MAX_INTERACTIONS = 1000;
@@ -54,27 +53,40 @@ const storeInteraction = (interaction) => {
   }
 
   const timestamp = Date.now();
-  const interactions = getStoredData(STORAGE_KEYS.INTERACTIONS, []);
+  const interactions = getStoredData(INTERACTIONS_KEY, []);
   
-  // Add new interaction with timestamp
-  interactions.push({
-    ...interaction,
-    timestamp
-  });
+  const existingIndex = interactions.findIndex(
+    (i) => i.postId === interaction.postId && i.type === interaction.type
+  );
+
+  if (existingIndex > -1) {
+    // Update the existing interaction
+    interactions[existingIndex] = {
+      ...interactions[existingIndex],
+      ...interaction,
+      timestamp, // Always update the timestamp
+    };
+  } else {
+    // Add new interaction with timestamp
+    interactions.push({
+      ...interaction,
+      timestamp,
+    });
+  }
   
   // Keep only the most recent interactions if we exceed the max
   if (interactions.length > MAX_INTERACTIONS) {
     interactions.splice(0, interactions.length - MAX_INTERACTIONS);
   }
   
-  return saveData(STORAGE_KEYS.INTERACTIONS, interactions);
+  return saveData(INTERACTIONS_KEY, interactions);
 };
 
 /**
  * Get user interactions, optionally filtered by type
  */
 const getInteractions = (type = null) => {
-  const interactions = getStoredData(STORAGE_KEYS.INTERACTIONS, []);
+  const interactions = getStoredData(INTERACTIONS_KEY, []);
   return type ? interactions.filter(i => i.type === type) : interactions;
 };
 
@@ -82,7 +94,7 @@ const getInteractions = (type = null) => {
  * Get interactions by post ID
  */
 const getPostInteractions = (postId) => {
-    const interactions = getStoredData(STORAGE_KEYS.INTERACTIONS, []);
+    const interactions = getStoredData(INTERACTIONS_KEY, []);
     return interactions.filter(i => i.postId === postId);
 };
 
@@ -90,36 +102,42 @@ const getPostInteractions = (postId) => {
  * Store user preferences
  */
 const storePreferences = (preferences) => {
-  const currentPreferences = getStoredData(STORAGE_KEYS.USER_PREFERENCES, {});
-  return saveData(STORAGE_KEYS.USER_PREFERENCES, { ...currentPreferences, ...preferences });
+  const currentPreferences = getStoredData(PREFERENCES_KEY, {});
+  return saveData(PREFERENCES_KEY, { ...currentPreferences, ...preferences });
 };
 
 /**
  * Get user preferences
  */
 const getPreferences = () => {
-  return getStoredData(STORAGE_KEYS.USER_PREFERENCES, {});
+  return getStoredData(PREFERENCES_KEY, {});
 };
 
 /**
  * Track posts that have been viewed
  */
 const trackPostView = (postId, postData) => {
-  const history = getStoredData(STORAGE_KEYS.POST_HISTORY, {});
+  // Only track view if history is not disabled in settings
+  const settings = loadAppSettings();
+  if (settings && settings.settings && settings.settings.disableHistory) {
+    return;
+  }
+  
+  const history = getStoredData(VIEW_HISTORY_KEY, {});
   
   history[postId] = {
     lastViewed: Date.now(),
     data: postData
   };
   
-  return saveData(STORAGE_KEYS.POST_HISTORY, history);
+  return saveData(VIEW_HISTORY_KEY, history);
 };
 
 /**
  * Check if a post has been viewed before
  */
 const hasViewedPost = (postId) => {
-  const history = getStoredData(STORAGE_KEYS.POST_HISTORY, {});
+  const history = getStoredData(VIEW_HISTORY_KEY, {});
   return !!history[postId];
 };
 
@@ -127,14 +145,14 @@ const hasViewedPost = (postId) => {
  * Get viewed posts history
  */
 const getViewedPosts = () => {
-  return getStoredData(STORAGE_KEYS.POST_HISTORY, {});
+  return getStoredData(VIEW_HISTORY_KEY, {});
 };
 
 /**
  * Get user's most interacted tags
  */
 const getMostInteractedTags = (limit = 10) => {
-    const interactions = getStoredData(STORAGE_KEYS.INTERACTIONS, []);
+    const interactions = getStoredData(INTERACTIONS_KEY, []);
     
     // Initialize tag counters
     const tagCounts = {};
@@ -174,19 +192,45 @@ const getMostInteractedTags = (limit = 10) => {
  * Clear all stored data
  */
 const clearAllData = () => {
-  localStorage.removeItem(STORAGE_KEYS.INTERACTIONS);
-  localStorage.removeItem(STORAGE_KEYS.USER_PREFERENCES);
-  localStorage.removeItem(STORAGE_KEYS.POST_HISTORY);
+  localStorage.removeItem(INTERACTIONS_KEY);
+  localStorage.removeItem(PREFERENCES_KEY);
+  localStorage.removeItem(VIEW_HISTORY_KEY);
   return true;
+};
+
+/**
+ * Clear only the post history
+ */
+const clearHistory = () => {
+  localStorage.removeItem(VIEW_HISTORY_KEY);
+  return true;
+};
+
+/**
+ * Clear only the 'like' interactions
+ */
+const clearLikes = () => {
+  const interactions = getStoredData(INTERACTIONS_KEY, []);
+  const filteredInteractions = interactions.filter(i => i.type !== 'like');
+  return saveData(INTERACTIONS_KEY, filteredInteractions);
+};
+
+/**
+ * Clear only the 'favorite' interactions
+ */
+const clearFavorites = () => {
+  const interactions = getStoredData(INTERACTIONS_KEY, []);
+  const filtered = interactions.filter(i => i.type !== 'favorite');
+  return saveData(INTERACTIONS_KEY, filtered);
 };
 
 /**
  * Export analytics data for recommendations
  */
 const exportAnalytics = () => {
-    const interactions = getStoredData(STORAGE_KEYS.INTERACTIONS, []);
-    const preferences = getStoredData(STORAGE_KEYS.USER_PREFERENCES, {});
-    const history = getStoredData(STORAGE_KEYS.POST_HISTORY, {});
+    const interactions = getStoredData(INTERACTIONS_KEY, []);
+    const preferences = getStoredData(PREFERENCES_KEY, {});
+    const history = getStoredData(VIEW_HISTORY_KEY, {});
     
     return {
       interactionCount: interactions.length,
@@ -196,16 +240,39 @@ const exportAnalytics = () => {
     };
 };
 
+const saveAppSettings = (settings) => {
+  try {
+    localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(settings));
+  } catch (e) {
+    console.error("Failed to save app settings:", e);
+  }
+};
+
+const loadAppSettings = () => {
+  try {
+    const settings = localStorage.getItem(APP_SETTINGS_KEY);
+    return settings ? JSON.parse(settings) : null;
+  } catch (e) {
+    console.error("Failed to load app settings:", e);
+    return null;
+  }
+};
+
 export default {
-    storeInteraction,
-    getInteractions,
-    getPostInteractions,
-    storePreferences,
-    getPreferences,
-    trackPostView,
-    hasViewedPost,
-    getViewedPosts,
-    getMostInteractedTags,
-    exportAnalytics,
-    clearAllData
-  };
+  storeInteraction,
+  getInteractions,
+  getPostInteractions,
+  storePreferences,
+  getPreferences,
+  trackPostView,
+  hasViewedPost,
+  getViewedPosts,
+  getMostInteractedTags,
+  clearAllData,
+  clearHistory,
+  clearLikes,
+  clearFavorites,
+  exportAnalytics,
+  saveAppSettings,
+  loadAppSettings,
+};
