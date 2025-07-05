@@ -8,9 +8,11 @@
 <script>
 import PostGrid from '../components/PostGrid.vue';
 import StorageService from '../services/StorageService';
+import { postFilterMixin } from '../mixins/postFilterMixin';
 
 export default {
   name: 'HistoryView',
+  mixins: [postFilterMixin],
   components: {
     PostGrid,
   },
@@ -25,11 +27,10 @@ export default {
   methods: {
     loadHistory() {
       const history = StorageService.getViewedPosts();
-      // The history is an object with post IDs as keys. We need the values.
-      // We also want to sort them by lastViewed time, descending.
-      this.posts = Object.values(history)
+      const allPosts = Object.values(history)
         .sort((a, b) => b.lastViewed - a.lastViewed)
         .map(item => item.data);
+      this.posts = this.filterPostsBySettings(allPosts);
     },
     onPostClicked({ index }) {
       this.$router.push({ 

@@ -147,6 +147,7 @@
       <!-- Main content area -->
       <div class="h-full w-full relative overflow-hidden pb-14">
         <router-view 
+          :key="routerViewKey"
           @current-post-changed="updateCurrentPost"
           @video-state-change="handleVideoStateChange"
           :auto-scroll="settings.autoScroll"
@@ -549,6 +550,7 @@ export default {
       newWhitelistTag: '',
       newBlacklistTag: '',
       exploreMode: savedSettings ? savedSettings.exploreMode : false,
+      routerViewKey: 0,
       
       // Video player state
       isPlaying: true,
@@ -711,9 +713,16 @@ export default {
     applySettings() {
       this.showSettingsSidebar = false;
       this.saveSettingsToStorage();
-      const newQuery = this.generateQueryFromSettings();
-      if (JSON.stringify(newQuery) !== JSON.stringify(this.$route.query)) {
-        this.$router.push({ name: 'Home', query: newQuery });
+
+      const currentRouteName = this.$route.name;
+
+      if (currentRouteName === 'Home') {
+        const newQuery = this.generateQueryFromSettings();
+        if (JSON.stringify(newQuery) !== JSON.stringify(this.$route.query)) {
+          this.$router.push({ name: 'Home', query: newQuery });
+        }
+      } else if (['History', 'Likes', 'Favorites'].includes(currentRouteName)) {
+        this.routerViewKey++;
       }
     },
 

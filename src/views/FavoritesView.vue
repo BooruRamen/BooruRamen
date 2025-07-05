@@ -8,9 +8,11 @@
 <script>
 import PostGrid from '../components/PostGrid.vue';
 import StorageService from '../services/StorageService';
+import { postFilterMixin } from '../mixins/postFilterMixin';
 
 export default {
   name: 'FavoritesView',
+  mixins: [postFilterMixin],
   components: {
     PostGrid,
   },
@@ -21,18 +23,16 @@ export default {
   },
   beforeRouteEnter(to, from, next) {
     next(vm => {
-      vm.loadFavoritedPosts();
+      vm.loadFavorites();
     });
   },
   methods: {
-    loadFavoritedPosts() {
-      const favoritedInteractions = StorageService.getInteractions('favorite');
-      // We only want to show favorited posts, so we filter for value > 0
-      // also sorting by timestamp to show the most recently favorited first
-      this.posts = favoritedInteractions
+    loadFavorites() {
+      const favoritedInteractions = StorageService.getInteractionsByType('favorite');
+      const allPosts = favoritedInteractions
         .filter(interaction => interaction.value > 0)
-        .sort((a, b) => b.timestamp - a.timestamp)
         .map(interaction => interaction.metadata.post);
+      this.posts = this.filterPostsBySettings(allPosts);
     },
     onPostClicked({ index }) {
       this.$router.push({ 
