@@ -28,7 +28,7 @@ export default {
   },
   methods: {
     loadFavorites() {
-      const favoritedInteractions = StorageService.getInteractionsByType('favorite');
+      const favoritedInteractions = StorageService.getInteractions('favorite');
       const allPosts = favoritedInteractions
         .filter(interaction => interaction.value > 0)
         .map(interaction => interaction.metadata.post);

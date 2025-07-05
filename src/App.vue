@@ -573,6 +573,13 @@ export default {
       if (!newPost) {
         this.showPostDetails = false;
       }
+    },
+    $route(to, from) {
+      // Hide post details and video controls when leaving the viewer
+      if (to.name !== 'Viewer') {
+        this.currentPost = null;
+        this.currentVideoElement = null;
+      }
     }
   },
   computed: {

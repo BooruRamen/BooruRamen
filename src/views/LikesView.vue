@@ -28,7 +28,7 @@ export default {
   },
   methods: {
     loadLikes() {
-      const likedInteractions = StorageService.getInteractionsByType('like');
+      const likedInteractions = StorageService.getInteractions('like');
       const allPosts = likedInteractions
         .filter(interaction => interaction.value > 0)
         .map(interaction => interaction.metadata.post);
