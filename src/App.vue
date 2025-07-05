@@ -609,9 +609,15 @@ export default {
       this.currentVideoElement = videoEl;
 
       if (videoEl) {
+        // Apply persisted volume and mute settings to the new video element
+        videoEl.volume = this.volumeLevel;
+        videoEl.muted = this.isMuted;
+        
+        // Now update the UI state from the element
         this.isPlaying = !videoEl.paused;
-        this.isMuted = videoEl.muted;
-        this.volumeLevel = videoEl.volume;
+        this.isMuted = videoEl.muted; // re-sync in case of browser overrides
+        this.volumeLevel = videoEl.volume; // re-sync
+
         if (videoEl.duration > 0) {
             this.videoProgress = (videoEl.currentTime / videoEl.duration) * 100;
         } else {
