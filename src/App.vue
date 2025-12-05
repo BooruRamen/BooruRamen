@@ -625,37 +625,16 @@ export default {
         post.disliked = interactions.some(i => i.type === 'dislike' && i.value > 0);
         post.favorited = interactions.some(i => i.type === 'favorite' && i.value > 0);
       }
+      
       this.currentPost = post;
       this.currentVideoElement = videoEl;
 
       if (videoEl) {
-        // Apply persisted volume and mute settings to the new video element
+        // Apply persisted volume and mute settings to the new video element.
+        // The IntersectionObserver in PostViewerView is now responsible for autoplay.
         videoEl.volume = this.volumeLevel;
         videoEl.muted = this.isMuted;
-        
-        // Autoplay if enabled
-        if (this.settings.autoplayVideos) {
-          videoEl.play().catch(error => {
-            console.warn("Autoplay was prevented:", error);
-            // If autoplay fails (e.g., on first load), we can't force it.
-            // The IntersectionObserver in PostViewerView should handle subsequent plays.
-          });
-        }
-        
-        // Now update the UI state from the element
-        this.isPlaying = !videoEl.paused;
-        this.isMuted = videoEl.muted; // re-sync in case of browser overrides
-        this.volumeLevel = videoEl.volume; // re-sync
-
-        if (videoEl.duration > 0) {
-            this.videoProgress = (videoEl.currentTime / videoEl.duration) * 100;
-        } else {
-            this.videoProgress = 0;
-        }
       }
-
-      // If we load with a query, sync our settings state to it.
-      // this.syncSettingsFromQuery(this.$route.query); // This was causing the bug
     },
     getRatingFromCode(rating) {
       const ratingMap = { 'g': 'General', 's': 'Sensitive', 'q': 'Questionable', 'e': 'Explicit' };
@@ -756,6 +735,13 @@ export default {
       this.showSettingsSidebar = false;
       this.saveSettingsToStorage();
 
+      // Force a reload of settings into the reactive state
+      const savedSettings = StorageService.loadAppSettings();
+      if (savedSettings) {
+        Object.assign(this.settings, savedSettings.settings);
+        this.exploreMode = savedSettings.exploreMode;
+      }
+      
       const currentRouteName = this.$route.name;
 
       if (currentRouteName === 'Home') {

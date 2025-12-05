@@ -12,7 +12,7 @@
       </div>
       
       <div 
-        v-for="post in posts" 
+        v-for="(post, index) in posts" 
         :key="post.id"
         class="h-full w-full snap-start flex items-center justify-center relative"
       >
@@ -33,6 +33,10 @@
             loop 
             class="max-h-[calc(100vh-0px)] max-w-full"
             @click="togglePlayPause"
+            @play="handleVideoStateUpdate($event, index)"
+            @pause="handleVideoStateUpdate($event, index)"
+            @timeupdate="handleVideoStateUpdate($event, index)"
+            @volumechange="handleVideoStateUpdate($event, index)"
           ></video>
           <div 
             v-else
@@ -75,21 +79,8 @@ export default {
   },
   mounted() {
     this.loadPosts();
+    this.setupObserver();
     this.$refs.viewerContainer.addEventListener('scroll', this.determineCurrentPost);
-
-    this.observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          const video = entry.target.querySelector('video');
-          if (entry.isIntersecting) {
-            video?.play().catch(e => console.error("Autoplay failed", e));
-          } else {
-            video?.pause();
-          }
-        });
-      },
-      { threshold: 0.5 }
-    );
   },
   beforeUnmount() {
     this.$refs.viewerContainer.removeEventListener('scroll', this.determineCurrentPost);
@@ -98,6 +89,27 @@ export default {
     }
   },
   methods: {
+    setupObserver() {
+      if (this.observer) {
+        this.observer.disconnect();
+      }
+      this.observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach(entry => {
+            const video = entry.target.querySelector('video');
+            if (entry.isIntersecting) {
+              if (this.autoplayVideos && video) {
+                video.play().catch(e => console.warn("Autoplay was prevented in viewer.", e));
+              }
+            } else {
+              video?.pause();
+            }
+          });
+        },
+        { threshold: 0.5 }
+      );
+      this.observePosts();
+    },
     loadPosts() {
       this.loading = true;
       let postData = [];
@@ -131,10 +143,9 @@ export default {
             if (postElements[startIndex]) {
                 container.scrollTop = postElements[startIndex].offsetTop;
                 this.currentPostIndex = startIndex;
-                this.$emit('current-post-changed', this.posts[this.currentPostIndex]);
+                this.$emit('current-post-changed', this.posts[this.currentPostIndex], this.$refs.videoPlayer?.[this.currentPostIndex]);
             }
         }
-        this.observePosts();
     },
     determineCurrentPost() {
       const container = this.$refs.viewerContainer;
@@ -160,15 +171,46 @@ export default {
         this.currentPostIndex = closestPostIndex;
         const currentPost = this.posts[this.currentPostIndex];
         if (currentPost) {
-          this.$emit('current-post-changed', currentPost);
+          const videoEl = this.$refs.videoPlayer?.[this.currentPostIndex];
+          this.$emit('current-post-changed', currentPost, videoEl);
           StorageService.trackPostView(currentPost.id, currentPost);
         }
       }
     },
     observePosts() {
-        if (this.observer) this.observer.disconnect();
+      if (!this.observer) return;
+      this.observer.disconnect();
+      this.$nextTick(() => {
         const postElements = this.$refs.viewerContainer?.querySelectorAll('.snap-start');
         postElements?.forEach(el => this.observer.observe(el));
+      });
+    },
+    handleVideoStateUpdate(event, index) {
+      if (index !== this.currentPostIndex) return;
+
+      const video = event.target;
+      const state = {};
+
+      switch (event.type) {
+        case 'play':
+          state.isPlaying = true;
+          break;
+        case 'pause':
+          state.isPlaying = false;
+          break;
+        case 'timeupdate':
+          if (video.duration) {
+            state.progress = (video.currentTime / video.duration) * 100;
+          }
+          break;
+        case 'volumechange':
+          state.volume = video.volume;
+          state.muted = video.muted;
+          break;
+      }
+      if (Object.keys(state).length > 0) {
+        this.$emit('video-state-change', state);
+      }
     },
     isImage(post) {
       if (!post || !post.file_ext) return false;
@@ -187,7 +229,8 @@ export default {
     }
   },
   watch: {
-    posts: 'observePosts'
+    posts: 'observePosts',
+    autoplayVideos: 'setupObserver'
   }
 };
 </script> 
