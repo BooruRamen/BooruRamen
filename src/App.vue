@@ -153,6 +153,8 @@
           :auto-scroll="settings.autoScroll"
           :auto-scroll-seconds="settings.autoScrollSeconds"
           :disable-scroll-animation="settings.disableScrollAnimation"
+          :autoplay-videos="settings.autoplayVideos"
+          :is-muted="isMuted"
         ></router-view>
       </div>
         
@@ -281,6 +283,23 @@
                 <span 
                   class="inline-block h-4 w-4 transform rounded-full bg-white transition"
                   :class="settings.disableScrollAnimation ? 'translate-x-6' : 'translate-x-1'"
+                ></span>
+              </button>
+            </div>
+          </div>
+          
+          <!-- Autoplay videos toggle -->
+          <div class="mb-4">
+            <div class="flex items-center justify-between">
+              <label class="text-sm font-medium">Autoplay Videos</label>
+              <button 
+                @click="settings.autoplayVideos = !settings.autoplayVideos" 
+                class="relative inline-flex h-6 w-11 items-center rounded-full"
+                :class="settings.autoplayVideos ? 'bg-pink-600' : 'bg-gray-600'"
+              >
+                <span 
+                  class="inline-block h-4 w-4 transform rounded-full bg-white transition"
+                  :class="settings.autoplayVideos ? 'translate-x-6' : 'translate-x-1'"
                 ></span>
               </button>
             </div>
@@ -534,6 +553,7 @@ export default {
       autoScrollSeconds: 5,
       autoScrollSpeed: 'medium',
       disableHistory: false,
+      autoplayVideos: true,
       mediaType: { images: true, videos: true },
       ratings: ['general', 'sensitive'],
       whitelistTags: [],
@@ -605,22 +625,16 @@ export default {
         post.disliked = interactions.some(i => i.type === 'dislike' && i.value > 0);
         post.favorited = interactions.some(i => i.type === 'favorite' && i.value > 0);
       }
+      
       this.currentPost = post;
       this.currentVideoElement = videoEl;
 
       if (videoEl) {
-        this.isPlaying = !videoEl.paused;
-        this.isMuted = videoEl.muted;
-        this.volumeLevel = videoEl.volume;
-        if (videoEl.duration > 0) {
-            this.videoProgress = (videoEl.currentTime / videoEl.duration) * 100;
-        } else {
-            this.videoProgress = 0;
-        }
+        // Apply persisted volume and mute settings to the new video element.
+        // The IntersectionObserver in PostViewerView is now responsible for autoplay.
+        videoEl.volume = this.volumeLevel;
+        videoEl.muted = this.isMuted;
       }
-
-      // If we load with a query, sync our settings state to it.
-      // this.syncSettingsFromQuery(this.$route.query); // This was causing the bug
     },
     getRatingFromCode(rating) {
       const ratingMap = { 'g': 'General', 's': 'Sensitive', 'q': 'Questionable', 'e': 'Explicit' };
@@ -721,6 +735,13 @@ export default {
       this.showSettingsSidebar = false;
       this.saveSettingsToStorage();
 
+      // Force a reload of settings into the reactive state
+      const savedSettings = StorageService.loadAppSettings();
+      if (savedSettings) {
+        Object.assign(this.settings, savedSettings.settings);
+        this.exploreMode = savedSettings.exploreMode;
+      }
+      
       const currentRouteName = this.$route.name;
 
       if (currentRouteName === 'Home') {
