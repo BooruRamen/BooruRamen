@@ -29,10 +29,16 @@
           <video 
             v-else-if="getFileExtension(post) === 'mp4' || getFileExtension(post) === 'webm' || isVideoPost(post)" 
             :src="post.file_url" 
-            :ref="(el) => { if (el) videoElements[post.id] = el }"
+            :ref="(el) => { 
+              if (el) {
+                videoElements[post.id] = el;
+                el.volume = volume;
+                el.muted = isMuted;
+              }
+            }"
             autoplay 
             loop 
-            muted 
+            :muted="isMuted" 
             class="max-h-[calc(100vh-56px)] max-w-full"
             @click="togglePlayPause"
             @play="onVideoPlay"
@@ -47,6 +53,11 @@
             <p>Unable to display media. <a :href="post.file_url" target="_blank" class="text-pink-500 underline">Open directly</a></p>
           </div>
         </div>
+      </div>
+      
+      <!-- Pagination loading spinner -->
+      <div v-if="isFetching && !loading" class="w-full flex justify-center py-4 snap-end">
+         <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-pink-600"></div>
       </div>
     </div>
   </div>
@@ -71,7 +82,15 @@ export default {
     disableScrollAnimation: {
       type: Boolean,
       default: false
-    }
+    },
+    volume: {
+      type: Number,
+      default: 1
+    },
+    isMuted: {
+      type: Boolean,
+      default: false
+    },
   },
   data() {
     return {
@@ -123,10 +142,13 @@ export default {
       
       return tags.join(' ');
     },
+
     async fetchPosts(newSearch = false) {
       if (this.isFetching) return;
       this.isFetching = true;
-      this.loading = true;
+      if (newSearch || this.posts.length === 0) {
+        this.loading = true;
+      }
 
       // Get view history to exclude seen posts
       const viewedHistory = StorageService.getViewedPosts();
@@ -438,6 +460,16 @@ export default {
         this.determineCurrentPost();
       });
     },
+    volume(newVolume) {
+      Object.values(this.videoElements).forEach(el => {
+        if (el) el.volume = newVolume;
+      });
+    },
+    isMuted(newMuted) {
+      Object.values(this.videoElements).forEach(el => {
+        if (el) el.muted = newMuted;
+      });
+    }
   },
 }
 </script> 
