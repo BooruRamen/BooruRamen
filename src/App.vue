@@ -192,7 +192,7 @@
         <div class="flex items-center group relative">
           <!-- Improved hover area for volume slider -->
           <div 
-            class="absolute bottom-full w-8 h-28 group-hover:block cursor-pointer"
+            class="hidden absolute bottom-full w-8 h-28 group-hover:block cursor-pointer"
             style="left: 50%; transform: translateX(-50%);"
             @mouseenter="isVolumeSliderHovered = true"
             @mouseleave="isVolumeSliderHovered = false"
