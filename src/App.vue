@@ -585,6 +585,10 @@ export default {
       isVolumeSliderHovered: false,
       isVolumeHovered: false,
       
+      // Time tracking
+      watchStartTime: null,
+      accumulatedWatchTime: 0,
+      
       // Sidebar filter state
       // ... (keep this)
       hasRecommendations: false,
@@ -602,8 +606,13 @@ export default {
     $route(to, from) {
       // Hide post details and video controls when leaving the viewer
       if (to.name !== 'Viewer') {
+        if (this.currentPost) {
+            this.saveWatchTime(this.currentPost);
+        }
         this.currentPost = null;
         this.currentVideoElement = null;
+        this.watchStartTime = null;
+        this.accumulatedWatchTime = 0;
       }
     },
     showSettingsSidebar(isOpen) {
@@ -630,11 +639,23 @@ export default {
       this.$router.push({ name: 'Home', query: this.generateQueryFromSettings() });
     },
     updateCurrentPost(post, videoEl) {
+      // Save time for previous post
+      if (this.currentPost) {
+          this.saveWatchTime(this.currentPost);
+      }
+      
+      // Reset tracking
+      this.watchStartTime = null;
+      this.accumulatedWatchTime = 0;
+
       if (post) {
         const interactions = StorageService.getPostInteractions(post.id);
         post.liked = interactions.some(i => i.type === 'like' && i.value > 0);
         post.disliked = interactions.some(i => i.type === 'dislike' && i.value > 0);
         post.favorited = interactions.some(i => i.type === 'favorite' && i.value > 0);
+        
+        // If auto-play is on and it's a video, start tracking immediately? 
+        // handleVideoStateChange should handle it when the 'play' event fires from the child.
       }
       
       this.currentPost = post;
@@ -646,6 +667,22 @@ export default {
         videoEl.volume = this.volumeLevel;
         videoEl.muted = this.isMuted;
       }
+    },
+    saveWatchTime(post) {
+        let totalTime = this.accumulatedWatchTime;
+        if (this.watchStartTime) {
+            totalTime += (Date.now() - this.watchStartTime);
+        }
+        
+        // Save if viewed for more than 1 second (1000ms)
+        if (totalTime > 1000) {
+            StorageService.storeInteraction({
+                postId: post.id,
+                type: 'timeSpent',
+                value: totalTime,
+                metadata: { post }
+            });
+        }
     },
     getRatingFromCode(rating) {
       const ratingMap = { 'g': 'General', 's': 'Sensitive', 'q': 'Questionable', 'e': 'Explicit' };
@@ -766,7 +803,22 @@ export default {
     },
 
     handleVideoStateChange(state) {
-      if (state.isPlaying !== undefined) this.isPlaying = state.isPlaying;
+      if (state.isPlaying !== undefined) {
+        if (this.isPlaying !== state.isPlaying) {
+             this.isPlaying = state.isPlaying;
+             
+             if (this.isPlaying) {
+                 // Started playing
+                 this.watchStartTime = Date.now();
+             } else {
+                 // Paused
+                 if (this.watchStartTime) {
+                     this.accumulatedWatchTime += (Date.now() - this.watchStartTime);
+                     this.watchStartTime = null;
+                 }
+             }
+        }
+      }
       if (state.progress !== undefined) this.videoProgress = state.progress;
       if (state.volume !== undefined) this.volumeLevel = state.volume;
       if (state.muted !== undefined) this.isMuted = state.muted;

@@ -6,6 +6,7 @@ import FavoritesView from '../views/FavoritesView.vue';
 import PostViewerView from '../views/PostViewerView.vue';
 import ProfileView from '../views/ProfileView.vue';
 import ProfileSettingsView from '../views/ProfileSettingsView.vue';
+import ProfileAnalyticsView from '../views/ProfileAnalyticsView.vue';
 
 const routes = [
   {
@@ -43,6 +44,11 @@ const routes = [
     path: '/profile/settings',
     name: 'ProfileSettings',
     component: ProfileSettingsView,
+  },
+  {
+    path: '/profile/analytics',
+    name: 'ProfileAnalytics',
+    component: ProfileAnalyticsView,
   },
 ];
 
