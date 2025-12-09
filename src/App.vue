@@ -534,6 +534,8 @@
 <script>
 import { X, Settings, Heart, ThumbsDown, Star } from 'lucide-vue-next';
 import StorageService from './services/StorageService.js';
+import recommendationSystem from './services/RecommendationSystem.js';
+
 import BottomNavBar from './components/BottomNavBar.vue';
 
 export default {
@@ -586,6 +588,9 @@ export default {
       // Sidebar filter state
       // ... (keep this)
       hasRecommendations: false,
+      recommendedTags: [],
+      recommendationSystem, // Expose to template
+
     };
   },
   watch: {
@@ -600,8 +605,14 @@ export default {
         this.currentPost = null;
         this.currentVideoElement = null;
       }
+    },
+    showSettingsSidebar(isOpen) {
+      if (isOpen) {
+        this.updateRecommendationStatus();
+      }
     }
   },
+
   computed: {
     isCurrentPostVideo() {
       if (!this.currentPost) return false;
@@ -885,7 +896,17 @@ export default {
       post.favorited = !post.favorited;
       StorageService.storeInteraction({ postId: post.id, type: 'favorite', value: post.favorited ? 1 : 0, metadata: { post } });
     },
+    updateRecommendationStatus() {
+      const interactions = StorageService.getInteractions();
+      this.hasRecommendations = interactions.length > 0;
+      if (this.hasRecommendations) {
+        this.recommendedTags = recommendationSystem.getRecommendedTags();
+      } else {
+        this.recommendedTags = [];
+      }
+    },
   },
+
   mounted() {
     window.addEventListener('keydown', this.handleKeydown);
     // On initial load, if we are on the Home page, make sure the URL
@@ -902,7 +923,9 @@ export default {
       this.settings = savedSettings.settings;
       this.exploreMode = savedSettings.exploreMode;
     }
+    this.updateRecommendationStatus();
   },
+
   beforeUnmount() {
     window.removeEventListener('keydown', this.handleKeydown);
   },

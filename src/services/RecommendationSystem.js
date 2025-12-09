@@ -25,7 +25,9 @@ class RecommendationSystem {
   constructor() {
     this.userEmbedding = null;
     this.tagScores = null;
+    this.tagCategories = null;
     this.ratingPreferences = null;
+
     this.mediaTypePreferences = null;
     this.lastUpdateTime = 0;
     
@@ -66,6 +68,8 @@ class RecommendationSystem {
     
     // Initialize tag scores object
     this.tagScores = {};
+    this.tagCategories = {}; 
+
     
     // Initialize rating and media type preferences
     this.ratingPreferences = {
@@ -125,8 +129,10 @@ class RecommendationSystem {
           if (tag) {
             if (!this.tagScores[tag]) {
               this.tagScores[tag] = 0;
+              this.tagCategories[tag] = category;
             }
             this.tagScores[tag] += weight;
+
           }
         });
       }
@@ -138,7 +144,9 @@ class RecommendationSystem {
       generalTags.split(' ').forEach(tag => {
         if (tag && !this.tagScores[tag]) {
           this.tagScores[tag] = 0;
+          this.tagCategories[tag] = 'general';
           this.tagScores[tag] += weight;
+
         }
       });
     }
@@ -195,7 +203,9 @@ class RecommendationSystem {
    */
   initializeDefaultProfile() {
     this.tagScores = {};
+    this.tagCategories = {};
     this.ratingPreferences = {
+
       general: 0.7,
       sensitive: 0.3,
       questionable: 0,
@@ -341,8 +351,9 @@ class RecommendationSystem {
     }
     
     return Object.entries(this.tagScores)
-      .filter(([_, score]) => score > 0)
+      .filter(([tag, score]) => score > 0 && this.tagCategories[tag] !== 'meta')
       .sort((a, b) => b[1] - a[1])
+
       .slice(0, limit)
       .map(([tag]) => tag);
   }
