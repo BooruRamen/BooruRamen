@@ -10,10 +10,11 @@ BooruRamen is a Vue.js application that provides a personalized image and video 
 
 ### Key Features
 
-- **Smart Recommendations**: Content recommendations improve as you interact with the app
-- **Personal Preferences**: Your preferences are stored locally for privacy
-- **Tag-based Filtering**: Easily discover content using tag-based searches
-- **Responsive Design**: Works on desktop and mobile devices
+- **Smart Recommendations**: Content recommendations improve as you interact with the app (likes, dislikes, time spent).
+- **Profile Analytics**: Detailed insights into your viewing habits, including top tags, engagement rates, and video watch time.
+- **Personal Preferences**: Your preferences and history are stored locally for privacy.
+- **Tag-based Filtering**: Easily discover content using tag-based searches with support for whitelists and blacklists.
+- **Responsive Design**: Works on desktop and mobile devices with adaptive layouts.
 
 ## 🚀 Getting Started
 
@@ -37,12 +38,12 @@ npm install
 
 3. Start the development server:
 ```
-npm run serve
+npm run dev
 ```
 
 4. Open your browser and navigate to:
 ```
-http://localhost:8080
+http://localhost:5173
 ```
 
 ## 🛠️ Building for Production
@@ -57,10 +58,22 @@ The built files will be in the `dist/` directory, ready for deployment.
 ## 🧰 Technologies Used
 
 - **Vue.js 3**: Frontend framework
+- **Vite**: Next Generation Frontend Tooling
 - **Tailwind CSS**: Styling and UI components
-- **Local Storage API**: For data persistence
+- **Vue Router**: Client-side routing
+- **Lucide Vue Next**: Beautiful & consistent icons
+- **Local Storage API**: For data persistence (No external database required)
 
-## 📊 Recommendation System
+## 📊 Profile Analytics
+
+Gain insights into your preferences with the dedicated Analytics page:
+- **Top Tags & Pairs**: See which content you engage with most.
+- **Engagement Metrics**: Track Like and Favorite rates normalized by views.
+- **Most Disliked**: Identify tags you frequently dislike to refine recommendations.
+- **Video Analytics**: Monitor your total video watch time and average viewing duration.
+- **Visualizations**: View tag distributions via responsive SVG-based charts.
+
+## 🧠 Recommendation System
 
 BooruRamen uses a sophisticated recommendation system that:
 
@@ -87,10 +100,17 @@ All recommendations are processed locally in your browser for privacy.
 ```
 src/
   ├── assets/          # Static assets
-  ├── components/      # Vue components
+  ├── components/      # Reusable Vue components (BottomNavBar, etc.)
+  ├── router/          # Route definitions
   ├── services/        # Service modules
   │   ├── RecommendationSystem.js  # Content recommendation engine
-  │   └── StorageService.js        # Local storage management
+  │   ├── StorageService.js        # Local storage & analytics data management
+  │   └── DanbooruService.js       # External API integration
+  ├── views/           # Page views
+  │   ├── FeedView.vue             # Main content feed
+  │   ├── PostViewerView.vue       # Immersive media viewer
+  │   ├── ProfileView.vue          # User profile hub
+  │   └── ProfileAnalyticsView.vue # Detailed analytics dashboard
   └── App.vue          # Main application component
 ```
 
