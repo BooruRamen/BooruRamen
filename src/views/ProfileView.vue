@@ -14,6 +14,9 @@
       <router-link to="/profile/settings" class="block w-full text-center bg-gray-700 hover:bg-gray-600 py-3 rounded-md text-lg">
         Profile Settings
       </router-link>
+      <router-link to="/profile/analytics" class="block w-full text-center bg-gray-700 hover:bg-gray-600 py-3 rounded-md text-lg">
+        Profile Analytics
+      </router-link>
     </div>
   </div>
 </template>

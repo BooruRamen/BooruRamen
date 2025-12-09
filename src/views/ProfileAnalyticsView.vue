@@ -1,0 +1,477 @@
+<template>
+  <div class="p-4 text-white pb-20 h-full overflow-y-auto"> <!-- Added h-full and overflow-y-auto -->
+    <div class="max-w-7xl mx-auto space-y-6">
+      
+      <!-- Header & Toggles -->
+      <div class="space-y-4">
+        <h1 class="text-3xl font-bold">Profile Analytics</h1>
+        
+        <div class="bg-gray-800 p-4 rounded-lg">
+          <h2 class="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">Include Tags</h2>
+          <div class="flex flex-wrap gap-2">
+            <button 
+              v-for="(active, type) in toggles" 
+              :key="type"
+              @click="toggles[type] = !active"
+              :class="[
+                'px-4 py-2 rounded-full text-sm font-medium transition-colors',
+                active 
+                  ? 'bg-pink-600 text-white hover:bg-pink-500' 
+                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+              ]"
+            >
+              {{ capitalize(type) }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div v-if="loading" class="flex justify-center py-12">
+        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-pink-500"></div>
+      </div>
+
+      <!-- Content Grid -->
+      <div v-else class="grid gap-4 auto-rows-min" style="grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));">
+        
+        <!-- Top Tags (1x1) -->
+        <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
+          <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+            <span>🏆</span> Top Tags
+          </h3>
+          <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+            <div v-for="(count, tag) in topTags" :key="tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <span class="text-gray-200 truncate">{{ tag }}</span>
+              <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-pink-400">{{ count }}</span>
+            </div>
+            <div v-if="Object.keys(topTags).length === 0" class="text-center text-gray-500 mt-10">
+              No data available
+            </div>
+          </div>
+        </div>
+
+        <!-- Tag Pairs (1x1) -->
+        <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
+          <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+            <span>🔗</span> Top Tag Pairs
+          </h3>
+          <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+             <div v-for="(count, pair) in topTagPairs" :key="pair" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <span class="text-gray-200 text-sm truncate max-w-[70%]">{{ pair }}</span>
+              <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-blue-400">{{ count }}</span>
+            </div>
+            <div v-if="Object.keys(topTagPairs).length === 0" class="text-center text-gray-500 mt-10">
+              No data available
+            </div>
+          </div>
+        </div>
+
+        <!-- Distribution Pie Chart (1x2 effectively or just large) -->
+        <!-- User asked for 1x2 section. We use md:col-span-2 to span 2 cols on medium+ screens if the grid has capacity. -->
+        <div class="bg-gray-800 rounded-lg p-4 md:col-span-2 h-100 flex flex-col">
+           <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+            <span>🍰</span> Tag Distribution
+          </h3>
+          <div class="flex-1 flex items-center justify-center relative">
+             <!-- SVG Pie Chart -->
+             <svg viewBox="0 0 100 100" class="h-full w-full max-h-64 filter drop-shadow-xl" v-if="pieData.length > 0">
+                <circle v-for="(slice, index) in pieSlices" :key="index"
+                  cx="50" cy="50" r="40"
+                  fill="transparent"
+                  :stroke="slice.color"
+                  :stroke-width="20"
+                  :stroke-dasharray="slice.dashArray"
+                  :stroke-dashoffset="slice.dashOffset"
+                  class="transition-all duration-1000 ease-out hover:opacity-90"
+                />
+             </svg>
+             
+             <div v-if="pieData.length === 0" class="text-gray-500">No data available</div>
+
+             <!-- Legend (Overlay or separate?) Let's put it to the side or below if space permits. 
+                  For now simple absolute overlay or flex. -->
+          </div>
+          <div class="mt-4 flex flex-wrap justify-center gap-3 text-xs">
+              <div v-for="slice in pieData" :key="slice.label" class="flex items-center gap-1">
+                  <span class="w-3 h-3 rounded-full" :style="{ backgroundColor: slice.color }"></span>
+                  <span class="text-gray-300">{{ slice.label }} ({{ slice.percentage }}%)</span>
+              </div>
+          </div>
+        </div>
+
+        <!-- Highest Like Rate (1x1) -->
+        <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
+          <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+            <span>❤️</span> Highest Like Rate
+          </h3>
+          <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+             <div v-for="item in likeRates" :key="item.tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <div class="flex flex-col truncate max-w-[70%]">
+                 <span class="text-gray-200 font-medium truncate">{{ item.tag }}</span>
+                 <span class="text-xs text-gray-500">{{ item.likes }}/{{ item.views }} viewed</span>
+              </div>
+              <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-red-500 font-bold">{{ item.rate }}%</span>
+            </div>
+             <div v-if="likeRates.length === 0" class="text-center text-gray-500 mt-10">
+              No data available
+            </div>
+          </div>
+        </div>
+
+        <!-- Highest Favorite Rate (1x1) -->
+        <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
+          <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+            <span>⭐</span> Highest Favorite Rate
+          </h3>
+          <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+             <div v-for="item in favoriteRates" :key="item.tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <div class="flex flex-col truncate max-w-[70%]">
+                 <span class="text-gray-200 font-medium truncate">{{ item.tag }}</span>
+                 <span class="text-xs text-gray-500">{{ item.favorites }}/{{ item.views }} viewed</span>
+              </div>
+              <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-yellow-500 font-bold">{{ item.rate }}%</span>
+            </div>
+            <div v-if="favoriteRates.length === 0" class="text-center text-gray-500 mt-10">
+              No data available
+            </div>
+          </div>
+        </div>
+
+        <!-- Most Disliked Tags (1x1) -->
+        <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
+          <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+            <span>👎</span> Most Disliked Tags
+          </h3>
+          <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+             <div v-for="(count, tag) in topDislikedTags" :key="tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <span class="text-gray-200 truncate">{{ tag }}</span>
+              <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-gray-400">{{ count }}</span>
+            </div>
+            <div v-if="Object.keys(topDislikedTags).length === 0" class="text-center text-gray-500 mt-10">
+              No data available
+            </div>
+          </div>
+        </div>
+
+        <!-- Video Analytics (1x1) -->
+        <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
+          <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+            <span>🎥</span> Video Analytics
+          </h3>
+          <div class="flex-1 flex flex-col justify-center items-center gap-6">
+             <div class="text-center">
+                 <div class="text-4xl font-bold text-white mb-2">{{ videoStats.avgWatchTime }}s</div>
+                 <div class="text-sm text-gray-400">Avg Watch Time</div>
+             </div>
+             <div class="w-full h-px bg-gray-700"></div>
+             <div class="text-center">
+                 <div class="text-2xl font-bold text-white mb-2">{{ videoStats.totalVideosWatched }}</div>
+                 <div class="text-sm text-gray-400">Videos Watched</div>
+             </div>
+             <!-- Future: Completion rate? -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import StorageService from '../services/StorageService';
+
+export default {
+  name: 'ProfileAnalyticsView',
+  data() {
+    return {
+      toggles: {
+        general: true,
+        artist: true,
+        character: true,
+        copyright: true,
+        meta: true // Danbooru meta tags
+      },
+      loading: true,
+      rawHistory: [],
+      rawInteractions: [],
+      processedData: {
+        tagCounts: {},
+        tagPairCounts: {},
+        tagViews: {},
+        tagLikes: {},
+        tagFavorites: {},
+        tagDislikes: {},
+        videoTimes: []
+      }
+    };
+  },
+  computed: {
+    // Filter tags based on toggles
+    // We will re-compute the display lists from processedData + toggles
+    
+    activeCategories() {
+       return Object.keys(this.toggles).filter(k => this.toggles[k]);
+    },
+
+    topTags() {
+        const sorted = Object.entries(this.processedData.tagCounts)
+            .filter(([tag]) => this.isTagHidden(tag) === false)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 50);
+        return Object.fromEntries(sorted);
+    },
+
+    topDislikedTags() {
+        const sorted = Object.entries(this.processedData.tagDislikes)
+            .filter(([tag]) => this.isTagHidden(tag) === false)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 50);
+        return Object.fromEntries(sorted);
+    },
+
+    topTagPairs() {
+         const sorted = Object.entries(this.processedData.tagPairCounts)
+            .filter(([pair]) => {
+                const [t1, t2] = pair.split(' + ');
+                return !this.isTagHidden(t1) && !this.isTagHidden(t2);
+            })
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 50);
+        return Object.fromEntries(sorted);
+    },
+
+    pieData() {
+        const sorted = Object.entries(this.processedData.tagCounts)
+             .filter(([tag]) => !this.isTagHidden(tag))
+            .sort((a, b) => b[1] - a[1]);
+        
+        if (sorted.length === 0) return [];
+
+        const top5 = sorted.slice(0, 5);
+        const otherCount = sorted.slice(5).reduce((sum, [, count]) => sum + count, 0);
+        
+        const data = top5.map(([label, value], index) => ({
+            label, 
+            value, 
+            color: this.getPieColor(index)
+        }));
+
+        if (otherCount > 0) {
+            data.push({ label: 'Other', value: otherCount, color: '#4b5563' }); // gray-600
+        }
+
+        const total = data.reduce((sum, d) => sum + d.value, 0);
+        return data.map(d => ({ ...d, percentage: ((d.value / total) * 100).toFixed(1) }));
+    },
+
+    pieSlices() {
+        let cumulativePercent = 0;
+        return this.pieData.map(slice => {
+            const percent = parseFloat(slice.percentage);
+            const dashArray = `${percent * 2.51} 251.2`; // 2 * PI * 40 ≈ 251.2
+            const dashOffset = -cumulativePercent * 2.51;
+            cumulativePercent += percent;
+            return { ...slice, dashArray, dashOffset };
+        });
+    },
+
+    likeRates() {
+        return this.calculateRates(this.processedData.tagLikes);
+    },
+
+    favoriteRates() {
+        return this.calculateRates(this.processedData.tagFavorites);
+    },
+
+    videoStats() {
+        const count = this.processedData.videoTimes.length;
+        if (count === 0) return { avgWatchTime: 0, totalVideosWatched: 0 };
+        
+        const totalTime = this.processedData.videoTimes.reduce((a, b) => a + b, 0);
+        return {
+            avgWatchTime: (totalTime / count / 1000).toFixed(1),
+            totalVideosWatched: count
+        };
+    }
+  },
+  mounted() {
+    this.calculateAnalytics();
+  },
+  methods: {
+    capitalize(s) {
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    },
+    getPieColor(i) {
+        const colors = ['#ec4899', '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b']; // pink, violet, blue, emerald, amber
+        return colors[i % colors.length];
+    },
+    isTagHidden(tag) {
+        // Tag categorization logic
+        // We need to look up the tag type. 
+        // Since we aggregated counts but maybe not types in the simple map, we might need a tagTypeMap.
+        const type = this.processedData.tagTypeMap[tag] || 'general';
+        // Note: Danbooru types: 0=general, 1=artist, 3=copyright, 4=character, 5=meta
+        // We mapped them to strings in processing
+        return !this.toggles[type];
+    },
+    calculateRates(interactionMap) {
+        return Object.entries(interactionMap)
+            .filter(([tag]) => !this.isTagHidden(tag))
+            .map(([tag, count]) => {
+                const views = this.processedData.tagViews[tag] || 0;
+                // Minimum views to be statistically relevant? Let's say 3.
+                if (views < 3) return null;
+                return {
+                    tag,
+                    favorites: count, // or likes
+                    likes: count, // reused structure
+                    views,
+                    rate: ((count / views) * 100).toFixed(1)
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => parseFloat(b.rate) - parseFloat(a.rate))
+            .slice(0, 50);
+    },
+    async calculateAnalytics() {
+      this.loading = true;
+      
+      // 1. Fetch Data
+      // view history: { postId: { lastViewed, data: post } }
+      const history = StorageService.getViewedPosts(); 
+      // interactions: [ { type, postId, value, metadata } ]
+      const interactions = StorageService.getInteractions();
+
+      const tagCounts = {};
+      const tagPairCounts = {};
+      const tagViews = {};
+      const tagTypeMap = {}; // tag -> 'general' | 'artist' | ...
+      
+      const tagLikes = {};
+      const tagFavorites = {};
+      const tagDislikes = {};
+      const videoTimes = [];
+
+      // Process View History for Tops & Pairs
+      Object.values(history).forEach(entry => {
+          const post = entry.data;
+          if (!post) return;
+
+          // Categorize and Collect Tags
+          const tags = this.extractTagsWithType(post);
+          
+          // Count Tags & Views
+          tags.forEach(({ name, type }) => {
+              tagCounts[name] = (tagCounts[name] || 0) + 1;
+              tagViews[name] = (tagViews[name] || 0) + 1;
+              tagTypeMap[name] = type;
+          });
+
+          // Tag Pairs (nCr pairs) - Only within same post
+          // Limit to avoid n^2 explosion on heavy tags? Danbooru posts can have 50+ tags.
+          // Let's only pair "Copyright+Character" or "Artist+Character" or similar valuable pairs?
+          // or just all pairs but maybe limit to top 20 tags in the post?
+          // For simplicity, let's take all tags but filter significantly in display? 
+          // Actually, let's just do pairs for now.
+          for (let i = 0; i < tags.length; i++) {
+              for (let j = i + 1; j < tags.length; j++) {
+                  // Sort to ensure A+B is same as B+A
+                  const pair = [tags[i].name, tags[j].name].sort().join(' + ');
+                  tagPairCounts[pair] = (tagPairCounts[pair] || 0) + 1;
+              }
+          }
+      });
+
+      // Process Interactions for Rates
+      const likes = interactions.filter(i => i.type === 'like' && i.value > 0);
+      likes.forEach(i => {
+          const post = i.metadata?.post;
+          if(post) {
+             const tags = this.extractTagsWithType(post);
+             tags.forEach(({ name }) => {
+                 tagLikes[name] = (tagLikes[name] || 0) + 1;
+             });
+          }
+      });
+
+      const favorites = interactions.filter(i => i.type === 'favorite' && i.value > 0);
+      favorites.forEach(i => {
+           const post = i.metadata?.post;
+          if(post) {
+             const tags = this.extractTagsWithType(post);
+             tags.forEach(({ name }) => {
+                 tagFavorites[name] = (tagFavorites[name] || 0) + 1;
+             });
+          }
+      });
+
+      const dislikes = interactions.filter(i => i.type === 'dislike' && i.value > 0);
+      dislikes.forEach(i => {
+           const post = i.metadata?.post;
+          if(post) {
+             const tags = this.extractTagsWithType(post);
+             tags.forEach(({ name }) => {
+                 tagDislikes[name] = (tagDislikes[name] || 0) + 1;
+             });
+          }
+      });
+
+      // Process Time Spent (Video)
+      const timeSpent = interactions.filter(i => i.type === 'timeSpent' && i.metadata?.post?.file_ext && ['mp4','webm'].includes(i.metadata.post.file_ext));
+      timeSpent.forEach(i => {
+          if (i.value > 0) videoTimes.push(i.value);
+      });
+
+      this.processedData = {
+          tagCounts,
+          tagPairCounts,
+          tagViews,
+          tagTypeMap,
+          tagLikes,
+          tagFavorites,
+          tagDislikes,
+          videoTimes,
+      };
+      
+      this.loading = false;
+    },
+    extractTagsWithType(post) {
+        // Danbooru JSON typically has tag_string_general, tag_string_character etc.
+        const tags = [];
+        
+        const processStr = (str, type) => {
+            if (!str) return;
+            str.split(' ').forEach(t => {
+                if (t.trim()) tags.push({ name: t.trim(), type });
+            });
+        };
+
+        if (post.tag_string_general) processStr(post.tag_string_general, 'general');
+        else if (post.tag_string) processStr(post.tag_string, 'general'); // Fallback if detailed fields missing
+
+        processStr(post.tag_string_artist, 'artist');
+        processStr(post.tag_string_character, 'character');
+        processStr(post.tag_string_copyright, 'copyright');
+        processStr(post.tag_string_meta, 'meta');
+
+        return tags;
+    }
+  }
+};
+</script>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(31, 41, 55, 0.5); 
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(75, 85, 99, 0.8); 
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 1); 
+}
+</style>
