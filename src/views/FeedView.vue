@@ -128,6 +128,16 @@ export default {
       this.isFetching = true;
       this.loading = true;
 
+      // Get view history to exclude seen posts
+      const viewedHistory = StorageService.getViewedPosts();
+      // Create a set of IDs to exclude (viewed history + currently loaded posts)
+      const blockedIds = new Set([
+        ...Object.keys(viewedHistory).map(id => parseInt(id)), // Ensure IDs are numbers if needed, but strings work for comparisons usually. API returns numbers.
+        ...this.posts.map(p => p.id)
+      ]);
+      
+      console.log(`FetchPosts: Blocked ${Object.keys(viewedHistory).length} from history, ${this.posts.length} from current. Total blocked: ${blockedIds.size}`);
+
       if (newSearch) {
         this.page = 1;
         this.posts = [];
@@ -141,11 +151,16 @@ export default {
 
       try {
         let newPosts = [];
+        
         if (exploreMode) {
+          const targetCount = 5; // Relaxed target for explore mode
+          let attempts = 0;
+          const maxAttempts = 15;
+
           const fetchFunction = (queryParams, limit) => {
             let combinedTags = queryParams.tags || '';
 
-            // Manually add media type filters, as the recommendation system doesn't handle them.
+            // Manually add media type filters
             const wantsImages = 'images' in this.$route.query ? this.$route.query.images === '1' : true;
             const wantsVideos = 'videos' in this.$route.query ? this.$route.query.videos === '1' : true;
 
@@ -155,33 +170,98 @@ export default {
               combinedTags += ' -filetype:mp4,webm';
             }
 
-            return DanbooruService.getPosts({ tags: combinedTags.trim(), limit, page: this.page, sort: this.sort, sortOrder: this.sortOrder });
+            return DanbooruService.getPosts({ 
+              tags: combinedTags.trim(), 
+              limit, 
+              page: this.page, 
+              sort: this.sort, 
+              sortOrder: this.sortOrder 
+            });
           };
-          
+
           const { ratings, whitelist, blacklist } = this.$route.query;
 
-          newPosts = await this.recommendationSystem.getCuratedExploreFeed(fetchFunction, {
-            fetchCount: 5,
-            postsPerFetch: 20,
-            selectedRatings: ratings ? ratings.split(',') : ['general'],
-            whitelist: whitelist ? whitelist.split(',') : [],
-            blacklist: blacklist ? blacklist.split(',') : [],
-          });
+          // Loop until we find news posts or hit max attempts
+          while (newPosts.length < targetCount && attempts < maxAttempts) {
+            attempts++;
+            
+            const batch = await this.recommendationSystem.getCuratedExploreFeed(fetchFunction, {
+              fetchCount: 5,
+              postsPerFetch: 20,
+              selectedRatings: ratings ? ratings.split(',') : ['general'],
+              whitelist: whitelist ? whitelist.split(',') : [],
+              blacklist: blacklist ? blacklist.split(',') : [],
+              existingPostIds: blockedIds, // Pass the blocked IDs here
+            });
+            
+            if (batch.length > 0) {
+              newPosts = [...newPosts, ...batch];
+              // Add found IDs to blockedIds so subsequent iterations (if any) don't pick them up
+              batch.forEach(p => blockedIds.add(p.id));
+            }
+            
+            // If we haven't met our target, move to next page of results
+            if (newPosts.length < targetCount) {
+               this.page++;
+            }
+          }
 
         } else {
+          // Normal mode with deduplication
           const tagsForApi = this.buildTagsFromRouteQuery();
-          newPosts = await DanbooruService.getPosts({
-            tags: tagsForApi,
-            page: this.page,
-            limit: 10,
-            sort: this.sort,
-            sortOrder: this.sortOrder,
-          });
+          const targetCount = 10;
+          let fetchedCount = 0;
+          let attempts = 0;
+          const maxAttempts = 5; // Prevent infinite loops
+          
+          while (newPosts.length < targetCount && attempts < maxAttempts) {
+            attempts++;
+            
+            // Fetch a batch of posts
+            const rawPosts = await DanbooruService.getPosts({
+              tags: tagsForApi,
+              page: this.page,
+              limit: 20, // Fetch more than needed to account for filtering
+              sort: this.sort,
+              sortOrder: this.sortOrder,
+            });
+            
+            if (!rawPosts || rawPosts.length === 0) {
+              break; // No more posts available
+            }
+            
+            // Filter out blocked posts
+            const filteredBatch = rawPosts.filter(p => !blockedIds.has(p.id));
+            
+            // Add unique posts to our result
+            for (const post of filteredBatch) {
+              if (newPosts.length < targetCount) {
+                newPosts.push(post);
+                blockedIds.add(post.id); // Add to blocked so we don't add duplicates within the loop (though API shouldn't return dupes on same page)
+              }
+            }
+            
+            // Always increment page to move forward in the API
+            this.page++;
+            
+            // If we got fewer posts than requested from API (ignoring filter), we reached the end
+            if (rawPosts.length < 20) {
+              break;
+            }
+          }
         }
         
         if (newPosts && newPosts.length > 0) {
           this.posts = [...this.posts, ...newPosts];
-          this.page++;
+          // Page increment is handled inside the loop for normal mode, 
+          // but for explore mode we might want to just increment it once or let the system handle it.
+          // In explore mode 'page' isn't really used the same way since it generates random queries.
+          // But to be safe and consistent with original code if it used it:
+          if (exploreMode) this.page++; 
+        } else if (!exploreMode && newPosts.length === 0 && this.posts.length > 0) {
+            // If we found no new posts in normal mode but have existing posts, 
+            // we might have filtered everything out. 
+            console.log("No new unique posts found in this batch.");
         }
       } catch (error) {
         console.error('Failed to fetch posts:', error);

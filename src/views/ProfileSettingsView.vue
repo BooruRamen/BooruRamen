@@ -35,6 +35,27 @@
         </button>
       </div>
     </div>
+    <!-- Confirmation Modal -->
+    <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-80 backdrop-blur-sm">
+      <div class="bg-gray-800 rounded-lg max-w-sm w-full p-6 shadow-xl border border-gray-700">
+        <h3 class="text-xl font-bold mb-2">{{ modalTitle }}</h3>
+        <p class="text-gray-300 mb-6">{{ modalMessage }}</p>
+        <div class="flex gap-3">
+          <button 
+            @click="closeModal" 
+            class="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white font-medium transition"
+          >
+            Cancel
+          </button>
+          <button 
+            @click="executeAction" 
+            class="flex-1 px-4 py-2 bg-pink-600 hover:bg-pink-700 rounded text-white font-medium transition"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -46,6 +67,10 @@ export default {
   data() {
     return {
       disableHistory: false,
+      showModal: false,
+      modalTitle: '',
+      modalMessage: '',
+      pendingAction: null,
     };
   },
   mounted() {
@@ -57,29 +82,59 @@ export default {
       this.disableHistory = !this.disableHistory;
       StorageService.storePreferences({ disableHistory: this.disableHistory });
     },
-    wipeHistory() {
-      if (confirm('Are you sure you want to clear your entire viewing history?')) {
-        StorageService.clearHistory();
-        alert('History cleared.');
+    confirmAction(title, message, action) {
+      this.modalTitle = title;
+      this.modalMessage = message;
+      this.pendingAction = action;
+      this.showModal = true;
+    },
+    executeAction() {
+      if (this.pendingAction) {
+        this.pendingAction();
+        this.pendingAction = null;
       }
+      this.showModal = false;
+    },
+    closeModal() {
+      this.showModal = false;
+      this.pendingAction = null;
+    },
+    wipeHistory() {
+      this.confirmAction(
+        'Clear History',
+        'Are you sure you want to clear your entire viewing history?',
+        () => {
+          StorageService.clearHistory();
+          // alert('History cleared.'); // Removed alert as well
+        }
+      );
     },
     wipeLikes() {
-      if (confirm('Are you sure you want to clear all your liked posts?')) {
-        StorageService.clearLikes();
-        alert('Likes cleared.');
-      }
+      this.confirmAction(
+        'Clear Likes',
+        'Are you sure you want to clear all your liked posts?',
+        () => {
+          StorageService.clearLikes();
+        }
+      );
     },
     wipeFavorites() {
-      if (confirm('Are you sure you want to clear all your favorited posts?')) {
-        StorageService.clearFavorites();
-        alert('Favorites cleared.');
-      }
+      this.confirmAction(
+        'Clear Favorites',
+        'Are you sure you want to clear all your favorited posts?',
+        () => {
+          StorageService.clearFavorites();
+        }
+      );
     },
     wipeAll() {
-      if (confirm('Are you sure you want to clear ALL your data? This cannot be undone.')) {
-        StorageService.clearAllData();
-        alert('All data cleared.');
-      }
+      this.confirmAction(
+        'Clear All Data',
+        'Are you sure you want to clear ALL your data? This cannot be undone.',
+        () => {
+          StorageService.clearAllData();
+        }
+      );
     },
   },
 };
