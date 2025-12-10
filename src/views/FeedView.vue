@@ -60,6 +60,47 @@
          <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-pink-600"></div>
       </div>
     </div>
+    
+    <!-- Debug Overlay -->
+    <div 
+      v-if="debugMode && posts[currentPostIndex]" 
+      class="absolute top-4 left-1/2 transform -translate-x-1/2 p-4 bg-black bg-opacity-70 text-white text-xs z-40 pointer-events-none rounded-lg border border-gray-700 backdrop-blur-sm"
+    >
+      <div class="flex justify-between items-start">
+        <div>
+          <h3 class="font-bold text-pink-500 mb-1">Recommendation Insights</h3>
+          
+          <!-- Score -->
+          <p class="mb-1">
+            <span class="text-gray-400">Likelihood:</span> 
+            <span class="font-mono text-yellow-400">
+              {{ (recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).totalScore * 10).toFixed(2) }}%
+            </span>
+          </p>
+          
+          <!-- Search Criteria -->
+          <p class="mb-2 max-w-md truncate">
+            <span class="text-gray-400">Source:</span> 
+            <span class="font-mono text-blue-300">{{ posts[currentPostIndex]._searchCriteria || 'N/A' }}</span>
+          </p>
+          
+          <!-- Contributors -->
+          <div>
+             <span class="text-gray-400 block mb-1">Top Contributors:</span>
+             <div class="space-y-1">
+               <div 
+                  v-for="(contrib, idx) in recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).contributingTags" 
+                  :key="idx"
+                  class="flex items-center gap-2"
+                >
+                  <span class="bg-gray-700 px-1 rounded">{{ contrib.tag }}</span>
+                  <span class="text-green-400">+{{ (contrib.score * 100).toFixed(1) }}</span>
+               </div>
+             </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -106,6 +147,7 @@ export default {
       observer: null,
       videoElements: {},
       autoScrollInterval: null,
+      debugMode: false,
     }
   },
   beforeUpdate() {
@@ -113,6 +155,8 @@ export default {
   },
   created() {
     this.recommendationSystem = recommendationSystem;
+    const preferences = StorageService.getPreferences();
+    this.debugMode = preferences.debugMode || false;
   },
   methods: {
     buildTagsFromRouteQuery(overrideQuery = null) {
@@ -258,6 +302,8 @@ export default {
             // Add unique posts to our result
             for (const post of filteredBatch) {
               if (newPosts.length < targetCount) {
+                // Attach search criteria for debug mode
+                post._searchCriteria = tagsForApi;
                 newPosts.push(post);
                 blockedIds.add(post.id); // Add to blocked so we don't add duplicates within the loop (though API shouldn't return dupes on same page)
               }
