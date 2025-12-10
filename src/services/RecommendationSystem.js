@@ -18,7 +18,15 @@ const INTERACTION_WEIGHTS = {
 
 // Tag categories for embedding generation
 const TAG_CATEGORIES = [
-  'artist', 'character', 'copyright', 'general', 'meta'
+  'artist', 'copyright', 'character', 'general', 'meta'
+];
+
+// Common tags to ignore in specific query generation (too broad)
+const COMMON_TAGS = [
+  '1girl', '1boy', '2girls', '2boys', 'solo', 'comic', 'monochrome',
+  'greyscale', 'unknown_artist', 'text', 'commentary', 'translated',
+  'multiple_girls', 'multiple_boys', 'scenery', 'original', 'highres',
+  'absurdres', 'check_commentary', 'photo', 'parody'
 ];
 
 class RecommendationSystem {
@@ -487,61 +495,105 @@ class RecommendationSystem {
     };
   }
 
+
   /**
-   * Generate diverse query sets for explore mode to cast a wider net
-   * @param {number} count - Number of different query sets to generate
+   * Get tags suitable for specifically targeting in queries
+   * (Excludes common tags and meta tags)
+   */
+  getQueryableTags() {
+    if (!this.tagScores) return [];
+
+    return Object.entries(this.tagScores)
+      // Filter out tags with no score
+      .filter(([tag, score]) => score > 0)
+      // Filter out meta tags
+      .filter(([tag]) => this.tagCategories[tag] !== 'meta')
+      // Filter out common tags
+      .filter(([tag]) => !COMMON_TAGS.includes(tag))
+      // Sort by score descending
+      .sort((a, b) => b[1] - a[1])
+      // Return just the tag strings
+      .map(([tag]) => tag);
+  }
+
+  /**
+   * Generate 6 diverse search queries: 3 single tag, 3 duo tag
    * @param {Array} selectedRatings - Array of rating values to include
    * @returns {Array} - Array of query parameter objects
    */
-  generateExploreQueries(count = 3, selectedRatings = ['general']) {
+  generateMultiStrategyQueries(selectedRatings = ['general']) {
     const queries = [];
+    const topTags = this.getQueryableTags();
 
-    // Get all tags with positive scores
-    const positiveTags = Object.entries(this.tagScores || {})
-      .filter(([_, score]) => score > 0)
-      .sort((a, b) => b[1] - a[1]);
+    // We need at least some tags to work with different strategies
+    // If not enough tags, we'll fill with fallbacks
 
-    // Always include one query with the user's top preference
-    if (positiveTags.length > 0) {
-      // Just use the single top tag for maximum compatibility
-      queries.push({
-        tags: positiveTags[0][0]
-      });
-    } else {
-      // If no positive tags, use a safe ordering option
-      queries.push({
-        tags: 'order:score'
-      });
+    // --- Strategy 1: Top 3 Single Tags ---
+    for (let i = 0; i < 3; i++) {
+      if (i < topTags.length) {
+        queries.push({ tags: topTags[i] });
+      } else {
+        // Fallback for single tag slots if we run out of unique tags
+        // Use time-based or order-based queries
+        const fallbacks = ['order:score', 'order:popular', 'date:>1w'];
+        const fallback = fallbacks[i % fallbacks.length];
+        // Only add if not already present
+        if (!queries.some(q => q.tags === fallback)) {
+          queries.push({ tags: fallback });
+        }
+      }
     }
 
-    if (count <= 1) return queries;
+    // --- Strategy 2: Top 3 Duo Tag Combinations ---
+    // We want to combine top tags to get more specific results
+    // Combinations: T1+T2, T1+T3, T2+T3 (or similar)
 
-    // Generate a query with a safer ordering parameter
-    const safeOrderOptions = [
-      'order:popular',
-      'order:score',
-      'date:>1w'
-    ];
-    // Pick a random safe ordering option
-    const randomOrder = safeOrderOptions[Math.floor(Math.random() * safeOrderOptions.length)];
-    queries.push({ tags: randomOrder });
+    const duoCombinations = [];
 
-    if (count <= 2) return queries;
-
-    // For the third query, try to use a mid-tier tag if available
-    if (positiveTags.length > 5) {
-      const midIndex = Math.floor(positiveTags.length / 3); // Use tag from first third
-      queries.push({ tags: positiveTags[midIndex][0] });
-    } else {
-      // Otherwise use a different ordering strategy
-      const alternateOrder = safeOrderOptions.find(order =>
-        !queries.some(q => q.tags.includes(order))
-      ) || 'order:favcount';
-
-      queries.push({ tags: alternateOrder });
+    if (topTags.length >= 2) {
+      // T1 + T2
+      duoCombinations.push(`${topTags[0]} ${topTags[1]}`);
     }
 
-    // Return only unique queries
+    if (topTags.length >= 3) {
+      // T1 + T3
+      duoCombinations.push(`${topTags[0]} ${topTags[2]}`);
+
+      // T2 + T3
+      duoCombinations.push(`${topTags[1]} ${topTags[2]}`);
+    } else if (topTags.length === 2) {
+      // If we only have 2 tags, we only have one combo (T1+T2)
+      // We need 2 more duo slots.
+      // Try combining T1 with a safe general tag like 'cute'? No, that's assuming.
+      // Instead, try combining T1 with 'order:score'
+      duoCombinations.push(`${topTags[0]} order:score`);
+      duoCombinations.push(`${topTags[1]} order:score`);
+    } else if (topTags.length === 1) {
+      // Only 1 tag available.
+      duoCombinations.push(`${topTags[0]} order:score`);
+      duoCombinations.push(`${topTags[0]} order:popular`);
+      duoCombinations.push(`${topTags[0]} date:>1M`);
+    } else {
+      // No tags? Just more broad queries
+      duoCombinations.push(`order:rank`);
+      duoCombinations.push(`order:favcount`);
+      duoCombinations.push(`date:>1d`);
+    }
+
+    // Add generated combinations to queries
+    // We want exactly 3 duo queries (or as many as we generated up to 3)
+    // If we generated fewer than 3 valid ones in the main logic (e.g. only 2 tags), the fallback logic above handles it.
+    // Ensure we take up to 3.
+    for (let i = 0; i < 3; i++) {
+      if (i < duoCombinations.length) {
+        queries.push({ tags: duoCombinations[i] });
+      } else {
+        // Redundant fallback if logic above failed
+        queries.push({ tags: 'order:random' });
+      }
+    }
+
+    // Return unique queries
     return queries.filter((query, index, self) =>
       self.findIndex(q => q.tags === query.tags) === index
     );
@@ -596,9 +648,10 @@ class RecommendationSystem {
       existingPostIds = new Set()
     } = options;
 
-    // Generate diverse query sets - these queries will be simple (1 tag each maximum)
-    const queries = this.generateExploreQueries(fetchCount, selectedRatings);
-    console.log("Explore mode base queries:", queries);
+
+    // Generate multi-strategy query sets (3 single, 3 duo)
+    const queries = this.generateMultiStrategyQueries(selectedRatings);
+    console.log("Explore mode multi-strategy queries:", queries);
 
     // Helper function to ensure query doesn't have conflicting order tags
     const sanitizeQuery = (query) => {

@@ -252,7 +252,6 @@ export default {
             attempts++;
             
             const batch = await this.recommendationSystem.getCuratedExploreFeed(fetchFunction, {
-              fetchCount: 5,
               postsPerFetch: 20,
               selectedRatings: ratings ? ratings.split(',') : ['general'],
               whitelist: whitelist ? whitelist.split(',') : [],
