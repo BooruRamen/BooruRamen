@@ -982,8 +982,65 @@ class RecommendationSystem {
       // Rank the combined posts using our recommendation system
       const rankedPosts = this.rankPosts(uniquePosts);
 
-      // Return the top posts up to maxTotal
-      return rankedPosts.slice(0, maxTotal);
+      // ANTI-CLUMPING DISTRIBUTOR
+      // Preserves score ranking but prevents long chains (streaks) of the same strategy.
+      const finalFeed = [];
+      let streakType = null;
+      let streakCount = 0;
+      const MAX_STREAK = 3;
+
+      const candidatePool = [...rankedPosts];
+
+      while (candidatePool.length > 0) {
+        const bestPost = candidatePool[0];
+        const bestType = bestPost._strategy || 'single';
+
+        // Check if adding this would violate streak limit
+        if (streakType === bestType && streakCount >= MAX_STREAK) {
+          // Streak too long! Search for first post of DIFFERENT type
+          const rescueIndex = candidatePool.findIndex(p => (p._strategy || 'single') !== streakType);
+
+          if (rescueIndex !== -1) {
+            // Found one! Pull it up.
+            const rescuePost = candidatePool[rescueIndex];
+            finalFeed.push(rescuePost);
+            candidatePool.splice(rescueIndex, 1);
+
+            // Reset streak
+            streakType = rescuePost._strategy || 'single';
+            streakCount = 1;
+          } else {
+            // No alternative found. Must accept the clump.
+            finalFeed.push(bestPost);
+            candidatePool.shift();
+            streakCount++;
+          }
+        } else {
+          // No streak violation, take the best post (score priority)
+          finalFeed.push(bestPost);
+          candidatePool.shift();
+
+          if (streakType === bestType) {
+            streakCount++;
+          } else {
+            streakType = bestType;
+            streakCount = 1;
+          }
+        }
+      }
+
+      // Limit to max posts and cache logic
+      const limitedFeed = finalFeed.slice(0, maxTotal);
+
+      // Cache scores for these posts to ensure consistency
+      finalFeed.forEach(post => {
+        if (!this.postScoreCache.has(post.id)) {
+          this.scorePost(post); // Ensure score is cached
+        }
+      });
+
+      // Return processed results
+      return finalFeed;
     } catch (error) {
       console.error("Error fetching curated explore feed:", error);
       return [];
