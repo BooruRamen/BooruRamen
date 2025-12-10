@@ -79,7 +79,7 @@
           </p>
           
           <!-- Search Criteria -->
-          <p class="mb-2 max-w-md truncate">
+          <p class="mb-2 max-w-md">
             <span class="text-gray-400">Source:</span> 
             <span class="font-mono text-blue-300">{{ posts[currentPostIndex]._searchCriteria || 'N/A' }}</span>
           </p>
@@ -224,24 +224,13 @@ export default {
           const maxAttempts = 15;
 
           const fetchFunction = (queryParams, limit) => {
-            let combinedTags = queryParams.tags || '';
-
-            // Manually add media type filters
-            const wantsImages = 'images' in this.$route.query ? this.$route.query.images === '1' : true;
-            const wantsVideos = 'videos' in this.$route.query ? this.$route.query.videos === '1' : true;
-
-            if (wantsVideos && !wantsImages) {
-              combinedTags += ' filetype:mp4,webm';
-            } else if (!wantsVideos && wantsImages) {
-              combinedTags += ' -filetype:mp4,webm';
-            }
-
             return DanbooruService.getPosts({ 
-              tags: combinedTags.trim(), 
+              tags: queryParams.tags || '', 
               limit, 
               page: this.page, 
               sort: this.sort, 
-              sortOrder: this.sortOrder 
+              sortOrder: this.sortOrder,
+              skipSort: true // RecommendationSystem handles order
             });
           };
 
@@ -257,6 +246,8 @@ export default {
               whitelist: whitelist ? whitelist.split(',') : [],
               blacklist: blacklist ? blacklist.split(',') : [],
               existingPostIds: blockedIds, // Pass the blocked IDs here
+              wantsImages: 'images' in this.$route.query ? this.$route.query.images === '1' : true,
+              wantsVideos: 'videos' in this.$route.query ? this.$route.query.videos === '1' : true,
             });
             
             if (batch.length > 0) {

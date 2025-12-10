@@ -1,14 +1,18 @@
 const BASE_URL = 'https://danbooru.donmai.us';
 
 const getPosts = async ({ tags, page, limit, sort, sortOrder }) => {
+  const hasOrder = tags.includes('order:');
   const params = new URLSearchParams({
-    tags: `${tags} order:${sort === 'score' ? 'score' : 'id'}:${sortOrder}`,
+    tags: hasOrder ? tags : `${tags} order:${sort === 'score' ? 'score' : 'id'}:${sortOrder}`,
     page,
     limit,
   });
 
+  const url = `${BASE_URL}/posts.json?${params.toString()}`;
+  console.log('Danbooru Fetch:', url);
+
   try {
-    const response = await fetch(`${BASE_URL}/posts.json?${params.toString()}`);
+    const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
