@@ -18,7 +18,15 @@ const INTERACTION_WEIGHTS = {
 
 // Tag categories for embedding generation
 const TAG_CATEGORIES = [
-  'artist', 'character', 'copyright', 'general', 'meta'
+  'artist', 'copyright', 'character', 'general', 'meta'
+];
+
+// Common tags to ignore in specific query generation (too broad)
+const COMMON_TAGS = [
+  '1girl', '1boy', '2girls', '2boys', 'solo', 'comic', 'monochrome',
+  'greyscale', 'unknown_artist', 'text', 'commentary', 'translated',
+  'multiple_girls', 'multiple_boys', 'scenery', 'original', 'highres',
+  'absurdres', 'check_commentary', 'photo', 'parody'
 ];
 
 class RecommendationSystem {
@@ -487,61 +495,107 @@ class RecommendationSystem {
     };
   }
 
+
   /**
-   * Generate diverse query sets for explore mode to cast a wider net
-   * @param {number} count - Number of different query sets to generate
+   * Get tags suitable for specifically targeting in queries
+   * (Excludes common tags and meta tags)
+   */
+  getQueryableTags() {
+    if (!this.tagScores) return [];
+
+    return Object.entries(this.tagScores)
+      // Filter out tags with no score
+      .filter(([tag, score]) => score > 0)
+      // Filter out meta tags
+      .filter(([tag]) => this.tagCategories[tag] !== 'meta')
+      // Filter out common tags
+      .filter(([tag]) => !COMMON_TAGS.includes(tag))
+      // Sort by score descending
+      .sort((a, b) => b[1] - a[1])
+      // Return just the tag strings
+      .map(([tag]) => tag);
+  }
+
+  /**
+   * Generate 6 diverse search queries: 3 single tag, 3 duo tag
    * @param {Array} selectedRatings - Array of rating values to include
+   * @param {Array} whitelist - Optional whitelist to use as seed for fresh profiles
    * @returns {Array} - Array of query parameter objects
    */
-  generateExploreQueries(count = 3, selectedRatings = ['general']) {
+  generateMultiStrategyQueries(selectedRatings = ['general'], whitelist = []) {
     const queries = [];
+    let topTags = this.getQueryableTags();
 
-    // Get all tags with positive scores
-    const positiveTags = Object.entries(this.tagScores || {})
-      .filter(([_, score]) => score > 0)
-      .sort((a, b) => b[1] - a[1]);
-
-    // Always include one query with the user's top preference
-    if (positiveTags.length > 0) {
-      // Just use the single top tag for maximum compatibility
-      queries.push({
-        tags: positiveTags[0][0]
-      });
-    } else {
-      // If no positive tags, use a safe ordering option
-      queries.push({
-        tags: 'order:score'
-      });
+    // If no user history (fresh profile), use whitelist tags as the "top terms"
+    if (topTags.length === 0 && whitelist && whitelist.length > 0) {
+      // Use up to 3 whitelist tags as seeds.
+      // We do NOT filter out common tags here because if a user explicitly whitelists "1girl", they WANT "1girl".
+      topTags = whitelist.slice(0, 5);
+      console.log("Using whitelist as seed for fresh profile queries:", topTags);
     }
 
-    if (count <= 1) return queries;
+    // We need at least some tags to work with different strategies
+    // If not enough tags, we'll fill with fallbacks
 
-    // Generate a query with a safer ordering parameter
-    const safeOrderOptions = [
-      'order:popular',
-      'order:score',
-      'date:>1w'
-    ];
-    // Pick a random safe ordering option
-    const randomOrder = safeOrderOptions[Math.floor(Math.random() * safeOrderOptions.length)];
-    queries.push({ tags: randomOrder });
-
-    if (count <= 2) return queries;
-
-    // For the third query, try to use a mid-tier tag if available
-    if (positiveTags.length > 5) {
-      const midIndex = Math.floor(positiveTags.length / 3); // Use tag from first third
-      queries.push({ tags: positiveTags[midIndex][0] });
-    } else {
-      // Otherwise use a different ordering strategy
-      const alternateOrder = safeOrderOptions.find(order =>
-        !queries.some(q => q.tags.includes(order))
-      ) || 'order:favcount';
-
-      queries.push({ tags: alternateOrder });
+    // --- Strategy 1: Top Single Tags (Limit 2) ---
+    const singleQueries = [];
+    for (let i = 0; i < 2; i++) {
+      if (i < topTags.length) {
+        singleQueries.push({ tags: topTags[i], type: 'single' });
+      } else {
+        const fallbacks = ['order:score', 'order:popular', 'date:>1w'];
+        const fallback = fallbacks[i % fallbacks.length];
+        if (!singleQueries.some(q => q.tags === fallback)) {
+          singleQueries.push({ tags: fallback, type: 'single' });
+        }
+      }
     }
 
-    // Return only unique queries
+    // --- Strategy 2: Top Duo Tag Combinations (Limit 2) ---
+    const duoCombinations = [];
+
+    // ... (Duo generation logic with Discovery Pairs - preserved) ...
+    // [We need to regenerate the middle part here if we are replacing the block]
+    // Ideally we keep the logic but change the pushing.
+
+    if (topTags.length >= 2) {
+      const randomCommon1 = COMMON_TAGS[Math.floor(Math.random() * COMMON_TAGS.length)];
+      duoCombinations.push(`${topTags[0]} ${topTags[1]}`); // Direct Pair
+      duoCombinations.push(`${topTags[0]} ${randomCommon1}`); // Discovery Pair
+    } else if (topTags.length === 1) {
+      for (let k = 0; k < 3; k++) {
+        const randTag = COMMON_TAGS[Math.floor(Math.random() * COMMON_TAGS.length)];
+        if (randTag !== topTags[0]) {
+          duoCombinations.push(`${topTags[0]} ${randTag}`);
+        }
+      }
+    } else {
+      for (let k = 0; k < 3; k++) {
+        const t1 = COMMON_TAGS[Math.floor(Math.random() * COMMON_TAGS.length)];
+        const t2 = COMMON_TAGS[Math.floor(Math.random() * COMMON_TAGS.length)];
+        if (t1 !== t2) duoCombinations.push(`${t1} ${t2}`);
+      }
+    }
+
+    // Combine: DUO FIRST
+
+    // Take up to 2 Duo
+    for (let i = 0; i < 2; i++) {
+      if (i < duoCombinations.length) {
+        queries.push({ tags: duoCombinations[i], type: 'duo' });
+      }
+    }
+
+    // Take up to 2 Single
+    // Ensure we don't exceed 4 total queries
+    for (let i = 0; i < singleQueries.length && queries.length < 4; i++) {
+      queries.push(singleQueries[i]);
+    }
+
+    // Ensure single tag strategies are marked
+    queries.forEach(q => { if (!q.type) q.type = 'single'; });
+
+    // Return unique queries
     return queries.filter((query, index, self) =>
       self.findIndex(q => q.tags === query.tags) === index
     );
@@ -579,15 +633,64 @@ class RecommendationSystem {
   }
 
   /**
+   * Rank an array of posts based on personalized scores
+   */
+  rankPosts(posts) {
+    if (!posts || posts.length === 0) return [];
+
+    // Create a copy with scores
+    const scoredPosts = posts.map(post => {
+      let score = this.scorePost(post);
+
+      // BONUS: Prioritize posts found via specific Duo queries.
+      // This helps break ties when "Common Tag" weighting relies on a generic tag that has 0 score.
+      // It ensures "discovery" pairs (e.g. "1girl scenery") win over just "1girl".
+      if (post._strategy === 'duo') {
+        score += 0.5; // Significant bump to surface diversity, but not overwhelming
+      }
+
+      return {
+        post,
+        score
+      };
+    });
+
+    // Sort by score (descending)
+    scoredPosts.sort((a, b) => b.score - a.score);
+
+    return scoredPosts.map(sp => sp.post);
+  }
+
+  /**
    * Get a curated feed for explore mode by fetching diverse content
    * and selecting the best posts based on user preferences
    * @param {Function} fetchFunction - Function to fetch posts with query params
    * @param {Object} options - Configuration options
    * @returns {Promise<Array>} - Curated list of posts
    */
+  /**
+   * Filter posts client-side correctly handling Danbooru tag formats
+   */
+  applyClientSideFilters(posts, { whitelist = [], blacklist = [] }) {
+    if (!posts || posts.length === 0) return [];
+
+    return posts.filter(post => {
+      const postTags = (post.tag_string || '').split(' ');
+      if (blacklist.some(tag => postTags.includes(tag))) return false;
+      // Check whitelist (include ONLY if AT LEAST ONE whitelist tag is present -> CHANGED to ALL)
+      // Standard search logic implies AND for multiple tags.
+      // If user Whitelists "1girl" and "hat", they want posts with BOTH.
+      if (whitelist.length > 0) {
+        if (!whitelist.every(tag => postTags.includes(tag))) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
   async getCuratedExploreFeed(fetchFunction, options = {}) {
     const {
-      fetchCount = 3,       // Number of different queries to run
       postsPerFetch = 20,   // Number of posts to fetch per query
       maxTotal = 50,        // Maximum total posts to return
       selectedRatings = ['general'], // Rating filters to apply
@@ -596,63 +699,170 @@ class RecommendationSystem {
       existingPostIds = new Set()
     } = options;
 
-    // Generate diverse query sets - these queries will be simple (1 tag each maximum)
-    const queries = this.generateExploreQueries(fetchCount, selectedRatings);
-    console.log("Explore mode base queries:", queries);
 
-    // Helper function to ensure query doesn't have conflicting order tags
-    const sanitizeQuery = (query) => {
-      // Create a clean copy of the query
-      const sanitizedQuery = { ...query };
-      let tags = sanitizedQuery.tags ? sanitizedQuery.tags.split(' ') : [];
+    // Generate multi-strategy query sets (3 single, 3 duo)
+    const queries = this.generateMultiStrategyQueries(selectedRatings, whitelist);
+    console.log("Explore queries:", queries);
 
-      // If the query contains order:random, remove any other order: tags
-      if (tags.includes('order:random')) {
-        tags = tags.filter(tag =>
-          tag === 'order:random' || !tag.startsWith('order:')
-        );
+    // Helper to build the final API query and client-side filter instructions
+    const buildHybridQuery = (baseQuery) => {
+      let apiTags = baseQuery.tags ? baseQuery.tags.split(' ') : [];
+
+      // Remove order:random if we have other sort orders or if we are going to fallback
+      if (apiTags.includes('order:random')) {
+        apiTags = apiTags.filter(tag => !tag.startsWith('order:'));
+        apiTags.push('order:random'); // Keep it at the end or alone
       }
 
-      // CRITICAL FIX: Add explicit rating tag to the query
+      // 1. Mandatory 'Free' Tags (Rating, Filetype)
+      // These do not count towards the 2-tag limit on Danbooru
+      const freeTags = [];
+
+      // Rating
       if (selectedRatings && selectedRatings.length > 0) {
-        const ratingTag = `rating:${selectedRatings.join(',')}`;
-        if (!tags.some(t => t.startsWith('rating:'))) {
-          tags.push(ratingTag);
+        freeTags.push(`rating:${selectedRatings.join(',')}`);
+      }
+
+      // Filetype (handled via options now)
+      // GLOBAL IGNORE: Always exclude zip, swf
+      freeTags.push('-filetype:zip,swf');
+
+      if (options.wantsVideos && !options.wantsImages) {
+        freeTags.push('filetype:mp4,webm');
+      } else if (!options.wantsVideos && options.wantsImages) {
+        // "Images Only" -> Exclude video AND gifs
+        freeTags.push('-filetype:mp4,webm,gif');
+      }
+
+      // 2. 'Expensive' Tags (Base Query + Whitelist + Blacklist)
+      // These count towards the limit.
+      // FIX: 'order:' tags ARE 'Expensive' (limit-consuming) on Danbooru free tier.
+      // We only exclude 'status:' as potentially free/default, though strictly we should count everything non-free.
+      const baseTagCount = apiTags.filter(t => !t.startsWith('status:')).length;
+      const whitelistCount = whitelist.length;
+      const blacklistCount = blacklist.length;
+
+      const totalExpensiveTags = baseTagCount + whitelistCount + blacklistCount;
+
+      let clientSideFilterNeeded = false;
+      let finalApiTags = [...apiTags];
+
+      // Check if we exceed the limit (2 tags)
+      if (totalExpensiveTags > 2) {
+        // HYBRID MODE: Send only Base Query + Free Tags to API.
+        // Filter Whitelist/Blacklist client-side.
+        clientSideFilterNeeded = true;
+        console.log(`Query "${baseQuery.tags}" + filters exceeds API limit (${totalExpensiveTags} > 2). Using Client-Side Filtering.`);
+
+        // We do NOT add whitelist/blacklist to finalApiTags here.
+
+      } else {
+        // SAFE MODE: Send everything to API.
+        // Add whitelist
+        if (whitelist.length > 0) {
+          finalApiTags.push(...whitelist);
+        }
+        // Add blacklist
+        if (blacklist.length > 0) {
+          finalApiTags.push(...blacklist.map(t => `-${t}`));
         }
       }
 
-      // Add whitelist and blacklist tags
-      if (whitelist.length > 0) {
-        tags.push(...whitelist);
-      }
-      if (blacklist.length > 0) {
-        tags.push(...blacklist.map(t => `-${t}`));
-      }
+      // Always add Free Tags
+      finalApiTags.push(...freeTags);
 
-      sanitizedQuery.tags = tags.join(' ');
-
-      return sanitizedQuery;
+      return {
+        apiQuery: { tags: finalApiTags.join(' ') },
+        clientSideFilterNeeded,
+        originalBaseTags: baseQuery.tags
+      };
     };
 
     // Fetch posts for each query in parallel
     try {
       const fetchPromises = queries.map(query => {
-        // Create a clean sanitized query
-        const cleanQuery = sanitizeQuery(query);
-        console.log(`Processing query: "${cleanQuery.tags}"`);
+        // Build the hybrid query
+        const { apiQuery, clientSideFilterNeeded } = buildHybridQuery(query);
 
-        // Execute fetch with the sanitized query
-        return fetchFunction(cleanQuery, postsPerFetch)
+        // If we need client side filtering, fetch MORE posts to ensure we have enough after filtering
+        const limit = clientSideFilterNeeded ? 100 : postsPerFetch; // Fetch 100 if filtering, else standard amount
+
+        console.log(`Processing query: "${apiQuery.tags}" (ClientFilter: ${clientSideFilterNeeded})`);
+
+        // Execute fetch
+        return fetchFunction(apiQuery, limit)
           .then(posts => {
-            // Attach search criteria to each post for debug mode
-            return posts.map(post => {
-              post._searchCriteria = cleanQuery.tags;
+            let processedPosts = posts;
+
+            // Apply Client-Side Filtering if needed
+            if (clientSideFilterNeeded) {
+              const beforeCount = processedPosts.length;
+              processedPosts = this.applyClientSideFilters(processedPosts, { whitelist, blacklist });
+              console.log(`Client-filter for "${query.tags}": ${beforeCount} -> ${processedPosts.length} posts`);
+            }
+
+            // Attach detailed debug info
+            return processedPosts.map(post => {
+              // 1. Capture the ACTUAL API query tags sent to Danbooru
+              const apiTagsSent = apiQuery.tags;
+
+              // 2. Identify Client-Side Filters applied
+              let clientFilterString = 'None';
+              if (clientSideFilterNeeded) {
+                const appliedFilters = [];
+                if (whitelist.length > 0) appliedFilters.push(...whitelist.map(t => `+${t}`));
+                if (blacklist.length > 0) appliedFilters.push(...blacklist.map(t => `-${t}`));
+                if (appliedFilters.length > 0) clientFilterString = appliedFilters.join(' ');
+              }
+
+              // Determine Order (from API tags)
+              let sortOrder = 'dflt/random';
+              if (apiTagsSent.includes('order:')) {
+                const parts = apiTagsSent.split(' ');
+                const orderTag = parts.find(t => t.startsWith('order:'));
+                if (orderTag) sortOrder = orderTag.replace('order:', '');
+              }
+
+              // Determine Rating (from API tags or selected)
+              let ratingDebug = 'N/A';
+              // Check if rating was in the sent tags
+              if (apiTagsSent.includes('rating:')) {
+                const parts = apiTagsSent.split(' ');
+                const ratingTag = parts.find(t => t.startsWith('rating:'));
+                if (ratingTag) ratingDebug = ratingTag.replace('rating:', '');
+              } else if (selectedRatings && selectedRatings.length > 0) {
+                ratingDebug = selectedRatings.join(',');
+              }
+
+              // Determine Filetype
+              let filetypeDebug = 'N/A';
+              if (options.wantsVideos && !options.wantsImages) filetypeDebug = 'Videos (Only)';
+              else if (!options.wantsVideos && options.wantsImages) filetypeDebug = 'Images (Static Only - No GIF/Video)';
+              else if (options.wantsVideos && options.wantsImages) filetypeDebug = 'All Media';
+
+              post._debugMetadata = {
+                apiQuery: apiTagsSent,       // The simplified query sent to cloud
+                clientFilters: clientFilterString, // The strict filters applied locally
+                order: sortOrder,
+                rating: ratingDebug,
+                filetype: filetypeDebug
+              };
+
+              post._strategy = query.type || 'single'; // Attach strategy type
+
+              if (post._debugMetadata) {
+                post._debugMetadata.strategy = query.type || 'single';
+              }
+
+              // Legacy support
+              post._searchCriteria = apiTagsSent;
+
               return post;
             });
           })
           .catch(error => {
-            console.warn(`Query failed: ${cleanQuery.tags}`, error);
-            return []; // Return empty array for failed queries
+            console.error(`Query failed for tags: ${query.tags}`, error);
+            return [];
           });
       });
 
@@ -661,11 +871,14 @@ class RecommendationSystem {
       // Combine all fetched posts
       let allPosts = [];
       fetchResults.forEach((posts, index) => {
+        const queryTags = queries[index].tags;
+        const isDuo = queryTags.trim().split(' ').length > 1;
+
         if (posts && posts.length) {
-          console.log(`Query "${queries[index].tags}" returned ${posts.length} posts`);
+          console.log(`Query [${isDuo ? 'DUO' : 'SINGLE'}] "${queryTags}" returned ${posts.length} posts`);
           allPosts = [...allPosts, ...posts];
         } else {
-          console.log(`Query "${queries[index].tags}" returned no posts`);
+          console.warn(`Query [${isDuo ? 'DUO' : 'SINGLE'}] "${queryTags}" returned NO posts`);
         }
       });
 
@@ -675,33 +888,31 @@ class RecommendationSystem {
 
         // Fallback: Simple order:score query (very reliable)
         try {
-          // Build rating tags for the fallback query
-          let fallbackTags = ['order:score'];
+          // Build a base query object for the fallback
+          const fallbackBaseQuery = { tags: 'order:score' };
 
-          if (selectedRatings && selectedRatings.length > 0) {
-            fallbackTags.push(`rating:${selectedRatings.join(',')}`);
+          // Use the hybrid builder to handle limits and filtering
+          const { apiQuery, clientSideFilterNeeded } = buildHybridQuery(fallbackBaseQuery);
+
+          // If we need client side filtering, fetch MORE posts
+          const limit = clientSideFilterNeeded ? 100 : postsPerFetch;
+
+          console.log(`Running fallback query: "${apiQuery.tags}" (ClientFilter: ${clientSideFilterNeeded})`);
+
+          const fallbackPosts = await fetchFunction(apiQuery, limit);
+
+          let processedFallbackPosts = fallbackPosts;
+
+          // Apply Client-Side Filtering if needed
+          if (clientSideFilterNeeded) {
+            const beforeCount = processedFallbackPosts.length;
+            processedFallbackPosts = this.applyClientSideFilters(processedFallbackPosts, { whitelist, blacklist });
+            console.log(`Fallback Client-filter: ${beforeCount} -> ${processedFallbackPosts.length} posts`);
           }
-          if (whitelist.length > 0) {
-            fallbackTags.push(...whitelist);
-          }
-          if (blacklist.length > 0) {
-            fallbackTags.push(...blacklist.map(t => `-${t}`));
-          }
 
-          const fallbackQuery = {
-            tags: fallbackTags.join(' ')
-          };
-
-          console.log("Running fallback query:", fallbackQuery);
-
-          const fallbackPosts = await fetchFunction(
-            fallbackQuery,
-            postsPerFetch
-          );
-
-          if (fallbackPosts && fallbackPosts.length) {
-            console.log(`Fallback query found ${fallbackPosts.length} posts`);
-            allPosts = [...allPosts, ...fallbackPosts];
+          if (processedFallbackPosts && processedFallbackPosts.length) {
+            console.log(`Fallback query found ${processedFallbackPosts.length} posts`);
+            allPosts = [...allPosts, ...processedFallbackPosts];
           }
         } catch (fallbackError) {
           console.error("Fallback query failed:", fallbackError);
@@ -713,40 +924,53 @@ class RecommendationSystem {
         console.warn("All queries returned no posts. This should not happen with our conservative approach.");
 
         // Last resort: Try with only the rating tag
+        // Last resort: Try with only the rating tag
         try {
-          let lastResortTags = [];
-          if (selectedRatings && selectedRatings.length > 0) {
-            lastResortTags.push(`rating:${selectedRatings.join(',')}`);
-          }
-          if (whitelist.length > 0) {
-            lastResortTags.push(...whitelist);
-          }
-          if (blacklist.length > 0) {
-            lastResortTags.push(...blacklist.map(t => `-${t}`));
+          // Build a base query with just the rating (and implicit free tags handled by builder)
+          const lastResortBaseQuery = { tags: '' };
+
+          // Use hybrid builder
+          const { apiQuery, clientSideFilterNeeded } = buildHybridQuery(lastResortBaseQuery);
+
+          const limit = clientSideFilterNeeded ? 100 : postsPerFetch;
+
+          console.log(`Trying last resort query: "${apiQuery.tags}" (ClientFilter: ${clientSideFilterNeeded})`);
+
+          const lastResortPosts = await fetchFunction(apiQuery, limit);
+
+          let processedLastResortPosts = lastResortPosts;
+
+          // Apply Client-Side Filtering
+          if (clientSideFilterNeeded) {
+            processedLastResortPosts = this.applyClientSideFilters(processedLastResortPosts, { whitelist, blacklist });
           }
 
-          const lastResortQuery = {
-            tags: lastResortTags.join(' ') || ''
-          };
-
-          console.log("Trying last resort query with just rating:", lastResortQuery);
-          const lastResortPosts = await fetchFunction(lastResortQuery, postsPerFetch);
-
-          if (lastResortPosts && lastResortPosts.length) {
-            console.log(`Last resort query found ${lastResortPosts.length} posts`);
-            allPosts = lastResortPosts;
+          if (processedLastResortPosts && processedLastResortPosts.length) {
+            console.log(`Last resort query found ${processedLastResortPosts.length} posts`);
+            allPosts = processedLastResortPosts;
           } else {
-            console.error("Last resort query returned no posts. API may be down.");
+            console.error("Last resort query returned no posts. API may be down or filters are too strict.");
           }
         } catch (lastResortError) {
           console.error("Last resort query failed:", lastResortError);
         }
       }
 
-      // Remove duplicates
-      let uniquePosts = Array.from(
-        new Map(allPosts.map(post => [post.id, post])).values()
-      );
+      // Remove duplicates, actively favoring 'duo' strategies
+      const uniqueMap = new Map();
+      allPosts.forEach(post => {
+        if (!uniqueMap.has(post.id)) {
+          uniqueMap.set(post.id, post);
+        } else {
+          // If duplicate, keep the one with the 'duo' strategy (more specific/diverse)
+          const existing = uniqueMap.get(post.id);
+          if (existing._strategy !== 'duo' && post._strategy === 'duo') {
+            uniqueMap.set(post.id, post);
+          }
+        }
+      });
+
+      let uniquePosts = Array.from(uniqueMap.values());
 
       console.log(`Found ${uniquePosts.length} unique posts after deduplication`);
 
@@ -758,13 +982,71 @@ class RecommendationSystem {
       // Rank the combined posts using our recommendation system
       const rankedPosts = this.rankPosts(uniquePosts);
 
-      // Return the top posts up to maxTotal
-      return rankedPosts.slice(0, maxTotal);
+      // ANTI-CLUMPING DISTRIBUTOR
+      // Preserves score ranking but prevents long chains (streaks) of the same strategy.
+      const finalFeed = [];
+      let streakType = null;
+      let streakCount = 0;
+      const MAX_STREAK = 3;
+
+      const candidatePool = [...rankedPosts];
+
+      while (candidatePool.length > 0) {
+        const bestPost = candidatePool[0];
+        const bestType = bestPost._strategy || 'single';
+
+        // Check if adding this would violate streak limit
+        if (streakType === bestType && streakCount >= MAX_STREAK) {
+          // Streak too long! Search for first post of DIFFERENT type
+          const rescueIndex = candidatePool.findIndex(p => (p._strategy || 'single') !== streakType);
+
+          if (rescueIndex !== -1) {
+            // Found one! Pull it up.
+            const rescuePost = candidatePool[rescueIndex];
+            finalFeed.push(rescuePost);
+            candidatePool.splice(rescueIndex, 1);
+
+            // Reset streak
+            streakType = rescuePost._strategy || 'single';
+            streakCount = 1;
+          } else {
+            // No alternative found. Must accept the clump.
+            finalFeed.push(bestPost);
+            candidatePool.shift();
+            streakCount++;
+          }
+        } else {
+          // No streak violation, take the best post (score priority)
+          finalFeed.push(bestPost);
+          candidatePool.shift();
+
+          if (streakType === bestType) {
+            streakCount++;
+          } else {
+            streakType = bestType;
+            streakCount = 1;
+          }
+        }
+      }
+
+      // Limit to max posts and cache logic
+      const limitedFeed = finalFeed.slice(0, maxTotal);
+
+      // Cache scores for these posts to ensure consistency
+      finalFeed.forEach(post => {
+        if (!this.postScoreCache.has(post.id)) {
+          this.scorePost(post); // Ensure score is cached
+        }
+      });
+
+      // Return processed results
+      return finalFeed;
     } catch (error) {
       console.error("Error fetching curated explore feed:", error);
       return [];
     }
   }
+
 
   /**
    * Normalize rating code from short form to full form

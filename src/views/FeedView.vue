@@ -21,7 +21,7 @@
         <!-- Post media -->
         <div class="relative max-h-full max-w-full">
           <img 
-            v-if="getFileExtension(post) === 'jpg' || getFileExtension(post) === 'jpeg' || getFileExtension(post) === 'png' || getFileExtension(post) === 'gif'" 
+            v-if="['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(getFileExtension(post))" 
             :src="post.file_url" 
             :alt="post.tags" 
             class="max-h-[calc(100vh-56px)] max-w-full object-contain"
@@ -79,10 +79,45 @@
           </p>
           
           <!-- Search Criteria -->
-          <p class="mb-2 max-w-md truncate">
-            <span class="text-gray-400">Source:</span> 
-            <span class="font-mono text-blue-300">{{ posts[currentPostIndex]._searchCriteria || 'N/A' }}</span>
-          </p>
+          <!-- Search Criteria -->
+          <div class="mb-2 max-w-md border-b border-gray-700 pb-2">
+            <p>
+              <span class="text-gray-400">API Query:</span> 
+              <span class="font-mono text-blue-300 break-all text-xs">
+                {{ posts[currentPostIndex]._debugMetadata?.apiQuery || posts[currentPostIndex]._searchCriteria || 'N/A' }}
+              </span>
+            </p>
+            <p v-if="posts[currentPostIndex]._debugMetadata?.clientFilters && posts[currentPostIndex]._debugMetadata?.clientFilters !== 'None'">
+              <span class="text-gray-400">Client Filter:</span> 
+              <span class="font-mono text-pink-300 break-all text-xs">
+                {{ posts[currentPostIndex]._debugMetadata?.clientFilters }}
+              </span>
+            </p>
+            <p>
+              <span class="text-gray-400">Strategy:</span> 
+              <span class="font-mono text-orange-300">
+                {{ posts[currentPostIndex]._debugMetadata?.strategy || 'N/A' }}
+              </span>
+            </p>
+            <p>
+              <span class="text-gray-400">Order:</span> 
+              <span class="font-mono text-green-300">
+                {{ posts[currentPostIndex]._debugMetadata?.order || 'N/A' }}
+              </span>
+            </p>
+             <p>
+              <span class="text-gray-400">Rating:</span> 
+              <span class="font-mono text-yellow-300">
+                {{ posts[currentPostIndex]._debugMetadata?.rating || 'N/A' }}
+              </span>
+            </p>
+             <p>
+              <span class="text-gray-400">Filetype:</span> 
+              <span class="font-mono text-purple-300">
+                {{ posts[currentPostIndex]._debugMetadata?.filetype || 'N/A' }}
+              </span>
+            </p>
+          </div>
           
           <!-- Contributors -->
           <div>
@@ -224,24 +259,13 @@ export default {
           const maxAttempts = 15;
 
           const fetchFunction = (queryParams, limit) => {
-            let combinedTags = queryParams.tags || '';
-
-            // Manually add media type filters
-            const wantsImages = 'images' in this.$route.query ? this.$route.query.images === '1' : true;
-            const wantsVideos = 'videos' in this.$route.query ? this.$route.query.videos === '1' : true;
-
-            if (wantsVideos && !wantsImages) {
-              combinedTags += ' filetype:mp4,webm';
-            } else if (!wantsVideos && wantsImages) {
-              combinedTags += ' -filetype:mp4,webm';
-            }
-
             return DanbooruService.getPosts({ 
-              tags: combinedTags.trim(), 
+              tags: queryParams.tags || '', 
               limit, 
               page: this.page, 
               sort: this.sort, 
-              sortOrder: this.sortOrder 
+              sortOrder: this.sortOrder,
+              skipSort: true // RecommendationSystem handles order
             });
           };
 
@@ -252,12 +276,13 @@ export default {
             attempts++;
             
             const batch = await this.recommendationSystem.getCuratedExploreFeed(fetchFunction, {
-              fetchCount: 5,
               postsPerFetch: 20,
               selectedRatings: ratings ? ratings.split(',') : ['general'],
               whitelist: whitelist ? whitelist.split(',') : [],
               blacklist: blacklist ? blacklist.split(',') : [],
               existingPostIds: blockedIds, // Pass the blocked IDs here
+              wantsImages: 'images' in this.$route.query ? this.$route.query.images === '1' : true,
+              wantsVideos: 'videos' in this.$route.query ? this.$route.query.videos === '1' : true,
             });
             
             if (batch.length > 0) {
