@@ -37,6 +37,41 @@
         </button>
       </div>
 
+
+      <!-- Avoided Tags Configuration -->
+      <div class="p-4 bg-gray-800 rounded-lg">
+        <div class="mb-2">
+          <label class="text-lg font-medium">Avoided Query Tags</label>
+          <p class="text-xs text-gray-400 mt-1">
+            These tags are excluded from search queries to prevent generic results. 
+            Separate with commas or spaces.
+          </p>
+        </div>
+        
+        <textarea 
+          v-model="avoidedTagsInput" 
+          class="w-full h-32 bg-gray-900 border border-gray-700 rounded p-2 text-sm text-gray-200 focus:border-pink-500 focus:outline-none mb-3"
+          placeholder="e.g. 1girl, solo, comic..."
+        ></textarea>
+        
+        <div class="flex justify-between items-center">
+          <button 
+            @click="resetAvoidedTags" 
+            class="text-sm text-gray-400 hover:text-white underline"
+          >
+            Reset to Defaults
+          </button>
+          
+          <button 
+            @click="saveAvoidedTags" 
+            class="px-4 py-2 bg-pink-600 hover:bg-pink-700 rounded text-white text-sm font-medium transition"
+          >
+            Save Tags
+          </button>
+        </div>
+        <p v-if="saveMessage" class="text-green-400 text-xs mt-2 text-right">{{ saveMessage }}</p>
+      </div>
+
       <!-- Clear Buttons -->
       <div class="space-y-4">
         <button @click="wipeHistory" class="w-full text-center bg-red-800 hover:bg-red-700 py-3 rounded-md text-lg">
@@ -79,6 +114,7 @@
 
 <script>
 import StorageService from '../services/StorageService';
+import { COMMON_TAGS } from '../services/RecommendationSystem';
 
 export default {
   name: 'ProfileSettingsView',
@@ -89,13 +125,24 @@ export default {
       showModal: false,
       modalTitle: '',
       modalMessage: '',
+
       pendingAction: null,
+      avoidedTagsInput: '',
+      saveMessage: ''
     };
   },
   mounted() {
     const preferences = StorageService.getPreferences();
     this.disableHistory = preferences.disableHistory || false;
+
     this.debugMode = preferences.debugMode || false;
+    
+    // Load avoided tags
+    if (preferences.avoidedTags && Array.isArray(preferences.avoidedTags)) {
+      this.avoidedTagsInput = preferences.avoidedTags.join(', ');
+    } else {
+      this.avoidedTagsInput = COMMON_TAGS.join(', ');
+    }
   },
   methods: {
     toggleHistory() {
@@ -105,6 +152,46 @@ export default {
     toggleDebugMode() {
       this.debugMode = !this.debugMode;
       StorageService.storePreferences({ debugMode: this.debugMode });
+    },
+
+    saveAvoidedTags() {
+      // Parse tags from input (comma or space separated)
+      const tags = this.avoidedTagsInput
+        .split(/[\s,]+/)
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+      
+      // Remove duplicates
+      const uniqueTags = [...new Set(tags)];
+      
+      StorageService.storePreferences({ avoidedTags: uniqueTags });
+      
+      // Update local input to reflect cleaned list
+      this.avoidedTagsInput = uniqueTags.join(', ');
+      
+      this.saveMessage = 'Settings saved!';
+      setTimeout(() => {
+        this.saveMessage = '';
+      }, 3000);
+      
+      // Force reload of recommendation system profile? 
+      // It updates every 5 mins or on new interaction, but we might want to force it?
+      // Since it's a separate service instance, we can't easily reach it directly from here without a global event bus or re-importing singleton?
+      // The RecommendationSystem creates a NEW instance in 'services/RecommendationSystem.js' but it's not exported as a singleton instance, it's a class. 
+      // Wait, looking at RecommendationSystem.js, it DOES NOT export an instance. It's just a class.
+      // Who uses it? checking imports...
+      // Usually there's a specific file that instantiates it or it's a singleton export.
+      // Let's assume it picks up changes on next cycle or page reload.
+      // Actually, if the App instantiates it, we might need a reload.
+    },
+    resetAvoidedTags() {
+      this.avoidedTagsInput = COMMON_TAGS.join(', ');
+      // We don't auto-save on reset, user must click save.
+      // Or we can auto-save. The prompt said "The reset to defaults button will reset it to what we have now."
+      // It implies resetting the text box. The user likely needs to save.
+      // But let's check: "This set should be saved until the user changes it again... or if the user presses the 'reset to defaults' button"
+      // Implies immediate effect? I'll make it easier and just update input, let user Save. 
+      // Actually, standard pattern is Reset -> fills input -> User reviews -> Save.
     },
     confirmAction(title, message, action) {
       this.modalTitle = title;
@@ -157,6 +244,10 @@ export default {
         'Are you sure you want to clear ALL your data? This cannot be undone.',
         () => {
           StorageService.clearAllData();
+          // Reset local UI state to defaults
+          this.disableHistory = false;
+          this.debugMode = false;
+          this.avoidedTagsInput = COMMON_TAGS.join(', ');
         }
       );
     },

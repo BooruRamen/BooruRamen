@@ -22,7 +22,7 @@ const TAG_CATEGORIES = [
 ];
 
 // Common tags to ignore in specific query generation (too broad)
-const COMMON_TAGS = [
+export const COMMON_TAGS = [
   '1girl', '1boy', '2girls', '2boys', 'solo', 'comic', 'monochrome',
   'greyscale', 'unknown_artist', 'text', 'commentary', 'translated',
   'multiple_girls', 'multiple_boys', 'scenery', 'original', 'highres',
@@ -35,6 +35,7 @@ class RecommendationSystem {
     this.tagScores = null;
     this.tagCategories = null;
     this.ratingPreferences = null;
+    this.avoidedTags = [...COMMON_TAGS]; // Default to common tags
 
     this.mediaTypePreferences = null;
     this.lastUpdateTime = 0;
@@ -63,6 +64,14 @@ class RecommendationSystem {
   updateUserProfile() {
     console.log("Updating user recommendation profile...");
     const interactions = StorageService.getInteractions();
+
+    // Load preferences including avoided tags
+    const preferences = StorageService.getPreferences();
+    if (preferences.avoidedTags && Array.isArray(preferences.avoidedTags)) {
+      this.avoidedTags = preferences.avoidedTags;
+    } else {
+      this.avoidedTags = [...COMMON_TAGS];
+    }
 
     if (interactions.length === 0) {
       console.log("No interactions found, using default profile");
@@ -508,8 +517,8 @@ class RecommendationSystem {
       .filter(([tag, score]) => score > 0)
       // Filter out meta tags
       .filter(([tag]) => this.tagCategories[tag] !== 'meta')
-      // Filter out common tags
-      .filter(([tag]) => !COMMON_TAGS.includes(tag))
+      // Filter out avoided tags
+      .filter(([tag]) => !this.avoidedTags.includes(tag))
       // Sort by score descending
       .sort((a, b) => b[1] - a[1])
       // Return just the tag strings
@@ -558,21 +567,24 @@ class RecommendationSystem {
     // [We need to regenerate the middle part here if we are replacing the block]
     // Ideally we keep the logic but change the pushing.
 
+    const pairingPool = COMMON_TAGS.filter(t => !this.avoidedTags.includes(t));
+    const safePairingPool = pairingPool.length > 0 ? pairingPool : COMMON_TAGS;
+
     if (topTags.length >= 2) {
-      const randomCommon1 = COMMON_TAGS[Math.floor(Math.random() * COMMON_TAGS.length)];
+      const randomCommon1 = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
       duoCombinations.push(`${topTags[0]} ${topTags[1]}`); // Direct Pair
       duoCombinations.push(`${topTags[0]} ${randomCommon1}`); // Discovery Pair
     } else if (topTags.length === 1) {
       for (let k = 0; k < 3; k++) {
-        const randTag = COMMON_TAGS[Math.floor(Math.random() * COMMON_TAGS.length)];
+        const randTag = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
         if (randTag !== topTags[0]) {
           duoCombinations.push(`${topTags[0]} ${randTag}`);
         }
       }
     } else {
       for (let k = 0; k < 3; k++) {
-        const t1 = COMMON_TAGS[Math.floor(Math.random() * COMMON_TAGS.length)];
-        const t2 = COMMON_TAGS[Math.floor(Math.random() * COMMON_TAGS.length)];
+        const t1 = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
+        const t2 = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
         if (t1 !== t2) duoCombinations.push(`${t1} ${t2}`);
       }
     }
