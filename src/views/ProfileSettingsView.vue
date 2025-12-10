@@ -19,6 +19,24 @@
         </button>
       </div>
 
+      <!-- Toggle Debug Mode -->
+      <div class="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
+        <div class="flex flex-col">
+          <label class="text-lg" for="debug-mode">Debug Mode</label>
+          <span class="text-sm text-gray-400">Show recommendation analytics overlay</span>
+        </div>
+        <button 
+          @click="toggleDebugMode" 
+          class="relative inline-flex h-6 w-11 items-center rounded-full"
+          :class="debugMode ? 'bg-pink-600' : 'bg-gray-600'"
+        >
+          <span 
+            class="inline-block h-4 w-4 transform rounded-full bg-white transition"
+            :class="debugMode ? 'translate-x-6' : 'translate-x-1'"
+          ></span>
+        </button>
+      </div>
+
       <!-- Clear Buttons -->
       <div class="space-y-4">
         <button @click="wipeHistory" class="w-full text-center bg-red-800 hover:bg-red-700 py-3 rounded-md text-lg">
@@ -67,6 +85,7 @@ export default {
   data() {
     return {
       disableHistory: false,
+      debugMode: false,
       showModal: false,
       modalTitle: '',
       modalMessage: '',
@@ -76,11 +95,16 @@ export default {
   mounted() {
     const preferences = StorageService.getPreferences();
     this.disableHistory = preferences.disableHistory || false;
+    this.debugMode = preferences.debugMode || false;
   },
   methods: {
     toggleHistory() {
       this.disableHistory = !this.disableHistory;
       StorageService.storePreferences({ disableHistory: this.disableHistory });
+    },
+    toggleDebugMode() {
+      this.debugMode = !this.debugMode;
+      StorageService.storePreferences({ debugMode: this.debugMode });
     },
     confirmAction(title, message, action) {
       this.modalTitle = title;
