@@ -26,7 +26,8 @@ export const COMMON_TAGS = [
   '1girl', '1boy', '2girls', '2boys', 'solo', 'comic', 'monochrome',
   'greyscale', 'unknown_artist', 'text', 'commentary', 'translated',
   'multiple_girls', 'multiple_boys', 'scenery', 'original', 'highres',
-  'absurdres', 'check_commentary', 'photo', 'parody'
+  'absurdres', 'check_commentary', 'photo', 'parody',
+  'long_hair', 'breasts', 'large_breasts', 'looking_at_user', 'short_hair'
 ];
 
 class RecommendationSystem {
@@ -222,9 +223,8 @@ class RecommendationSystem {
     this.tagScores = {};
     this.tagCategories = {};
     this.ratingPreferences = {
-
-      general: 0.7,
-      sensitive: 0.3,
+      general: 1.0,
+      sensitive: 0.0,
       questionable: 0,
       explicit: 0
     };
@@ -732,7 +732,9 @@ class RecommendationSystem {
 
       // Rating
       if (selectedRatings && selectedRatings.length > 0) {
-        freeTags.push(`rating:${selectedRatings.join(',')}`);
+        const ratingMap = { 'general': 'g', 'sensitive': 's', 'questionable': 'q', 'explicit': 'e' };
+        const shortRatings = selectedRatings.map(r => ratingMap[r] || r);
+        freeTags.push(`rating:${shortRatings.join(',')}`);
       }
 
       // Filetype (handled via options now)

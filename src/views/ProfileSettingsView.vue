@@ -44,7 +44,7 @@
           <label class="text-lg font-medium">Avoided Query Tags</label>
           <p class="text-xs text-gray-400 mt-1">
             These tags are excluded from search queries to prevent generic results. 
-            Separate with commas or spaces.
+            Separate with spaces.
           </p>
         </div>
         
@@ -139,9 +139,9 @@ export default {
     
     // Load avoided tags
     if (preferences.avoidedTags && Array.isArray(preferences.avoidedTags)) {
-      this.avoidedTagsInput = preferences.avoidedTags.join(', ');
+      this.avoidedTagsInput = preferences.avoidedTags.join(' ');
     } else {
-      this.avoidedTagsInput = COMMON_TAGS.join(', ');
+      this.avoidedTagsInput = COMMON_TAGS.join(' ');
     }
   },
   methods: {
@@ -167,7 +167,7 @@ export default {
       StorageService.storePreferences({ avoidedTags: uniqueTags });
       
       // Update local input to reflect cleaned list
-      this.avoidedTagsInput = uniqueTags.join(', ');
+      this.avoidedTagsInput = uniqueTags.join(' ');
       
       this.saveMessage = 'Settings saved!';
       setTimeout(() => {
@@ -185,7 +185,7 @@ export default {
       // Actually, if the App instantiates it, we might need a reload.
     },
     resetAvoidedTags() {
-      this.avoidedTagsInput = COMMON_TAGS.join(', ');
+      this.avoidedTagsInput = COMMON_TAGS.join(' ');
       // We don't auto-save on reset, user must click save.
       // Or we can auto-save. The prompt said "The reset to defaults button will reset it to what we have now."
       // It implies resetting the text box. The user likely needs to save.
@@ -244,10 +244,8 @@ export default {
         'Are you sure you want to clear ALL your data? This cannot be undone.',
         () => {
           StorageService.clearAllData();
-          // Reset local UI state to defaults
-          this.disableHistory = false;
-          this.debugMode = false;
-          this.avoidedTagsInput = COMMON_TAGS.join(', ');
+          // Force reload to completely reset application state (including App.vue settings)
+          window.location.reload();
         }
       );
     },

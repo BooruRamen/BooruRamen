@@ -262,6 +262,7 @@
 
 <script>
 import StorageService from '../services/StorageService';
+import { COMMON_TAGS } from '../services/RecommendationSystem';
 
 export default {
   name: 'ProfileAnalyticsView',
@@ -272,13 +273,13 @@ export default {
         artist: true,
         character: true,
         copyright: true,
-        meta: true // Danbooru meta tags
+        meta: false // Danbooru meta tags
       },
-      hideCommonTags: false,
+      hideCommonTags: true,
       minViews: {
-        likes: 5,
-        favorites: 5,
-        dislikes: 5
+        likes: 25,
+        favorites: 25,
+        dislikes: 25
       },
       loading: true,
       rawHistory: [],
@@ -292,7 +293,7 @@ export default {
         tagDislikes: {},
         videoTimes: []
       },
-      commonTagsInput: '1girl 2girls solo multiple_girls upper_body full_body'
+      commonTagsInput: COMMON_TAGS.join(' ')
     };
   },
   computed: {
