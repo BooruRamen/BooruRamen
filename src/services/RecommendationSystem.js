@@ -519,11 +519,20 @@ class RecommendationSystem {
   /**
    * Generate 6 diverse search queries: 3 single tag, 3 duo tag
    * @param {Array} selectedRatings - Array of rating values to include
+   * @param {Array} whitelist - Optional whitelist to use as seed for fresh profiles
    * @returns {Array} - Array of query parameter objects
    */
-  generateMultiStrategyQueries(selectedRatings = ['general']) {
+  generateMultiStrategyQueries(selectedRatings = ['general'], whitelist = []) {
     const queries = [];
-    const topTags = this.getQueryableTags();
+    let topTags = this.getQueryableTags();
+
+    // If no user history (fresh profile), use whitelist tags as the "top terms"
+    if (topTags.length === 0 && whitelist && whitelist.length > 0) {
+      // Use up to 3 whitelist tags as seeds.
+      // We do NOT filter out common tags here because if a user explicitly whitelists "1girl", they WANT "1girl".
+      topTags = whitelist.slice(0, 5);
+      console.log("Using whitelist as seed for fresh profile queries:", topTags);
+    }
 
     // We need at least some tags to work with different strategies
     // If not enough tags, we'll fill with fallbacks
@@ -646,7 +655,14 @@ class RecommendationSystem {
     return posts.filter(post => {
       const postTags = (post.tag_string || '').split(' ');
       if (blacklist.some(tag => postTags.includes(tag))) return false;
-      if (whitelist.length > 0 && !whitelist.some(tag => postTags.includes(tag))) return false;
+      // Check whitelist (include ONLY if AT LEAST ONE whitelist tag is present -> CHANGED to ALL)
+      // Standard search logic implies AND for multiple tags.
+      // If user Whitelists "1girl" and "hat", they want posts with BOTH.
+      if (whitelist.length > 0) {
+        if (!whitelist.every(tag => postTags.includes(tag))) {
+          return false;
+        }
+      }
       return true;
     });
   }
@@ -663,7 +679,7 @@ class RecommendationSystem {
 
 
     // Generate multi-strategy query sets (3 single, 3 duo)
-    const queries = this.generateMultiStrategyQueries(selectedRatings);
+    const queries = this.generateMultiStrategyQueries(selectedRatings, whitelist);
     console.log("Explore mode multi-strategy queries:", queries);
 
     // Helper to build the final API query and client-side filter instructions
@@ -694,7 +710,9 @@ class RecommendationSystem {
 
       // 2. 'Expensive' Tags (Base Query + Whitelist + Blacklist)
       // These count towards the limit.
-      const baseTagCount = apiTags.filter(t => !t.startsWith('order:') && !t.startsWith('status:')).length;
+      // FIX: 'order:' tags ARE 'Expensive' (limit-consuming) on Danbooru free tier.
+      // We only exclude 'status:' as potentially free/default, though strictly we should count everything non-free.
+      const baseTagCount = apiTags.filter(t => !t.startsWith('status:')).length;
       const whitelistCount = whitelist.length;
       const blacklistCount = blacklist.length;
 
