@@ -56,8 +56,8 @@
       </div>
       
       <!-- Pagination loading spinner -->
-      <div v-if="isFetching && !loading" class="w-full flex justify-center py-4 snap-end">
-         <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-pink-600"></div>
+      <div v-if="isFetching && !loading" class="h-full w-full snap-start flex items-center justify-center relative">
+         <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-pink-600"></div>
       </div>
     </div>
   </div>
@@ -298,7 +298,8 @@ export default {
     handleScroll() {
       this.determineCurrentPost();
       const container = this.$refs.feedContainer;
-      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 5) {
+      // Fetch more posts when we are 1 page away from the bottom (pre-fetching)
+      if (container.scrollTop + container.clientHeight >= container.scrollHeight - container.clientHeight) {
         this.fetchPosts();
       }
     },
