@@ -30,18 +30,27 @@
           <!-- Filters -->
           <div class="bg-gray-800 p-4 rounded-lg">
             <h2 class="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">Filters</h2>
-            <div class="flex flex-wrap gap-2">
-               <button 
-                @click="hideCommonTags = !hideCommonTags"
-                :class="[
-                  'px-4 py-2 rounded-full text-sm font-medium transition-colors',
-                  hideCommonTags 
-                    ? 'bg-purple-600 text-white hover:bg-purple-500' 
-                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-                ]"
-              >
-                Hide Common Tags
-              </button>
+            <div class="flex flex-col gap-3">
+               <div class="flex items-center gap-2">
+                 <button 
+                  @click="hideCommonTags = !hideCommonTags"
+                  :class="[
+                    'px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap',
+                    hideCommonTags 
+                      ? 'bg-purple-600 text-white hover:bg-purple-500' 
+                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                  ]"
+                >
+                  Hide Tags
+                </button>
+                <input 
+                  type="text" 
+                  v-model.lazy="commonTagsInput"
+                  placeholder="Tags to hide (space separated)"
+                  class="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                >
+               </div>
+               <p class="text-xs text-gray-500">Separate tags with spaces</p>
             </div>
           </div>
         </div>
@@ -283,10 +292,15 @@ export default {
         tagDislikes: {},
         videoTimes: []
       },
-      commonTagsList: ['1girl', '2girls', 'solo', 'multiple_girls', 'upper_body', 'full_body']
+      commonTagsInput: '1girl 2girls solo multiple_girls upper_body full_body'
     };
   },
   computed: {
+    parsedCommonTags() {
+        if (!this.commonTagsInput) return [];
+        return this.commonTagsInput.split(' ').map(t => t.trim()).filter(Boolean);
+    },
+
     // Filter tags based on toggles
     // We will re-compute the display lists from processedData + toggles
     
@@ -392,7 +406,7 @@ export default {
         return colors[i % colors.length];
     },
     isTagHidden(tag) {
-        if (this.hideCommonTags && this.commonTagsList.includes(tag)) return true;
+        if (this.hideCommonTags && this.parsedCommonTags.includes(tag)) return true;
 
         // Tag categorization logic
         // We need to look up the tag type. 
