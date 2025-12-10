@@ -558,7 +558,7 @@ export default {
       disableHistory: false,
       autoplayVideos: true,
       mediaType: { images: true, videos: true },
-      ratings: ['general', 'sensitive'],
+      ratings: ['general'],
       whitelistTags: [],
       blacklistTags: [],
     };
@@ -572,7 +572,7 @@ export default {
       settings: savedSettings ? savedSettings.settings : defaultSettings,
       newWhitelistTag: '',
       newBlacklistTag: '',
-      exploreMode: savedSettings ? savedSettings.exploreMode : false,
+      exploreMode: savedSettings ? savedSettings.exploreMode : true,
       routerViewKey: 0,
       
       // Video player state
@@ -749,7 +749,7 @@ export default {
     },
 
     syncSettingsFromQuery(query) {
-      this.settings.ratings = query.ratings ? query.ratings.split(',') : ['general', 'sensitive'];
+      this.settings.ratings = query.ratings ? query.ratings.split(',') : ['general'];
       this.settings.mediaType.images = query.images !== '0';
       this.settings.mediaType.videos = query.videos !== '0';
       this.settings.whitelistTags = query.whitelist ? query.whitelist.split(',') : [];

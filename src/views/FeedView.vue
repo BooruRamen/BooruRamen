@@ -200,7 +200,9 @@ export default {
 
       const ratings = query.ratings ? query.ratings.split(',') : ['general'];
       if (ratings.length > 0) {
-        tags.push(`rating:${ratings.join(',')}`);
+        const ratingMap = { 'general': 'g', 'sensitive': 's', 'questionable': 'q', 'explicit': 'e' };
+        const shortRatings = ratings.map(r => ratingMap[r] || r);
+        tags.push(`rating:${shortRatings.join(',')}`);
       }
 
       const wantsImages = 'images' in query ? query.images === '1' : true;

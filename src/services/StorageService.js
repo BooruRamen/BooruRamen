@@ -54,7 +54,7 @@ const storeInteraction = (interaction) => {
 
   const timestamp = Date.now();
   const interactions = getStoredData(INTERACTIONS_KEY, []);
-  
+
   const existingIndex = interactions.findIndex(
     (i) => i.postId === interaction.postId && i.type === interaction.type
   );
@@ -73,12 +73,12 @@ const storeInteraction = (interaction) => {
       timestamp,
     });
   }
-  
+
   // Keep only the most recent interactions if we exceed the max
   if (interactions.length > MAX_INTERACTIONS) {
     interactions.splice(0, interactions.length - MAX_INTERACTIONS);
   }
-  
+
   return saveData(INTERACTIONS_KEY, interactions);
 };
 
@@ -94,8 +94,8 @@ const getInteractions = (type = null) => {
  * Get interactions by post ID
  */
 const getPostInteractions = (postId) => {
-    const interactions = getStoredData(INTERACTIONS_KEY, []);
-    return interactions.filter(i => i.postId === postId);
+  const interactions = getStoredData(INTERACTIONS_KEY, []);
+  return interactions.filter(i => i.postId === postId);
 };
 
 /**
@@ -122,14 +122,14 @@ const trackPostView = (postId, postData) => {
   if (settings && settings.settings && settings.settings.disableHistory) {
     return;
   }
-  
+
   const history = getStoredData(VIEW_HISTORY_KEY, {});
-  
+
   history[postId] = {
     lastViewed: Date.now(),
     data: postData
   };
-  
+
   return saveData(VIEW_HISTORY_KEY, history);
 };
 
@@ -152,40 +152,40 @@ const getViewedPosts = () => {
  * Get user's most interacted tags
  */
 const getMostInteractedTags = (limit = 10) => {
-    const interactions = getStoredData(INTERACTIONS_KEY, []);
-    
-    // Initialize tag counters
-    const tagCounts = {};
-    
-    // Count positive interactions with each tag
-    interactions.forEach(interaction => {
-      // Only count positive interactions
-      const isPositive = (
-        (interaction.type === 'like' && interaction.value > 0) ||
-        (interaction.type === 'favorite' && interaction.value > 0) || 
-        (interaction.type === 'timeSpent' && interaction.value > 5000) // 5 seconds
-      );
-      
-      if (isPositive && interaction.metadata && interaction.metadata.post) {
-        const post = interaction.metadata.post;
-        
-        // Process all tags
-        if (post.tag_string) {
-          post.tag_string.split(' ').forEach(tag => {
-            if (!tagCounts[tag]) {
-              tagCounts[tag] = 0;
-            }
-            tagCounts[tag]++;
-          });
-        }
+  const interactions = getStoredData(INTERACTIONS_KEY, []);
+
+  // Initialize tag counters
+  const tagCounts = {};
+
+  // Count positive interactions with each tag
+  interactions.forEach(interaction => {
+    // Only count positive interactions
+    const isPositive = (
+      (interaction.type === 'like' && interaction.value > 0) ||
+      (interaction.type === 'favorite' && interaction.value > 0) ||
+      (interaction.type === 'timeSpent' && interaction.value > 5000) // 5 seconds
+    );
+
+    if (isPositive && interaction.metadata && interaction.metadata.post) {
+      const post = interaction.metadata.post;
+
+      // Process all tags
+      if (post.tag_string) {
+        post.tag_string.split(' ').forEach(tag => {
+          if (!tagCounts[tag]) {
+            tagCounts[tag] = 0;
+          }
+          tagCounts[tag]++;
+        });
       }
-    });
-    
-    // Convert to array, sort by count, and take top 'limit'
-    return Object.entries(tagCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, limit)
-      .map(([tag]) => tag);
+    }
+  });
+
+  // Convert to array, sort by count, and take top 'limit'
+  return Object.entries(tagCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([tag]) => tag);
 };
 
 /**
@@ -195,6 +195,7 @@ const clearAllData = () => {
   localStorage.removeItem(INTERACTIONS_KEY);
   localStorage.removeItem(PREFERENCES_KEY);
   localStorage.removeItem(VIEW_HISTORY_KEY);
+  localStorage.removeItem(APP_SETTINGS_KEY);
   return true;
 };
 
@@ -228,16 +229,16 @@ const clearFavorites = () => {
  * Export analytics data for recommendations
  */
 const exportAnalytics = () => {
-    const interactions = getStoredData(INTERACTIONS_KEY, []);
-    const preferences = getStoredData(PREFERENCES_KEY, {});
-    const history = getStoredData(VIEW_HISTORY_KEY, {});
-    
-    return {
-      interactionCount: interactions.length,
-      uniquePostsViewed: Object.keys(history).length,
-      topTags: getMostInteractedTags(5),
-      preferences
-    };
+  const interactions = getStoredData(INTERACTIONS_KEY, []);
+  const preferences = getStoredData(PREFERENCES_KEY, {});
+  const history = getStoredData(VIEW_HISTORY_KEY, {});
+
+  return {
+    interactionCount: interactions.length,
+    uniquePostsViewed: Object.keys(history).length,
+    topTags: getMostInteractedTags(5),
+    preferences
+  };
 };
 
 const saveAppSettings = (settings) => {
