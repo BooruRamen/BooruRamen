@@ -6,22 +6,52 @@
       <div class="space-y-4">
         <h1 class="text-3xl font-bold">Profile Analytics</h1>
         
-        <div class="bg-gray-800 p-4 rounded-lg">
-          <h2 class="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">Include Tags</h2>
-          <div class="flex flex-wrap gap-2">
-            <button 
-              v-for="(active, type) in toggles" 
-              :key="type"
-              @click="toggles[type] = !active"
-              :class="[
-                'px-4 py-2 rounded-full text-sm font-medium transition-colors',
-                active 
-                  ? 'bg-pink-600 text-white hover:bg-pink-500' 
-                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-              ]"
-            >
-              {{ capitalize(type) }}
-            </button>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Include Tags -->
+          <div class="bg-gray-800 p-4 rounded-lg">
+            <h2 class="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">Include Tags</h2>
+            <div class="flex flex-wrap gap-2">
+              <button 
+                v-for="(active, type) in toggles" 
+                :key="type"
+                @click="toggles[type] = !active"
+                :class="[
+                  'px-4 py-2 rounded-full text-sm font-medium transition-colors',
+                  active 
+                    ? 'bg-pink-600 text-white hover:bg-pink-500' 
+                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                ]"
+              >
+                {{ capitalize(type) }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Filters -->
+          <div class="bg-gray-800 p-4 rounded-lg">
+            <h2 class="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">Filters</h2>
+            <div class="flex flex-col gap-3">
+               <div class="flex items-center gap-2">
+                 <button 
+                  @click="hideCommonTags = !hideCommonTags"
+                  :class="[
+                    'px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap',
+                    hideCommonTags 
+                      ? 'bg-purple-600 text-white hover:bg-purple-500' 
+                      : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                  ]"
+                >
+                  Hide Tags
+                </button>
+                <input 
+                  type="text" 
+                  v-model.lazy="commonTagsInput"
+                  placeholder="Tags to hide (space separated)"
+                  class="bg-gray-700 text-gray-200 text-sm rounded-lg px-3 py-2 w-full focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                >
+               </div>
+               <p class="text-xs text-gray-500">Separate tags with spaces</p>
+            </div>
           </div>
         </div>
       </div>
@@ -66,15 +96,16 @@
           </div>
         </div>
 
-        <!-- Distribution Pie Chart (1x2 effectively or just large) -->
-        <!-- User asked for 1x2 section. We use md:col-span-2 to span 2 cols on medium+ screens if the grid has capacity. -->
-        <div class="bg-gray-800 rounded-lg p-4 md:col-span-2 h-100 flex flex-col">
+
+
+        <!-- Distribution Pie Chart (1x1) -->
+        <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
            <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
             <span>🍰</span> Tag Distribution
           </h3>
-          <div class="flex-1 flex items-center justify-center relative">
+          <div class="flex-1 flex items-center justify-center relative min-h-0">
              <!-- SVG Pie Chart -->
-             <svg viewBox="0 0 100 100" class="h-full w-full max-h-64 filter drop-shadow-xl" v-if="pieData.length > 0">
+             <svg viewBox="0 0 100 100" class="h-full w-full max-h-40 filter drop-shadow-xl" v-if="pieData.length > 0">
                 <circle v-for="(slice, index) in pieSlices" :key="index"
                   cx="50" cy="50" r="40"
                   fill="transparent"
@@ -101,9 +132,20 @@
 
         <!-- Highest Like Rate (1x1) -->
         <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
-          <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
-            <span>❤️</span> Highest Like Rate
-          </h3>
+          <div class="flex justify-between items-start mb-4">
+             <h3 class="text-lg font-bold flex items-center gap-2">
+                <span>❤️</span> Highest Like Rate
+             </h3>
+             <div class="flex flex-col items-end">
+                <span class="text-xs text-gray-400">Min views</span>
+                <input 
+                    type="number" 
+                    v-model.number="minViews.likes" 
+                    class="w-12 bg-gray-700 text-white text-xs px-1 py-0.5 rounded border border-gray-600 focus:border-pink-500 focus:outline-none text-center"
+                    min="1"
+                >
+             </div>
+          </div>
           <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
              <div v-for="item in likeRates" :key="item.tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
               <div class="flex flex-col truncate max-w-[70%]">
@@ -120,9 +162,20 @@
 
         <!-- Highest Favorite Rate (1x1) -->
         <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
-          <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
-            <span>⭐</span> Highest Favorite Rate
-          </h3>
+          <div class="flex justify-between items-start mb-4">
+             <h3 class="text-lg font-bold flex items-center gap-2">
+                <span>⭐</span> Highest Favorite Rate
+             </h3>
+             <div class="flex flex-col items-end">
+                <span class="text-xs text-gray-400">Min views</span>
+                <input 
+                    type="number" 
+                    v-model.number="minViews.favorites" 
+                    class="w-12 bg-gray-700 text-white text-xs px-1 py-0.5 rounded border border-gray-600 focus:border-yellow-500 focus:outline-none text-center"
+                    min="1"
+                >
+             </div>
+          </div>
           <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
              <div v-for="item in favoriteRates" :key="item.tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
               <div class="flex flex-col truncate max-w-[70%]">
@@ -132,6 +185,36 @@
               <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-yellow-500 font-bold">{{ item.rate }}%</span>
             </div>
             <div v-if="favoriteRates.length === 0" class="text-center text-gray-500 mt-10">
+              No data available
+            </div>
+          </div>
+        </div>
+
+        <!-- Highest Dislike Rate (1x1) -->
+        <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
+          <div class="flex justify-between items-start mb-4">
+             <h3 class="text-lg font-bold flex items-center gap-2">
+                <span>💔</span> Highest Dislike Rate
+             </h3>
+             <div class="flex flex-col items-end">
+                <span class="text-xs text-gray-400">Min views</span>
+                <input 
+                    type="number" 
+                    v-model.number="minViews.dislikes" 
+                    class="w-12 bg-gray-700 text-white text-xs px-1 py-0.5 rounded border border-gray-600 focus:border-indigo-500 focus:outline-none text-center"
+                    min="1"
+                >
+             </div>
+          </div>
+          <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+             <div v-for="item in dislikeRates" :key="item.tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <div class="flex flex-col truncate max-w-[70%]">
+                 <span class="text-gray-200 font-medium truncate">{{ item.tag }}</span>
+                 <span class="text-xs text-gray-500">{{ item.dislikes }}/{{ item.views }} viewed</span>
+              </div>
+              <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-gray-400 font-bold">{{ item.rate }}%</span>
+            </div>
+            <div v-if="dislikeRates.length === 0" class="text-center text-gray-500 mt-10">
               No data available
             </div>
           </div>
@@ -191,6 +274,12 @@ export default {
         copyright: true,
         meta: true // Danbooru meta tags
       },
+      hideCommonTags: false,
+      minViews: {
+        likes: 5,
+        favorites: 5,
+        dislikes: 5
+      },
       loading: true,
       rawHistory: [],
       rawInteractions: [],
@@ -202,10 +291,16 @@ export default {
         tagFavorites: {},
         tagDislikes: {},
         videoTimes: []
-      }
+      },
+      commonTagsInput: '1girl 2girls solo multiple_girls upper_body full_body'
     };
   },
   computed: {
+    parsedCommonTags() {
+        if (!this.commonTagsInput) return [];
+        return this.commonTagsInput.split(' ').map(t => t.trim()).filter(Boolean);
+    },
+
     // Filter tags based on toggles
     // We will re-compute the display lists from processedData + toggles
     
@@ -232,13 +327,15 @@ export default {
     topTagPairs() {
          const sorted = Object.entries(this.processedData.tagPairCounts)
             .filter(([pair]) => {
-                const [t1, t2] = pair.split(' + ');
-                return !this.isTagHidden(t1) && !this.isTagHidden(t2);
+                const parts = pair.split(' + ');
+                return parts.every(t => !this.isTagHidden(t));
             })
             .sort((a, b) => b[1] - a[1])
             .slice(0, 50);
         return Object.fromEntries(sorted);
     },
+
+
 
     pieData() {
         const sorted = Object.entries(this.processedData.tagCounts)
@@ -256,9 +353,8 @@ export default {
             color: this.getPieColor(index)
         }));
 
-        if (otherCount > 0) {
-            data.push({ label: 'Other', value: otherCount, color: '#4b5563' }); // gray-600
-        }
+        // Removed "Other" category as requested
+        // if (otherCount > 0) { ... }
 
         const total = data.reduce((sum, d) => sum + d.value, 0);
         return data.map(d => ({ ...d, percentage: ((d.value / total) * 100).toFixed(1) }));
@@ -276,11 +372,15 @@ export default {
     },
 
     likeRates() {
-        return this.calculateRates(this.processedData.tagLikes);
+        return this.calculateRates(this.processedData.tagLikes, this.minViews.likes);
     },
 
     favoriteRates() {
-        return this.calculateRates(this.processedData.tagFavorites);
+        return this.calculateRates(this.processedData.tagFavorites, this.minViews.favorites);
+    },
+
+    dislikeRates() {
+        return this.calculateRates(this.processedData.tagDislikes, this.minViews.dislikes);
     },
 
     videoStats() {
@@ -306,6 +406,8 @@ export default {
         return colors[i % colors.length];
     },
     isTagHidden(tag) {
+        if (this.hideCommonTags && this.parsedCommonTags.includes(tag)) return true;
+
         // Tag categorization logic
         // We need to look up the tag type. 
         // Since we aggregated counts but maybe not types in the simple map, we might need a tagTypeMap.
@@ -314,17 +416,17 @@ export default {
         // We mapped them to strings in processing
         return !this.toggles[type];
     },
-    calculateRates(interactionMap) {
+    calculateRates(interactionMap, minViewThreshold = 3) {
         return Object.entries(interactionMap)
             .filter(([tag]) => !this.isTagHidden(tag))
             .map(([tag, count]) => {
                 const views = this.processedData.tagViews[tag] || 0;
-                // Minimum views to be statistically relevant? Let's say 3.
-                if (views < 3) return null;
+                if (views < minViewThreshold) return null;
                 return {
                     tag,
                     favorites: count, // or likes
                     likes: count, // reused structure
+                    dislikes: count, // reused structure
                     views,
                     rate: ((count / views) * 100).toFixed(1)
                 };
