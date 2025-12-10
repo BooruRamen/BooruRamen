@@ -702,10 +702,14 @@ class RecommendationSystem {
       }
 
       // Filetype (handled via options now)
+      // GLOBAL IGNORE: Always exclude zip, swf
+      freeTags.push('-filetype:zip,swf');
+
       if (options.wantsVideos && !options.wantsImages) {
         freeTags.push('filetype:mp4,webm');
       } else if (!options.wantsVideos && options.wantsImages) {
-        freeTags.push('-filetype:mp4,webm');
+        // "Images Only" -> Exclude video AND gifs
+        freeTags.push('-filetype:mp4,webm,gif');
       }
 
       // 2. 'Expensive' Tags (Base Query + Whitelist + Blacklist)
@@ -775,9 +779,56 @@ class RecommendationSystem {
               console.log(`Client-filter for "${query.tags}": ${beforeCount} -> ${processedPosts.length} posts`);
             }
 
-            // Attach search criteria
+            // Attach detailed debug info
             return processedPosts.map(post => {
-              post._searchCriteria = query.tags; // Log the ORIGINAL intent, not the technical API query
+              // 1. Capture the ACTUAL API query tags sent to Danbooru
+              const apiTagsSent = apiQuery.tags;
+
+              // 2. Identify Client-Side Filters applied
+              let clientFilterString = 'None';
+              if (clientSideFilterNeeded) {
+                const appliedFilters = [];
+                if (whitelist.length > 0) appliedFilters.push(...whitelist.map(t => `+${t}`));
+                if (blacklist.length > 0) appliedFilters.push(...blacklist.map(t => `-${t}`));
+                if (appliedFilters.length > 0) clientFilterString = appliedFilters.join(' ');
+              }
+
+              // Determine Order (from API tags)
+              let sortOrder = 'dflt/random';
+              if (apiTagsSent.includes('order:')) {
+                const parts = apiTagsSent.split(' ');
+                const orderTag = parts.find(t => t.startsWith('order:'));
+                if (orderTag) sortOrder = orderTag.replace('order:', '');
+              }
+
+              // Determine Rating (from API tags or selected)
+              let ratingDebug = 'N/A';
+              // Check if rating was in the sent tags
+              if (apiTagsSent.includes('rating:')) {
+                const parts = apiTagsSent.split(' ');
+                const ratingTag = parts.find(t => t.startsWith('rating:'));
+                if (ratingTag) ratingDebug = ratingTag.replace('rating:', '');
+              } else if (selectedRatings && selectedRatings.length > 0) {
+                ratingDebug = selectedRatings.join(',');
+              }
+
+              // Determine Filetype
+              let filetypeDebug = 'N/A';
+              if (options.wantsVideos && !options.wantsImages) filetypeDebug = 'Videos (Only)';
+              else if (!options.wantsVideos && options.wantsImages) filetypeDebug = 'Images (Static Only - No GIF/Video)';
+              else if (options.wantsVideos && options.wantsImages) filetypeDebug = 'All Media';
+
+              post._debugMetadata = {
+                apiQuery: apiTagsSent,       // The simplified query sent to cloud
+                clientFilters: clientFilterString, // The strict filters applied locally
+                order: sortOrder,
+                rating: ratingDebug,
+                filetype: filetypeDebug
+              };
+
+              // Legacy support
+              post._searchCriteria = apiTagsSent;
+
               return post;
             });
           })
