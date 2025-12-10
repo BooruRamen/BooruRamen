@@ -1,9 +1,40 @@
 const BASE_URL = 'https://danbooru.donmai.us';
 
-const getPosts = async ({ tags, page, limit, sort, sortOrder }) => {
+const getPosts = async ({ tags, page, limit, sort, sortOrder, skipSort }) => {
   const hasOrder = tags.includes('order:');
+  let queryTags = tags;
+
+  if (!hasOrder && !skipSort) {
+    // SMART SORT: Only add order tag if we have room (limit is 2 expensive tags)
+    // "Free" tags: rating, filetype, status
+    const tagList = tags.split(' ');
+    const expensiveTags = tagList.filter(t =>
+      !t.startsWith('rating:') &&
+      !t.startsWith('filetype:') &&
+      !t.startsWith('-filetype:') &&
+      !t.startsWith('status:') &&
+      t.trim() !== ''
+    );
+
+    const expensiveCount = expensiveTags.length;
+
+    if (expensiveCount < 2) {
+      // We have room for an order tag
+      if (sort === 'score') {
+        queryTags = `${tags} order:score`; // Implies desc
+      } else if (sort === 'popular') {
+        queryTags = `${tags} order:popular`;
+      } else {
+        queryTags = `${tags}`; // Default ID
+      }
+    } else {
+      // No room for specific order, rely on default (ID/Date)
+      // This ensures "tag1 tag2" (2 expensive) doesn't become "tag1 tag2 order:score" (3 expensive -> Blocked)
+    }
+  }
+
   const params = new URLSearchParams({
-    tags: hasOrder ? tags : `${tags} order:${sort === 'score' ? 'score' : 'id'}:${sortOrder}`,
+    tags: queryTags,
     page,
     limit,
   });
@@ -26,4 +57,4 @@ const getPosts = async ({ tags, page, limit, sort, sortOrder }) => {
 
 export default {
   getPosts,
-}; 
+};

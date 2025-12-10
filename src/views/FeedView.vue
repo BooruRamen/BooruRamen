@@ -94,6 +94,12 @@
               </span>
             </p>
             <p>
+              <span class="text-gray-400">Strategy:</span> 
+              <span class="font-mono text-orange-300">
+                {{ posts[currentPostIndex]._debugMetadata?.strategy || 'N/A' }}
+              </span>
+            </p>
+            <p>
               <span class="text-gray-400">Order:</span> 
               <span class="font-mono text-green-300">
                 {{ posts[currentPostIndex]._debugMetadata?.order || 'N/A' }}

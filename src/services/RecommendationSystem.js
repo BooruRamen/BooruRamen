@@ -537,70 +537,63 @@ class RecommendationSystem {
     // We need at least some tags to work with different strategies
     // If not enough tags, we'll fill with fallbacks
 
-    // --- Strategy 1: Top 3 Single Tags ---
-    for (let i = 0; i < 3; i++) {
+    // --- Strategy 1: Top Single Tags (Limit 2) ---
+    const singleQueries = [];
+    for (let i = 0; i < 2; i++) {
       if (i < topTags.length) {
-        queries.push({ tags: topTags[i] });
+        singleQueries.push({ tags: topTags[i], type: 'single' });
       } else {
-        // Fallback for single tag slots if we run out of unique tags
-        // Use time-based or order-based queries
         const fallbacks = ['order:score', 'order:popular', 'date:>1w'];
         const fallback = fallbacks[i % fallbacks.length];
-        // Only add if not already present
-        if (!queries.some(q => q.tags === fallback)) {
-          queries.push({ tags: fallback });
+        if (!singleQueries.some(q => q.tags === fallback)) {
+          singleQueries.push({ tags: fallback, type: 'single' });
         }
       }
     }
 
-    // --- Strategy 2: Top 3 Duo Tag Combinations ---
-    // We want to combine top tags to get more specific results
-    // Combinations: T1+T2, T1+T3, T2+T3 (or similar)
-
+    // --- Strategy 2: Top Duo Tag Combinations (Limit 2) ---
     const duoCombinations = [];
 
+    // ... (Duo generation logic with Discovery Pairs - preserved) ...
+    // [We need to regenerate the middle part here if we are replacing the block]
+    // Ideally we keep the logic but change the pushing.
+
     if (topTags.length >= 2) {
-      // T1 + T2
-      duoCombinations.push(`${topTags[0]} ${topTags[1]}`);
-    }
-
-    if (topTags.length >= 3) {
-      // T1 + T3
-      duoCombinations.push(`${topTags[0]} ${topTags[2]}`);
-
-      // T2 + T3
-      duoCombinations.push(`${topTags[1]} ${topTags[2]}`);
-    } else if (topTags.length === 2) {
-      // If we only have 2 tags, we only have one combo (T1+T2)
-      // We need 2 more duo slots.
-      // Try combining T1 with a safe general tag like 'cute'? No, that's assuming.
-      // Instead, try combining T1 with 'order:score'
-      duoCombinations.push(`${topTags[0]} order:score`);
-      duoCombinations.push(`${topTags[1]} order:score`);
+      const randomCommon1 = COMMON_TAGS[Math.floor(Math.random() * COMMON_TAGS.length)];
+      duoCombinations.push(`${topTags[0]} ${topTags[1]}`); // Direct Pair
+      duoCombinations.push(`${topTags[0]} ${randomCommon1}`); // Discovery Pair
     } else if (topTags.length === 1) {
-      // Only 1 tag available.
-      duoCombinations.push(`${topTags[0]} order:score`);
-      duoCombinations.push(`${topTags[0]} order:popular`);
-      duoCombinations.push(`${topTags[0]} date:>1M`);
+      for (let k = 0; k < 3; k++) {
+        const randTag = COMMON_TAGS[Math.floor(Math.random() * COMMON_TAGS.length)];
+        if (randTag !== topTags[0]) {
+          duoCombinations.push(`${topTags[0]} ${randTag}`);
+        }
+      }
     } else {
-      // No tags? Just more broad queries
-      duoCombinations.push(`order:rank`);
-      duoCombinations.push(`order:favcount`);
-      duoCombinations.push(`date:>1d`);
-    }
-
-    // Add generated combinations to queries
-    // We want exactly 3 duo queries (or as many as we generated up to 3)
-    // If we generated fewer than 3 valid ones in the main logic (e.g. only 2 tags), the fallback logic above handles it.
-    // Ensure we take up to 3.
-    for (let i = 0; i < 3; i++) {
-      if (i < duoCombinations.length) {
-        queries.push({ tags: duoCombinations[i] });
-      } else {
-        // Redundant fallback if logic above failed
-        queries.push({ tags: 'order:random' });
+      for (let k = 0; k < 3; k++) {
+        const t1 = COMMON_TAGS[Math.floor(Math.random() * COMMON_TAGS.length)];
+        const t2 = COMMON_TAGS[Math.floor(Math.random() * COMMON_TAGS.length)];
+        if (t1 !== t2) duoCombinations.push(`${t1} ${t2}`);
       }
     }
+
+    // Combine: DUO FIRST
+
+    // Take up to 2 Duo
+    for (let i = 0; i < 2; i++) {
+      if (i < duoCombinations.length) {
+        queries.push({ tags: duoCombinations[i], type: 'duo' });
+      }
+    }
+
+    // Take up to 2 Single
+    // Ensure we don't exceed 4 total queries
+    for (let i = 0; i < singleQueries.length && queries.length < 4; i++) {
+      queries.push(singleQueries[i]);
+    }
+
+    // Ensure single tag strategies are marked
+    queries.forEach(q => { if (!q.type) q.type = 'single'; });
 
     // Return unique queries
     return queries.filter((query, index, self) =>
@@ -637,6 +630,35 @@ class RecommendationSystem {
       nextPost: best.post,
       remainingPosts: rest.map(item => item.post)
     };
+  }
+
+  /**
+   * Rank an array of posts based on personalized scores
+   */
+  rankPosts(posts) {
+    if (!posts || posts.length === 0) return [];
+
+    // Create a copy with scores
+    const scoredPosts = posts.map(post => {
+      let score = this.scorePost(post);
+
+      // BONUS: Prioritize posts found via specific Duo queries.
+      // This helps break ties when "Common Tag" weighting relies on a generic tag that has 0 score.
+      // It ensures "discovery" pairs (e.g. "1girl scenery") win over just "1girl".
+      if (post._strategy === 'duo') {
+        score += 0.5; // Significant bump to surface diversity, but not overwhelming
+      }
+
+      return {
+        post,
+        score
+      };
+    });
+
+    // Sort by score (descending)
+    scoredPosts.sort((a, b) => b.score - a.score);
+
+    return scoredPosts.map(sp => sp.post);
   }
 
   /**
@@ -680,7 +702,7 @@ class RecommendationSystem {
 
     // Generate multi-strategy query sets (3 single, 3 duo)
     const queries = this.generateMultiStrategyQueries(selectedRatings, whitelist);
-    console.log("Explore mode multi-strategy queries:", queries);
+    console.log("Explore queries:", queries);
 
     // Helper to build the final API query and client-side filter instructions
     const buildHybridQuery = (baseQuery) => {
@@ -826,6 +848,12 @@ class RecommendationSystem {
                 filetype: filetypeDebug
               };
 
+              post._strategy = query.type || 'single'; // Attach strategy type
+
+              if (post._debugMetadata) {
+                post._debugMetadata.strategy = query.type || 'single';
+              }
+
               // Legacy support
               post._searchCriteria = apiTagsSent;
 
@@ -833,7 +861,7 @@ class RecommendationSystem {
             });
           })
           .catch(error => {
-            console.warn(`Query failed: ${apiQuery.tags}`, error);
+            console.error(`Query failed for tags: ${query.tags}`, error);
             return [];
           });
       });
@@ -928,10 +956,21 @@ class RecommendationSystem {
         }
       }
 
-      // Remove duplicates
-      let uniquePosts = Array.from(
-        new Map(allPosts.map(post => [post.id, post])).values()
-      );
+      // Remove duplicates, actively favoring 'duo' strategies
+      const uniqueMap = new Map();
+      allPosts.forEach(post => {
+        if (!uniqueMap.has(post.id)) {
+          uniqueMap.set(post.id, post);
+        } else {
+          // If duplicate, keep the one with the 'duo' strategy (more specific/diverse)
+          const existing = uniqueMap.get(post.id);
+          if (existing._strategy !== 'duo' && post._strategy === 'duo') {
+            uniqueMap.set(post.id, post);
+          }
+        }
+      });
+
+      let uniquePosts = Array.from(uniqueMap.values());
 
       console.log(`Found ${uniquePosts.length} unique posts after deduplication`);
 
