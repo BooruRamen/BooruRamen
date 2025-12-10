@@ -155,6 +155,7 @@
           :disable-scroll-animation="settings.disableScrollAnimation"
           :autoplay-videos="settings.autoplayVideos"
           :is-muted="isMuted"
+          :volume="volumeLevel"
         ></router-view>
       </div>
         
