@@ -1,6 +1,4 @@
-# BooruRamen 🍜
-
-![BooruRamen Logo](./src/assets/logo-placeholder.png)
+# BooruRamen <img src="./src/assets/BooruRamen_Icon.png" width="40" alt="BooruRamen Logo" style="border-radius: 10px; vertical-align: middle;" />
 
 > A personalized image browsing application with smart recommendations
 
