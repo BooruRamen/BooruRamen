@@ -456,7 +456,7 @@ export default {
         if (currentPost) {
           const videoEl = this.videoElements[this.getCompositeKey(currentPost)] || null;
           this.$emit('current-post-changed', currentPost, videoEl);
-          StorageService.trackPostView(currentPost.id, currentPost);
+          StorageService.trackPostView(currentPost.id, currentPost, currentPost.source);
         }
       }
     },

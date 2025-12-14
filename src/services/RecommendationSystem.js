@@ -31,7 +31,7 @@ export const COMMON_TAGS = [
   'long_hair', 'breasts', 'large_breasts', 'looking_at_user', 'short_hair',
   'animated', 'tagme', 'copyright_request', 'spoiler', 'source_request',
   'artist_request', 'character_request', 'cosplay_request', 'check_character',
-  'duplicate', 'sound'
+  'duplicate', 'sound', 'looking_at_viewer', 'looking_at_another'
 ];
 
 class RecommendationSystem {
