@@ -23,8 +23,10 @@
           <img 
             v-if="['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(getFileExtension(post))" 
             :src="post.file_url" 
-            :alt="post.tags" 
+            :alt="post.tags || 'Post image'"
             class="max-h-[calc(100vh-56px)] max-w-full object-contain"
+            referrerpolicy="unsafe-url"
+            @error="(e) => console.error('Image load error:', post.file_url, e)"
           />
           <video 
             v-else-if="getFileExtension(post) === 'mp4' || getFileExtension(post) === 'webm' || isVideoPost(post)" 
@@ -384,6 +386,10 @@ export default {
         if (newPosts && newPosts.length > 0) {
           this.posts = [...this.posts, ...newPosts];
           console.log(`Added ${newPosts.length} new posts. Total: ${this.posts.length}`);
+          // Debug: Log first post's file_url to check if it's correct
+          if (newPosts[0]) {
+            console.log('First post file_url:', newPosts[0].file_url, 'file_ext:', newPosts[0].file_ext);
+          }
           // Page increment is handled inside the loop for normal mode.
           // For explore mode, we rely on RecommendationSystem cursors.
         } else if (!exploreMode && newPosts.length === 0 && this.posts.length > 0) {

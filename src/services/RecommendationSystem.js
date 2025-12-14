@@ -28,7 +28,10 @@ export const COMMON_TAGS = [
   'greyscale', 'unknown_artist', 'text', 'commentary', 'translated',
   'multiple_girls', 'multiple_boys', 'scenery', 'original', 'highres',
   'absurdres', 'check_commentary', 'photo', 'parody',
-  'long_hair', 'breasts', 'large_breasts', 'looking_at_user', 'short_hair'
+  'long_hair', 'breasts', 'large_breasts', 'looking_at_user', 'short_hair',
+  'animated', 'tagme', 'copyright_request', 'spoiler', 'source_request',
+  'artist_request', 'character_request', 'cosplay_request', 'check_character',
+  'duplicate', 'sound'
 ];
 
 class RecommendationSystem {
@@ -760,13 +763,17 @@ class RecommendationSystem {
         freeTags.push(`rating:${shortRatings.join(',')}`);
       }
 
-      // Filetype (handled via options now)
-      freeTags.push('-filetype:zip,swf');
+      // Filetype filters
+      freeTags.push('-filetype:zip');
+      freeTags.push('-filetype:swf');
 
       if (options.wantsVideos && !options.wantsImages) {
-        freeTags.push('filetype:mp4,webm');
+        freeTags.push('filetype:mp4');
+        freeTags.push('filetype:webm');
       } else if (!options.wantsVideos && options.wantsImages) {
-        freeTags.push('-filetype:mp4,webm,gif');
+        freeTags.push('-filetype:mp4');
+        freeTags.push('-filetype:webm');
+        freeTags.push('-filetype:gif');
       }
 
       // 2. 'Expensive' Tags (Base Query + Whitelist + Blacklist)

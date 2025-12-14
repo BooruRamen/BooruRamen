@@ -49,11 +49,17 @@ export class DanbooruAdapter extends BooruAdapter {
 
     async getPosts({ tags, page, limit, sort, sortOrder, skipSort, _isTest }) {
         const hasOrder = tags.includes('order:');
-        let queryTags = tags;
+
+        // Expand comma-separated filetype tags into separate tags
+        // e.g., "-filetype:mp4,webm,gif" becomes "-filetype:mp4 -filetype:webm -filetype:gif"
+        let queryTags = tags.replace(/(-?)filetype:([a-z0-9,]+)/gi, (match, neg, types) => {
+            const typeList = types.split(',');
+            return typeList.map(t => `${neg}filetype:${t.trim()}`).join(' ');
+        });
 
         // Smart sort logic specific to Danbooru's low tag limit
         if (!hasOrder && !skipSort) {
-            const tagList = tags.split(' ');
+            const tagList = queryTags.split(' ');
             const expensiveTags = tagList.filter(t =>
                 !t.startsWith('rating:') &&
                 !t.startsWith('filetype:') &&
@@ -64,11 +70,11 @@ export class DanbooruAdapter extends BooruAdapter {
 
             if (expensiveTags.length < 2) {
                 if (sort === 'score') {
-                    queryTags = `${tags} order:score`;
+                    queryTags = `${queryTags} order:score`;
                 } else if (sort === 'popular') {
-                    queryTags = `${tags} order:popular`;
+                    queryTags = `${queryTags} order:popular`;
                 } else {
-                    queryTags = `${tags}`;
+                    queryTags = `${queryTags}`;
                 }
             }
         }
@@ -97,7 +103,9 @@ export class DanbooruAdapter extends BooruAdapter {
     }
 
     normalizePost(post) {
-        if (!post.file_url && post.large_file_url) {
+        // Prefer large_file_url (sample) over file_url (original) since originals may require auth
+        // Fall back to file_url if large_file_url is not available
+        if (post.large_file_url) {
             post.file_url = post.large_file_url;
         }
         post.post_url = `${this.baseUrl}/posts/${post.id}`;

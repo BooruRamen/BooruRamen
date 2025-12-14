@@ -62,6 +62,21 @@ export default defineConfig({
         target: 'https://danbooru.donmai.us',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/danbooru/, ''),
+      },
+      // Danbooru CDN proxy for images/videos
+      '/danbooru-cdn/': {
+        target: 'https://cdn.donmai.us',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/danbooru-cdn/, ''),
+        secure: false,
+        configure: (proxy, _options) => {
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            // Danbooru CDN requires a valid referer
+            proxyReq.setHeader('Referer', 'https://danbooru.donmai.us/');
+            proxyReq.setHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            proxyReq.removeHeader('cookie');
+          });
+        }
       }
     }
   },
