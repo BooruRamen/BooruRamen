@@ -1,5 +1,5 @@
 <template>
-  <div class="p-4 text-white">
+  <div class="p-4 text-white h-full overflow-y-auto">
     <router-link to="/profile" class="text-pink-500 mb-4 inline-block">&lt; Back to Profile</router-link>
     <h1 class="text-2xl font-bold mb-8 text-center">Profile Settings</h1>
     
