@@ -107,6 +107,11 @@
               <p>{{ new Date(currentPost.created_at).toLocaleString() }}</p>
             </div>
             
+            <div>
+              <h3 class="text-sm font-medium text-gray-400">Source</h3>
+              <p class="text-pink-400">{{ getSourceName(currentPost.source) }}</p>
+            </div>
+            
             <div class="flex justify-between items-center mt-4">
               <a 
                 v-if="currentPost"
@@ -703,6 +708,29 @@ export default {
       const sizes = ['Bytes', 'KB', 'MB', 'GB'];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    },
+    getSourceName(sourceUrl) {
+      if (!sourceUrl) return 'Unknown';
+      const sourceMap = {
+        'https://danbooru.donmai.us': 'Danbooru',
+        'https://safebooru.org': 'Safebooru',
+        'https://gelbooru.com': 'Gelbooru',
+        'https://konachan.com': 'Konachan',
+        'https://yande.re': 'Yande.re',
+      };
+      // Check for exact match first
+      if (sourceMap[sourceUrl]) return sourceMap[sourceUrl];
+      // Check for partial match (in case of trailing slashes or variants)
+      for (const [url, name] of Object.entries(sourceMap)) {
+        if (sourceUrl.includes(url.replace('https://', ''))) return name;
+      }
+      // Fallback: extract domain name
+      try {
+        const url = new URL(sourceUrl);
+        return url.hostname;
+      } catch {
+        return sourceUrl;
+      }
     },
     copyPostLink(post) {
         const url = post.post_url || `https://danbooru.donmai.us/posts/${post.id}`;
