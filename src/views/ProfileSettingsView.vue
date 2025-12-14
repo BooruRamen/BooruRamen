@@ -113,7 +113,7 @@
                <span class="text-green-400 text-xs">{{ sourceSaveMessage }}</span>
                <div class="flex gap-2">
                    <button @click="testConnection" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white text-sm font-medium transition">
-                      Test Connection
+                      Test Authentication (All Sources)
                    </button>
                    <button @click="saveSources" class="px-4 py-2 bg-pink-600 hover:bg-pink-700 rounded text-white text-sm font-medium transition">
                       Save Sources
@@ -123,7 +123,7 @@
            
            <!-- Connection Test Results -->
            <div v-if="testResults.length > 0" class="mt-4 p-3 bg-gray-900 rounded border border-gray-700">
-               <h4 class="text-sm font-bold text-gray-300 mb-2">Connection Test Results</h4>
+               <h4 class="text-sm font-bold text-gray-300 mb-2">Authentication Test Results</h4>
                <div v-for="(res, idx) in testResults" :key="idx" class="flex items-start gap-2 mb-1 last:mb-0 text-xs">
                    <Check v-if="res.success" class="text-green-500 w-4 h-4 mt-0.5" />
                    <X v-else class="text-red-500 w-4 h-4 mt-0.5" />
