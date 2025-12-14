@@ -836,7 +836,9 @@ export default {
     togglePlayPause() {
       if (!this.currentVideoElement) return;
       if (this.currentVideoElement.paused) {
-        this.currentVideoElement.play();
+        this.currentVideoElement.play().catch(() => {
+          // Silently handle failed play attempts (e.g., no supported sources)
+        });
       } else {
         this.currentVideoElement.pause();
       }

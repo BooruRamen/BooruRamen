@@ -267,7 +267,7 @@ export class GelbooruAdapter extends BooruAdapter {
             fileUrl = `${cleanBase}/images/${post.directory}/${post.image}`;
         }
 
-        return {
+        const normalizedPost = {
             ...post, // Spread first so our explicit properties override
             id: Number(post.id),
             created_at: (() => {
@@ -284,23 +284,34 @@ export class GelbooruAdapter extends BooruAdapter {
             score: post.score,
             width: post.width,
             height: post.height,
-            file_ext: post.image ? post.image.split('.').pop() : (fileUrl ? fileUrl.split('.').pop() : 'jpg'),
-            file_url: this.rewriteVideoUrl(fileUrl || post.file_url), // Rewrite video CDN URLs
+            file_url: (() => {
+                const rewrittenUrl = this.rewriteVideoUrl(fileUrl || post.file_url);
+                // Debug: log the URL rewriting
+                if (rewrittenUrl !== (fileUrl || post.file_url)) {
+                    console.log(`[Gelbooru] URL rewritten for post ${post.id}: ${fileUrl || post.file_url} -> ${rewrittenUrl}`);
+                }
+                return rewrittenUrl;
+            })(),
             preview_file_url: post.preview_url,
             rating: this.mapRating(post.rating),
             tag_string: post.tags,
-            // Categories not usually separated
             tag_string_general: post.tags,
             tag_string_artist: '',
             tag_string_character: '',
             tag_string_copyright: '',
             tag_string_meta: '',
-            // Preserve specific fields
             source: this.baseUrl,
             directory: post.directory,
             image: post.image,
             post_url: `${this.baseUrl}/index.php?page=post&s=view&id=${post.id}`,
         };
+
+        // Extract file extension from the FINAL file_url (after rewriting)
+        normalizedPost.file_ext = normalizedPost.file_url
+            ? normalizedPost.file_url.split('.').pop().split('?')[0]
+            : (post.image ? post.image.split('.').pop() : 'jpg');
+
+        return normalizedPost;
     }
 
     mapRating(rating) {
@@ -312,12 +323,31 @@ export class GelbooruAdapter extends BooruAdapter {
         return 'active'; // fallback
     }
 
-    // Rewrite video CDN URLs to use the correct Gelbooru subdomain
+    // Rewrite video CDN URLs to use local proxy in development
     rewriteVideoUrl(url) {
         if (!url) return url;
-        // Gelbooru API returns 'video-cdn3.gelbooru.com' but actual working CDN is 'givemeasubdomainslayer.gelbooru.com'
-        if (url.includes('video-cdn3.gelbooru.com')) {
-            return url.replace('video-cdn3.gelbooru.com', 'givemeasubdomainslayer.gelbooru.com');
+
+        // Gelbooru API returns video-cdn3.gelbooru.com which doesn't exist (DNS fails)
+        // In development, proxy through Vite to bypass CORS issues
+        if (url.includes('gelbooru.com') && /\.(mp4|webm|mov)(\?|$)/i.test(url)) {
+            try {
+                const urlObj = new URL(url);
+                // Rewrite to use local proxy in development
+                if (urlObj.hostname.includes('video-cdn') || urlObj.hostname.includes('gelbooru.com')) {
+                    if (import.meta.env && import.meta.env.DEV) {
+                        // Use local proxy in development
+                        const proxyUrl = `/gelbooru-video${urlObj.pathname}`;
+                        console.log(`[Gelbooru] Using proxy for video: ${url} -> ${proxyUrl}`);
+                        return proxyUrl;
+                    } else {
+                        // In production, rewrite to video-cdn4
+                        urlObj.hostname = 'video-cdn4.gelbooru.com';
+                        return urlObj.toString();
+                    }
+                }
+            } catch (e) {
+                console.error('[Gelbooru] Error rewriting URL:', e);
+            }
         }
         return url;
     }

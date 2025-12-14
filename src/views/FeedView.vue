@@ -25,7 +25,7 @@
             :src="post.file_url" 
             :alt="post.tags || 'Post image'"
             class="max-h-[calc(100vh-56px)] max-w-full object-contain"
-            referrerpolicy="unsafe-url"
+            :referrerpolicy="post.file_url && post.file_url.includes('gelbooru') ? 'no-referrer' : 'origin-when-cross-origin'"
             @error="(e) => console.error('Image load error:', post.file_url, e)"
           />
           <video 
@@ -43,6 +43,7 @@
             playsinline
             preload="auto"
             :muted="isMuted" 
+            :referrerpolicy="'origin-when-cross-origin'"
             class="max-h-[calc(100vh-56px)] max-w-full"
             @click="togglePlayPause"
             @play="onVideoPlay"
@@ -532,7 +533,15 @@ export default {
           const video = entry.target.querySelector('video');
           if (entry.isIntersecting) {
             if (video) {
-              video.play().catch(e => console.error("Autoplay failed", e));
+              // Ensure video is muted for autoplay policy compliance
+              video.muted = this.isMuted;
+              video.play().catch(e => {
+                // If autoplay fails, try again with muted=true
+                if (e.name === 'NotAllowedError') {
+                  video.muted = true;
+                  video.play().catch(() => {}); // Silently fail if still blocked
+                }
+              });
             }
           } else {
             if (video) {

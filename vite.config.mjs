@@ -81,6 +81,27 @@ export default defineConfig({
             proxyRes.headers['Access-Control-Allow-Origin'] = '*';
             proxyRes.headers['Access-Control-Allow-Methods'] = 'GET, HEAD, OPTIONS';
             proxyRes.headers['Access-Control-Allow-Headers'] = 'Range';
+          });
+        }
+      },
+      // Gelbooru video CDN proxy
+      '/gelbooru-video/': {
+        target: 'https://video-cdn4.gelbooru.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/gelbooru-video/, ''),
+        secure: false,
+        configure: (proxy, _options) => {
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            // Gelbooru may require a valid referer
+            proxyReq.setHeader('Referer', 'https://gelbooru.com/');
+            proxyReq.setHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            proxyReq.removeHeader('cookie');
+          });
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            // Add CORS headers for video playback
+            proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+            proxyRes.headers['Access-Control-Allow-Methods'] = 'GET, HEAD, OPTIONS';
+            proxyRes.headers['Access-Control-Allow-Headers'] = 'Range';
             proxyRes.headers['Access-Control-Expose-Headers'] = 'Content-Length, Content-Range';
           });
         }
