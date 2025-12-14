@@ -107,23 +107,25 @@
               <p>{{ new Date(currentPost.created_at).toLocaleString() }}</p>
             </div>
             
-            <div>
+            <div class="flex justify-between items-center mt-4">
               <a 
-                :href="`https://danbooru.donmai.us/posts/${currentPost.id}`" 
+                v-if="currentPost"
+                :href="currentPost.post_url || `https://danbooru.donmai.us/posts/${currentPost.id}`" 
                 target="_blank" 
-                rel="noopener noreferrer"
-                class="block w-full text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md mt-4"
+                class="text-gray-400 hover:text-white transition-colors p-2 rounded-full hover:bg-gray-800"
+                title="Open in browser"
               >
                 View in Browser
               </a>
               <button 
                 @click="copyPostLink(currentPost)"
-                class="block w-full text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md mt-2 relative"
+                class="relative text-gray-400 hover:text-white transition-colors p-2 rounded-full hover:bg-gray-800"
+                title="Copy link"
               >
                 {{ linkCopied ? 'Copied!' : 'Copy Link' }}
                 <span 
                   v-if="linkCopied" 
-                  class="absolute top-0 right-0 bottom-0 left-0 bg-green-600 rounded-md flex items-center justify-center"
+                  class="absolute top-0 right-0 bottom-0 left-0 bg-green-600 rounded-full flex items-center justify-center text-white"
                   style="animation: fadeOut 1.5s forwards;"
                 >
                   Copied!
@@ -244,6 +246,7 @@
       >
       <div class="p-4 pb-20">
           <h2 class="text-xl font-bold mb-4">Settings</h2>
+          
           
           <!-- Auto-scroll toggle -->
           <div class="mb-4">
@@ -535,6 +538,7 @@
 <script>
 import { X, Settings, Heart, ThumbsDown, Star } from 'lucide-vue-next';
 import StorageService from './services/StorageService.js';
+import BooruService from './services/BooruService.js';
 import recommendationSystem from './services/RecommendationSystem.js';
 
 import BottomNavBar from './components/BottomNavBar.vue';
@@ -561,6 +565,8 @@ export default {
       ratings: ['general'],
       whitelistTags: [],
       blacklistTags: [],
+      activeSource: { type: 'danbooru', url: 'https://danbooru.donmai.us', name: 'Danbooru' },
+      customSources: [],
     };
 
     return {
@@ -569,9 +575,10 @@ export default {
       showPostDetails: false,
       linkCopied: false,
       showSettingsSidebar: false,
-      settings: savedSettings ? savedSettings.settings : defaultSettings,
+      settings: savedSettings ? { ...defaultSettings, ...savedSettings.settings } : defaultSettings,
       newWhitelistTag: '',
       newBlacklistTag: '',
+      
       exploreMode: savedSettings ? savedSettings.exploreMode : true,
       routerViewKey: 0,
       
@@ -697,7 +704,7 @@ export default {
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     },
     copyPostLink(post) {
-        const url = `https://danbooru.donmai.us/posts/${post.id}`;
+        const url = post.post_url || `https://danbooru.donmai.us/posts/${post.id}`;
         navigator.clipboard.writeText(url).then(() => {
             this.linkCopied = true;
             setTimeout(() => {

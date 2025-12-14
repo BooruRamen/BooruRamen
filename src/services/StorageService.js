@@ -52,11 +52,14 @@ const storeInteraction = (interaction) => {
     return false;
   }
 
+  // Derive source from metadata if available, defaulting to null/undefined
+  const source = interaction.metadata && interaction.metadata.post ? interaction.metadata.post.source : null;
+
   const timestamp = Date.now();
   const interactions = getStoredData(INTERACTIONS_KEY, []);
 
   const existingIndex = interactions.findIndex(
-    (i) => i.postId === interaction.postId && i.type === interaction.type
+    (i) => i.postId === interaction.postId && i.type === interaction.type && i.source === source
   );
 
   if (existingIndex > -1) {
@@ -64,12 +67,14 @@ const storeInteraction = (interaction) => {
     interactions[existingIndex] = {
       ...interactions[existingIndex],
       ...interaction,
+      source, // Ensure source is saved
       timestamp, // Always update the timestamp
     };
   } else {
     // Add new interaction with timestamp
     interactions.push({
       ...interaction,
+      source,
       timestamp,
     });
   }

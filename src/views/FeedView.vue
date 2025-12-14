@@ -15,7 +15,7 @@
       
       <div 
         v-for="post in posts" 
-        :key="post.id"
+        :key="getCompositeKey(post)"
         class="h-full w-full snap-start flex items-center justify-center relative"
       >
         <!-- Post media -->
@@ -31,13 +31,15 @@
             :src="post.file_url" 
             :ref="(el) => { 
               if (el) {
-                videoElements[post.id] = el;
+                videoElements[getCompositeKey(post)] = el;
                 el.volume = volume;
                 el.muted = isMuted;
               }
             }"
             autoplay 
             loop 
+            playsinline
+            preload="auto"
             :muted="isMuted" 
             class="max-h-[calc(100vh-56px)] max-w-full"
             @click="togglePlayPause"
@@ -58,6 +60,13 @@
       <!-- Pagination loading spinner -->
       <div v-if="isFetching && !loading" class="h-full w-full snap-start flex items-center justify-center relative">
          <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-pink-600"></div>
+      </div>
+
+      <!-- End of Feed Indicator -->
+      <div v-if="!hasMorePosts && !loading && posts.length > 0" class="h-48 w-full snap-start flex bg-gray-900 items-center justify-center relative flex-col">
+         <p class="text-xl text-pink-500 font-bold mb-2">You're all caught up!</p>
+         <p class="text-gray-400">No more posts matching your criteria found.</p>
+         <button @click="fetchPosts(false)" class="mt-4 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm text-white">Try Again</button>
       </div>
     </div>
     
@@ -140,7 +149,7 @@
 </template>
 
 <script>
-import DanbooruService from '../services/DanbooruService';
+import BooruService from '../services/BooruService';
 import StorageService from '../services/StorageService';
 import recommendationSystem from '../services/RecommendationSystem';
 
@@ -182,7 +191,9 @@ export default {
       observer: null,
       videoElements: {},
       autoScrollInterval: null,
+      autoScrollInterval: null,
       debugMode: false,
+      hasMorePosts: true,
     }
   },
   beforeUpdate() {
@@ -194,6 +205,10 @@ export default {
     this.debugMode = preferences.debugMode || false;
   },
   methods: {
+    getCompositeKey(post) {
+      if (!post) return '';
+      return post.source ? `${post.source}|${post.id}` : String(post.id);
+    },
     buildTagsFromRouteQuery(overrideQuery = null) {
       const query = overrideQuery || this.$route.query;
       const tags = [];
@@ -234,12 +249,12 @@ export default {
       // Get view history to exclude seen posts
       const viewedHistory = StorageService.getViewedPosts();
       // Create a set of IDs to exclude (viewed history + currently loaded posts)
-      const blockedIds = new Set([
-        ...Object.keys(viewedHistory).map(id => parseInt(id)), // Ensure IDs are numbers if needed, but strings work for comparisons usually. API returns numbers.
-        ...this.posts.map(p => p.id)
+      const blockedKeys = new Set([
+        ...Object.keys(viewedHistory), 
+        ...this.posts.map(p => this.getCompositeKey(p))
       ]);
       
-      console.log(`FetchPosts: Blocked ${Object.keys(viewedHistory).length} from history, ${this.posts.length} from current. Total blocked: ${blockedIds.size}`);
+      console.log(`FetchPosts: Blocked ${Object.keys(viewedHistory).length} from history, ${this.posts.length} from current. Total blocked IDs: ${blockedKeys.size}`);
 
       if (newSearch) {
         this.page = 1;
@@ -248,6 +263,17 @@ export default {
         if (this.$refs.feedContainer) {
           this.$refs.feedContainer.scrollTop = 0;
         }
+        this.hasMorePosts = true;
+        // Reset recommendation system session (cursors, exhausted list)
+        if (this.recommendationSystem) {
+          this.recommendationSystem.resetExploreSession();
+        }
+      }
+      
+      if (!this.hasMorePosts) {
+          this.isFetching = false;
+          this.loading = false;
+          return;
       }
 
       const exploreMode = this.$route.query.explore === '1';
@@ -256,15 +282,24 @@ export default {
         let newPosts = [];
         
         if (exploreMode) {
+          // Guard: if recommendationSystem not yet initialized (watcher fires before created), skip
+          if (!this.recommendationSystem) {
+            console.log('Skipping explore mode - recommendationSystem not yet initialized');
+            this.isFetching = false;
+            this.loading = false;
+            return;
+          }
           const targetCount = 5; // Relaxed target for explore mode
           let attempts = 0;
           const maxAttempts = 15;
 
           const fetchFunction = (queryParams, limit) => {
-            return DanbooruService.getPosts({ 
+            return BooruService.getPosts({ 
               tags: queryParams.tags || '', 
               limit, 
-              page: this.page, 
+              // Use specific page from recommendation system if provided (for smart cursors), 
+              // otherwise fall back to global page (though global page is now static in explore mode)
+              page: queryParams.page || this.page, 
               sort: this.sort, 
               sortOrder: this.sortOrder,
               skipSort: true // RecommendationSystem handles order
@@ -282,21 +317,21 @@ export default {
               selectedRatings: ratings ? ratings.split(',') : ['general'],
               whitelist: whitelist ? whitelist.split(',') : [],
               blacklist: blacklist ? blacklist.split(',') : [],
-              existingPostIds: blockedIds, // Pass the blocked IDs here
+              existingPostIds: blockedKeys, 
               wantsImages: 'images' in this.$route.query ? this.$route.query.images === '1' : true,
               wantsVideos: 'videos' in this.$route.query ? this.$route.query.videos === '1' : true,
             });
             
             if (batch.length > 0) {
               newPosts = [...newPosts, ...batch];
-              // Add found IDs to blockedIds so subsequent iterations (if any) don't pick them up
-              batch.forEach(p => blockedIds.add(p.id));
+              batch.forEach(p => blockedKeys.add(this.getCompositeKey(p)));
             }
             
+            
             // If we haven't met our target, move to next page of results
-            if (newPosts.length < targetCount) {
-               this.page++;
-            }
+            // In NEW Explore Logic, RecommendationSystem handles pagination internally via cursors.
+            // We do NOT increment this.page here.
+            
           }
 
         } else {
@@ -311,7 +346,7 @@ export default {
             attempts++;
             
             // Fetch a batch of posts
-            const rawPosts = await DanbooruService.getPosts({
+            const rawPosts = await BooruService.getPosts({
               tags: tagsForApi,
               page: this.page,
               limit: 20, // Fetch more than needed to account for filtering
@@ -324,7 +359,7 @@ export default {
             }
             
             // Filter out blocked posts
-            const filteredBatch = rawPosts.filter(p => !blockedIds.has(p.id));
+            const filteredBatch = rawPosts.filter(p => !blockedKeys.has(this.getCompositeKey(p)));
             
             // Add unique posts to our result
             for (const post of filteredBatch) {
@@ -332,7 +367,7 @@ export default {
                 // Attach search criteria for debug mode
                 post._searchCriteria = tagsForApi;
                 newPosts.push(post);
-                blockedIds.add(post.id); // Add to blocked so we don't add duplicates within the loop (though API shouldn't return dupes on same page)
+                blockedKeys.add(this.getCompositeKey(post)); 
               }
             }
             
@@ -348,21 +383,33 @@ export default {
         
         if (newPosts && newPosts.length > 0) {
           this.posts = [...this.posts, ...newPosts];
-          // Page increment is handled inside the loop for normal mode, 
-          // but for explore mode we might want to just increment it once or let the system handle it.
-          // In explore mode 'page' isn't really used the same way since it generates random queries.
-          // But to be safe and consistent with original code if it used it:
-          if (exploreMode) this.page++; 
+          console.log(`Added ${newPosts.length} new posts. Total: ${this.posts.length}`);
+          // Page increment is handled inside the loop for normal mode.
+          // For explore mode, we rely on RecommendationSystem cursors.
         } else if (!exploreMode && newPosts.length === 0 && this.posts.length > 0) {
             // If we found no new posts in normal mode but have existing posts, 
             // we might have filtered everything out. 
-            console.log("No new unique posts found in this batch.");
+            console.log("No new unique posts found in this batch (normal mode).");
+            this.hasMorePosts = false;
+        } else if (exploreMode && newPosts.length === 0) {
+            // In explore mode, if we get nothing after all attempts, mark exhausted
+            console.log("No new posts found in explore mode batch.");
+            // Don't immediately set hasMorePosts to false - let cursor-based exploration continue
+            // Only mark exhausted if ALL strategies are exhausted
         }
       } catch (error) {
         console.error('Failed to fetch posts:', error);
       } finally {
         this.isFetching = false;
         this.loading = false;
+        
+        // If we tried to fetch but got nothing, mark as exhausted
+        // We check if we are not loading (initial) and just finished a fetch loop
+        if (!newSearch && this.hasMorePosts && this.posts.length > 0) {
+             // If we are at the bottom and stopped fetching without adding enough posts...
+             // Actually, simplest check: if logic above failed to add ANY new posts despite trying MAX attempts.
+        }
+        
         this.$nextTick(() => {
           this.observePosts();
         });
@@ -372,7 +419,7 @@ export default {
       this.determineCurrentPost();
       const container = this.$refs.feedContainer;
       // Fetch more posts when we are 1 page away from the bottom (pre-fetching)
-      if (container.scrollTop + container.clientHeight >= container.scrollHeight - container.clientHeight) {
+      if (this.hasMorePosts && container.scrollTop + container.clientHeight >= container.scrollHeight - container.clientHeight) {
         this.fetchPosts();
       }
     },
@@ -396,11 +443,11 @@ export default {
         }
       });
 
-      if (closestPostIndex !== -1 && this.currentPostIndex !== closestPostIndex) {
+        if (closestPostIndex !== -1 && this.currentPostIndex !== closestPostIndex) {
         this.currentPostIndex = closestPostIndex;
         const currentPost = this.posts[this.currentPostIndex];
         if (currentPost) {
-          const videoEl = this.videoElements[currentPost.id] || null;
+          const videoEl = this.videoElements[this.getCompositeKey(currentPost)] || null;
           this.$emit('current-post-changed', currentPost, videoEl);
           StorageService.trackPostView(currentPost.id, currentPost);
         }
