@@ -4,93 +4,7 @@
     <h1 class="text-2xl font-bold mb-8 text-center">Profile Settings</h1>
     
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-      <!-- Left Column: General Settings -->
-      <div class="space-y-6">
-        <!-- Toggle History -->
-        <div class="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
-          <label class="text-lg" for="disable-history">Disable View History</label>
-          <button 
-            @click="toggleHistory" 
-            class="relative inline-flex h-6 w-11 items-center rounded-full"
-            :class="disableHistory ? 'bg-pink-600' : 'bg-gray-600'"
-          >
-            <span 
-              class="inline-block h-4 w-4 transform rounded-full bg-white transition"
-              :class="disableHistory ? 'translate-x-6' : 'translate-x-1'"
-            ></span>
-          </button>
-        </div>
-
-        <!-- Toggle Debug Mode -->
-        <div class="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
-          <div class="flex flex-col">
-            <label class="text-lg" for="debug-mode">Debug Mode</label>
-            <span class="text-sm text-gray-400">Show recommendation analytics overlay</span>
-          </div>
-          <button 
-            @click="toggleDebugMode" 
-            class="relative inline-flex h-6 w-11 items-center rounded-full"
-            :class="debugMode ? 'bg-pink-600' : 'bg-gray-600'"
-          >
-            <span 
-              class="inline-block h-4 w-4 transform rounded-full bg-white transition"
-              :class="debugMode ? 'translate-x-6' : 'translate-x-1'"
-            ></span>
-          </button>
-        </div>
-
-        <!-- Avoided Tags Configuration -->
-        <div class="p-4 bg-gray-800 rounded-lg">
-          <div class="mb-2">
-            <label class="text-lg font-medium">Avoided Query Tags</label>
-            <p class="text-xs text-gray-400 mt-1">
-              These tags are excluded from search queries to prevent generic results. 
-              Separate with spaces.
-            </p>
-          </div>
-          
-          <textarea 
-            v-model="avoidedTagsInput" 
-            class="w-full h-32 bg-gray-900 border border-gray-700 rounded p-2 text-sm text-gray-200 focus:border-pink-500 focus:outline-none mb-3"
-            placeholder="e.g. 1girl, solo, comic..."
-          ></textarea>
-          
-          <div class="flex justify-between items-center">
-            <button 
-              @click="resetAvoidedTags" 
-              class="text-sm text-gray-400 hover:text-white underline"
-            >
-              Reset to Defaults
-            </button>
-            
-            <button 
-              @click="saveAvoidedTags" 
-              class="px-4 py-2 bg-pink-600 hover:bg-pink-700 rounded text-white text-sm font-medium transition"
-            >
-              Save Tags
-            </button>
-          </div>
-          <p v-if="saveMessage" class="text-green-400 text-xs mt-2 text-right">{{ saveMessage }}</p>
-        </div>
-
-        <!-- Clear Buttons -->
-        <div class="space-y-4">
-          <button @click="wipeHistory" class="w-full text-center bg-red-800 hover:bg-red-700 py-3 rounded-md text-lg">
-            Clear History
-          </button>
-          <button @click="wipeLikes" class="w-full text-center bg-red-800 hover:bg-red-700 py-3 rounded-md text-lg">
-            Clear Likes
-          </button>
-          <button @click="wipeFavorites" class="w-full text-center bg-red-800 hover:bg-red-700 py-3 rounded-md text-lg">
-            Clear Favorites
-          </button>
-          <button @click="wipeAll" class="w-full text-center bg-red-800 hover:bg-red-700 py-3 rounded-md text-lg">
-            Clear All Data
-          </button>
-        </div>
-      </div>
-
-      <!-- Right Column: Source Management -->
+      <!-- Left Column: Source Management -->
       <div class="space-y-6">
         <div class="p-4 bg-gray-800 rounded-lg h-full"> 
            <h2 class="text-lg font-medium mb-3">Booru Sources</h2>
@@ -215,6 +129,92 @@
                    </div>
                </div>
            </div>
+        </div>
+      </div>
+
+      <!-- Right Column: General Settings -->
+      <div class="space-y-6">
+        <!-- Avoided Tags Configuration -->
+        <div class="p-4 bg-gray-800 rounded-lg">
+          <div class="mb-2">
+            <label class="text-lg font-medium">Avoided Query Tags</label>
+            <p class="text-xs text-gray-400 mt-1">
+              These tags are excluded from search queries to prevent generic results. 
+              Separate with spaces.
+            </p>
+          </div>
+          
+          <textarea 
+            v-model="avoidedTagsInput" 
+            class="w-full h-32 bg-gray-900 border border-gray-700 rounded p-2 text-sm text-gray-200 focus:border-pink-500 focus:outline-none mb-3"
+            placeholder="e.g. 1girl, solo, comic..."
+          ></textarea>
+          
+          <div class="flex justify-between items-center">
+            <button 
+              @click="resetAvoidedTags" 
+              class="text-sm text-gray-400 hover:text-white underline"
+            >
+              Reset to Defaults
+            </button>
+            
+            <button 
+              @click="saveAvoidedTags" 
+              class="px-4 py-2 bg-pink-600 hover:bg-pink-700 rounded text-white text-sm font-medium transition"
+            >
+              Save Tags
+            </button>
+          </div>
+          <p v-if="saveMessage" class="text-green-400 text-xs mt-2 text-right">{{ saveMessage }}</p>
+        </div>
+
+        <!-- Toggle Debug Mode -->
+        <div class="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
+          <div class="flex flex-col">
+            <label class="text-lg" for="debug-mode">Debug Mode</label>
+            <span class="text-sm text-gray-400">Show recommendation analytics overlay</span>
+          </div>
+          <button 
+            @click="toggleDebugMode" 
+            class="relative inline-flex h-6 w-11 items-center rounded-full"
+            :class="debugMode ? 'bg-pink-600' : 'bg-gray-600'"
+          >
+            <span 
+              class="inline-block h-4 w-4 transform rounded-full bg-white transition"
+              :class="debugMode ? 'translate-x-6' : 'translate-x-1'"
+            ></span>
+          </button>
+        </div>
+
+        <!-- Toggle History -->
+        <div class="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
+          <label class="text-lg" for="disable-history">Disable View History</label>
+          <button 
+            @click="toggleHistory" 
+            class="relative inline-flex h-6 w-11 items-center rounded-full"
+            :class="disableHistory ? 'bg-pink-600' : 'bg-gray-600'"
+          >
+            <span 
+              class="inline-block h-4 w-4 transform rounded-full bg-white transition"
+              :class="disableHistory ? 'translate-x-6' : 'translate-x-1'"
+            ></span>
+          </button>
+        </div>
+
+        <!-- Clear Buttons -->
+        <div class="space-y-4">
+          <button @click="wipeHistory" class="w-full text-center bg-red-800 hover:bg-red-700 py-3 rounded-md text-lg">
+            Clear History
+          </button>
+          <button @click="wipeLikes" class="w-full text-center bg-red-800 hover:bg-red-700 py-3 rounded-md text-lg">
+            Clear Likes
+          </button>
+          <button @click="wipeFavorites" class="w-full text-center bg-red-800 hover:bg-red-700 py-3 rounded-md text-lg">
+            Clear Favorites
+          </button>
+          <button @click="wipeAll" class="w-full text-center bg-red-800 hover:bg-red-700 py-3 rounded-md text-lg">
+            Clear All Data
+          </button>
         </div>
       </div>
     </div>
