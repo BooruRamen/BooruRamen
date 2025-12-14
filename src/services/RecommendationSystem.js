@@ -763,17 +763,14 @@ class RecommendationSystem {
         freeTags.push(`rating:${shortRatings.join(',')}`);
       }
 
-      // Filetype filters
-      freeTags.push('-filetype:zip');
-      freeTags.push('-filetype:swf');
+      // Filetype filters (these don't count against Danbooru's 2-tag limit)
+      // Danbooru supports comma syntax: filetype:mp4,webm means mp4 OR webm
+      freeTags.push('-filetype:zip,swf');
 
       if (options.wantsVideos && !options.wantsImages) {
-        freeTags.push('filetype:mp4');
-        freeTags.push('filetype:webm');
+        freeTags.push('filetype:mp4,webm');
       } else if (!options.wantsVideos && options.wantsImages) {
-        freeTags.push('-filetype:mp4');
-        freeTags.push('-filetype:webm');
-        freeTags.push('-filetype:gif');
+        freeTags.push('-filetype:mp4,webm,gif');
       }
 
       // 2. 'Expensive' Tags (Base Query + Whitelist + Blacklist)

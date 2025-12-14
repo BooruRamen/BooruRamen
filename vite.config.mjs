@@ -76,6 +76,13 @@ export default defineConfig({
             proxyReq.setHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
             proxyReq.removeHeader('cookie');
           });
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            // Add CORS headers for video playback
+            proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+            proxyRes.headers['Access-Control-Allow-Methods'] = 'GET, HEAD, OPTIONS';
+            proxyRes.headers['Access-Control-Allow-Headers'] = 'Range';
+            proxyRes.headers['Access-Control-Expose-Headers'] = 'Content-Length, Content-Range';
+          });
         }
       }
     }

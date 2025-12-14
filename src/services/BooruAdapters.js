@@ -50,12 +50,9 @@ export class DanbooruAdapter extends BooruAdapter {
     async getPosts({ tags, page, limit, sort, sortOrder, skipSort, _isTest }) {
         const hasOrder = tags.includes('order:');
 
-        // Expand comma-separated filetype tags into separate tags
-        // e.g., "-filetype:mp4,webm,gif" becomes "-filetype:mp4 -filetype:webm -filetype:gif"
-        let queryTags = tags.replace(/(-?)filetype:([a-z0-9,]+)/gi, (match, neg, types) => {
-            const typeList = types.split(',');
-            return typeList.map(t => `${neg}filetype:${t.trim()}`).join(' ');
-        });
+        // Danbooru supports comma syntax for filetypes natively (e.g., filetype:mp4,webm)
+        // No expansion needed
+        let queryTags = tags;
 
         // Smart sort logic specific to Danbooru's low tag limit
         if (!hasOrder && !skipSort) {
@@ -103,11 +100,12 @@ export class DanbooruAdapter extends BooruAdapter {
     }
 
     normalizePost(post) {
-        // Prefer large_file_url (sample) over file_url (original) since originals may require auth
-        // Fall back to file_url if large_file_url is not available
-        if (post.large_file_url) {
+        // For videos, prefer file_url (original) since large_file_url may not exist
+        // For images, large_file_url may be a resized version
+        if (!post.file_url && post.large_file_url) {
             post.file_url = post.large_file_url;
         }
+
         post.post_url = `${this.baseUrl}/posts/${post.id}`;
         post.source = this.baseUrl;
         return post;
