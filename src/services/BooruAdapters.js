@@ -422,16 +422,9 @@ export class GelbooruAdapter extends BooruAdapter {
             height: Number(post.height) || 0,
             image_width: Number(post.width) || 0,
             image_height: Number(post.height) || 0,
-            // File size - Gelbooru uses 'file_size' field
-            file_size: Number(post.file_size) || 0,
-            file_url: (() => {
-                const rewrittenUrl = this.rewriteVideoUrl(fileUrl || post.file_url);
-                // Debug: log the URL rewriting
-                if (rewrittenUrl !== (fileUrl || post.file_url)) {
-                    console.log(`[Gelbooru] URL rewritten for post ${post.id}: ${fileUrl || post.file_url} -> ${rewrittenUrl}`);
-                }
-                return rewrittenUrl;
-            })(),
+            // File size - Gelbooru may use 'file_size' or just 'size'
+            file_size: Number(post.file_size || post.size || post.filesize) || 0,
+            file_url: this.rewriteVideoUrl(fileUrl || post.file_url),
             preview_file_url: post.preview_url,
             // Map rating properly
             rating: this.mapRating(post.rating),
@@ -481,9 +474,7 @@ export class GelbooruAdapter extends BooruAdapter {
                 if (urlObj.hostname.includes('video-cdn') || urlObj.hostname.includes('gelbooru.com')) {
                     if (import.meta.env && import.meta.env.DEV) {
                         // Use local proxy in development
-                        const proxyUrl = `/gelbooru-video${urlObj.pathname}`;
-                        console.log(`[Gelbooru] Using proxy for video: ${url} -> ${proxyUrl}`);
-                        return proxyUrl;
+                        return `/gelbooru-video${urlObj.pathname}`;
                     } else {
                         // In production, rewrite to video-cdn4
                         urlObj.hostname = 'video-cdn4.gelbooru.com';

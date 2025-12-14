@@ -697,7 +697,8 @@ export default {
       return ratingMap[rating] || 'Unknown';
     },
     formatFileSize(bytes) {
-      if (bytes === 0) return '0 Bytes';
+      // Gelbooru API doesn't return file size, so show "Unknown" for 0/undefined
+      if (!bytes || bytes === 0) return 'Unknown';
       const k = 1024;
       const sizes = ['Bytes', 'KB', 'MB', 'GB'];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
