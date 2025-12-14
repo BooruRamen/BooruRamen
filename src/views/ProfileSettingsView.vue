@@ -16,7 +16,8 @@
                    <div class="mb-2">
                        <div class="flex items-center justify-between bg-gray-900 p-2 rounded">
                            <div class="flex items-center gap-2">
-                               <span class="text-sm font-medium">{{ source.name }}</span>
+                                                               <span class="w-2 h-2 rounded-full flex-shrink-0" :class="getStatusClass(source.url)"></span>
+                                <span class="text-sm font-medium">{{ source.name }}</span>
                                <span class="text-xs text-gray-500">({{ source.type }})</span>
                                <span v-if="!supportsVideo(source)" class="text-xs text-yellow-400 italic">images only</span>
                            </div>
@@ -52,7 +53,7 @@
                                 :disabled="isTestingAuth"
                             >
                                 <span v-if="isTestingAuth">Testing...</span>
-                                <span v-else>Test Connection</span>
+                                <span v-else>Test Authentication</span>
                                 <Check v-if="authTestResult && authTestResult.url === source.url && authTestResult.success" class="w-3 h-3 text-green-500" />
                                 <AlertCircle v-if="authTestResult && authTestResult.url === source.url && !authTestResult.success" class="w-3 h-3 text-red-500" />
                             </button>
@@ -67,6 +68,7 @@
                <!-- Custom Sources -->
                 <div v-for="(source, idx) in customSources" :key="source.name" class="flex items-center justify-between bg-gray-900 p-2 rounded relative group">
                    <div class="flex items-center gap-2">
+                       <span class="w-2 h-2 rounded-full flex-shrink-0" :class="getStatusClass(source.url)"></span>
                        <span class="text-sm font-medium">{{ source.name }}</span>
                        <span class="text-xs text-gray-500">({{ source.type }})</span>
                        <span v-if="!supportsVideo(source)" class="text-xs text-yellow-400 italic">images only</span>
@@ -281,7 +283,8 @@ export default {
       editingAuth: null, // Source URL for currently editing auth
       isTestingAuth: false,
       authTestResult: null, // { url: string, success: boolean, message: string }
-      testResults: [] // { source: string, success: boolean, message: string }[]
+      testResults: [], // { source: string, success: boolean, message: string }[]
+      sourceStatus: {}, // { sourceUrl: 'pending' | 'success' | 'failed' }
     };
   },
   mounted() {
@@ -324,6 +327,9 @@ export default {
              if (active.apiKey) predefined.apiKey = active.apiKey;
         }
     });
+
+    // Check connection status for all sources on page load
+    this.checkAllSourceStatus();
   },
   methods: {
     toggleHistory() {
@@ -444,7 +450,14 @@ export default {
     
     async testConnection() {
         this.testResults = [];
-        this.testResults = await BooruService.testConnection();
+        // Get credentials from predefined sources for the current selection
+        const sourcesToTest = this.activeSources.map(active => {
+            const predefined = this.predefinedSources.find(p => p.url === active.url);
+            const custom = this.customSources.find(c => c.url === active.url);
+            const source = predefined || custom || active;
+            return { ...active, userId: source.userId, apiKey: source.apiKey };
+        });
+        this.testResults = await BooruService.testAuthenticationForSources(sourcesToTest);
     },
     resetAvoidedTags() {
       this.avoidedTagsInput = COMMON_TAGS.join(' ');
@@ -516,28 +529,28 @@ export default {
         this.authTestResult = null;
         
         try {
-            // Create a temporary adapter to test connection
+            // Create a temporary adapter to test authentication
             let adapter;
             const credentials = { userId: source.userId, apiKey: source.apiKey };
             
             if (source.type === 'gelbooru') {
                 adapter = new GelbooruAdapter(source.url, credentials);
             } else if (source.type === 'moebooru') {
-                adapter = new MoebooruAdapter(source.url); // Moebooru doesn't use this auth style typically
+                adapter = new MoebooruAdapter(source.url);
             } else {
-                adapter = new DanbooruAdapter(source.url);
+                adapter = new DanbooruAdapter(source.url, credentials);
             }
 
-            console.log(`Testing connection to ${source.url}...`);
-            await adapter.verifyConnection();
+            console.log(`Testing authentication for ${source.url}...`);
+            const result = await adapter.testAuthentication();
             
             this.authTestResult = { 
                  url: source.url, 
-                 success: true, 
-                 message: `Connected successfully!` 
+                 success: result.success, 
+                 message: result.message 
             };
         } catch (error) {
-            console.error('Test connection failed:', error);
+            console.error('Test authentication failed:', error);
             this.authTestResult = { 
                 url: source.url, 
                 success: false, 
@@ -546,6 +559,48 @@ export default {
         } finally {
             this.isTestingAuth = false;
         }
+    },
+    /**
+     * Get CSS class for source status indicator
+     */
+    getStatusClass(sourceUrl) {
+        const status = this.sourceStatus[sourceUrl];
+        if (status === 'success') return 'bg-green-500';
+        if (status === 'failed') return 'bg-red-500';
+        // pending or unknown - pulsing yellow
+        return 'bg-yellow-500 animate-pulse';
+    },
+    /**
+     * Check connection status for all sources on page load
+     */
+    async checkAllSourceStatus() {
+        const allSources = [...this.predefinedSources, ...this.customSources];
+        
+        // Mark all as pending initially
+        allSources.forEach(source => {
+            this.sourceStatus[source.url] = 'pending';
+        });
+        // Force reactivity update
+        this.sourceStatus = { ...this.sourceStatus };
+        
+        // Test each source in parallel
+        const promises = allSources.map(async source => {
+            try {
+                const results = await BooruService.testAuthenticationForSources([source]);
+                if (results.length > 0 && results[0].success) {
+                    this.sourceStatus[source.url] = 'success';
+                } else {
+                    this.sourceStatus[source.url] = 'failed';
+                }
+            } catch (error) {
+                console.error(`Status check failed for ${source.url}:`, error);
+                this.sourceStatus[source.url] = 'failed';
+            }
+            // Force reactivity update after each result
+            this.sourceStatus = { ...this.sourceStatus };
+        });
+        
+        await Promise.all(promises);
     },
     supportsVideo(source) {
         // Danbooru supports video files natively
