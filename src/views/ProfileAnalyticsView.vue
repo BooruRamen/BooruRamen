@@ -64,10 +64,55 @@
       <!-- Content Grid -->
       <div v-else class="grid gap-4 auto-rows-min" style="grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));">
         
-        <!-- Top Tags (1x1) -->
+        <!-- Top Tags - Recommendation System Scores (1x1) -->
         <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
           <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
             <span>🏆</span> Top Tags
+          </h3>
+          <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+            <div v-for="(score, tag) in recommendationTagScores" :key="tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <span class="text-gray-200 truncate">{{ tag }}</span>
+              <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-emerald-400">{{ formatScore(score) }}</span>
+            </div>
+            <div v-if="Object.keys(recommendationTagScores).length === 0" class="text-center text-gray-500 mt-10">
+              No data available
+            </div>
+          </div>
+        </div>
+
+        <!-- Distribution Pie Chart (1x1) -->
+        <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
+           <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+            <span>🍰</span> Tag Distribution
+          </h3>
+          <div class="flex-1 flex items-center justify-center relative min-h-0">
+             <!-- SVG Pie Chart -->
+             <svg viewBox="0 0 100 100" class="h-full w-full max-h-40 filter drop-shadow-xl" v-if="pieData.length > 0">
+                <circle v-for="(slice, index) in pieSlices" :key="index"
+                  cx="50" cy="50" r="40"
+                  fill="transparent"
+                  :stroke="slice.color"
+                  :stroke-width="20"
+                  :stroke-dasharray="slice.dashArray"
+                  :stroke-dashoffset="slice.dashOffset"
+                  class="transition-all duration-1000 ease-out hover:opacity-90"
+                />
+             </svg>
+             
+             <div v-if="pieData.length === 0" class="text-gray-500">No data available</div>
+          </div>
+          <div class="mt-4 flex flex-wrap justify-center gap-3 text-xs">
+              <div v-for="slice in pieData" :key="slice.label" class="flex items-center gap-1">
+                  <span class="w-3 h-3 rounded-full" :style="{ backgroundColor: slice.color }"></span>
+                  <span class="text-gray-300">{{ slice.label }} ({{ slice.percentage }}%)</span>
+              </div>
+          </div>
+        </div>
+
+        <!-- Most Liked Tags (1x1) -->
+        <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
+          <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+            <span>�</span> Most Liked Tags
           </h3>
           <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
             <div v-for="(count, tag) in topTags" :key="tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
@@ -93,40 +138,6 @@
             <div v-if="Object.keys(topTagPairs).length === 0" class="text-center text-gray-500 mt-10">
               No data available
             </div>
-          </div>
-        </div>
-
-
-
-        <!-- Distribution Pie Chart (1x1) -->
-        <div class="bg-gray-800 rounded-lg p-4 h-80 flex flex-col">
-           <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
-            <span>🍰</span> Tag Distribution
-          </h3>
-          <div class="flex-1 flex items-center justify-center relative min-h-0">
-             <!-- SVG Pie Chart -->
-             <svg viewBox="0 0 100 100" class="h-full w-full max-h-40 filter drop-shadow-xl" v-if="pieData.length > 0">
-                <circle v-for="(slice, index) in pieSlices" :key="index"
-                  cx="50" cy="50" r="40"
-                  fill="transparent"
-                  :stroke="slice.color"
-                  :stroke-width="20"
-                  :stroke-dasharray="slice.dashArray"
-                  :stroke-dashoffset="slice.dashOffset"
-                  class="transition-all duration-1000 ease-out hover:opacity-90"
-                />
-             </svg>
-             
-             <div v-if="pieData.length === 0" class="text-gray-500">No data available</div>
-
-             <!-- Legend (Overlay or separate?) Let's put it to the side or below if space permits. 
-                  For now simple absolute overlay or flex. -->
-          </div>
-          <div class="mt-4 flex flex-wrap justify-center gap-3 text-xs">
-              <div v-for="slice in pieData" :key="slice.label" class="flex items-center gap-1">
-                  <span class="w-3 h-3 rounded-full" :style="{ backgroundColor: slice.color }"></span>
-                  <span class="text-gray-300">{{ slice.label }} ({{ slice.percentage }}%)</span>
-              </div>
           </div>
         </div>
 
@@ -262,7 +273,7 @@
 
 <script>
 import StorageService from '../services/StorageService';
-import { COMMON_TAGS } from '../services/RecommendationSystem';
+import RecommendationSystem, { COMMON_TAGS } from '../services/RecommendationSystem';
 
 export default {
   name: 'ProfileAnalyticsView',
@@ -309,6 +320,16 @@ export default {
        return Object.keys(this.toggles).filter(k => this.toggles[k]);
     },
 
+    recommendationTagScores() {
+        // Get tag scores from the recommendation system
+        const scores = RecommendationSystem.summarizeTagScores(50);
+        // Filter out hidden tags
+        const filtered = Object.entries(scores)
+            .filter(([tag]) => this.isTagHidden(tag) === false)
+            .slice(0, 50);
+        return Object.fromEntries(filtered);
+    },
+
     topTags() {
         const sorted = Object.entries(this.processedData.tagCounts)
             .filter(([tag]) => this.isTagHidden(tag) === false)
@@ -339,23 +360,22 @@ export default {
 
 
     pieData() {
-        const sorted = Object.entries(this.processedData.tagCounts)
+        // Use recommendation system scores for the pie chart (top 10 tags)
+        const scores = RecommendationSystem.summarizeTagScores(50);
+        const sorted = Object.entries(scores)
              .filter(([tag]) => !this.isTagHidden(tag))
+             .filter(([, score]) => score > 0)
             .sort((a, b) => b[1] - a[1]);
         
         if (sorted.length === 0) return [];
 
-        const top5 = sorted.slice(0, 5);
-        const otherCount = sorted.slice(5).reduce((sum, [, count]) => sum + count, 0);
+        const top10 = sorted.slice(0, 10);
         
-        const data = top5.map(([label, value], index) => ({
+        const data = top10.map(([label, value], index) => ({
             label, 
             value, 
             color: this.getPieColor(index)
         }));
-
-        // Removed "Other" category as requested
-        // if (otherCount > 0) { ... }
 
         const total = data.reduce((sum, d) => sum + d.value, 0);
         return data.map(d => ({ ...d, percentage: ((d.value / total) * 100).toFixed(1) }));
@@ -402,8 +422,15 @@ export default {
     capitalize(s) {
       return s.charAt(0).toUpperCase() + s.slice(1);
     },
+    formatScore(score) {
+      // Format recommendation score as percentage-like display
+      return (score * 100).toFixed(0) + '%';
+    },
     getPieColor(i) {
-        const colors = ['#ec4899', '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b']; // pink, violet, blue, emerald, amber
+        const colors = [
+            '#ec4899', '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', // pink, violet, blue, emerald, amber
+            '#ef4444', '#06b6d4', '#84cc16', '#f97316', '#6366f1'  // red, cyan, lime, orange, indigo
+        ];
         return colors[i % colors.length];
     },
     isTagHidden(tag) {

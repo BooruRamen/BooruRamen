@@ -207,6 +207,13 @@
 
         <!-- Clear Buttons -->
         <div class="space-y-4">
+          <button @click="showRefreshFeedModal" class="w-full text-center bg-blue-700 hover:bg-blue-600 py-3 rounded-md text-lg">
+            Refresh your feed
+          </button>
+          
+          <!-- Spacer -->
+          <div class="border-t border-gray-700"></div>
+          
           <button @click="wipeHistory" class="w-full text-center bg-red-800 hover:bg-red-700 py-3 rounded-md text-lg">
             Clear History
           </button>
@@ -244,12 +251,34 @@
         </div>
       </div>
     </div>
+
+    <!-- Refresh Feed Modal -->
+    <div v-if="showRefreshModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-80 backdrop-blur-sm">
+      <div class="bg-gray-800 rounded-lg max-w-sm w-full p-6 shadow-xl border border-gray-700">
+        <h3 class="text-xl font-bold mb-2">Start fresh?</h3>
+        <p class="text-gray-300 mb-6">We'll clear your history and reset your recommendations so you can discover new content.</p>
+        <div class="flex gap-3">
+          <button 
+            @click="closeRefreshModal" 
+            class="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white font-medium transition"
+          >
+            Keep Current
+          </button>
+          <button 
+            @click="executeRefreshFeed" 
+            class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium transition"
+          >
+            Start Fresh
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
 import StorageService from '../services/StorageService';
-import { COMMON_TAGS } from '../services/RecommendationSystem';
+import RecommendationSystem, { COMMON_TAGS } from '../services/RecommendationSystem';
 
 import BooruService from '../services/BooruService';
 import { DanbooruAdapter, GelbooruAdapter, MoebooruAdapter } from '../services/BooruAdapters';
@@ -269,6 +298,7 @@ export default {
       modalMessage: '',
 
       pendingAction: null,
+      showRefreshModal: false,
       avoidedTagsInput: '',
 
       saveMessage: '',
@@ -523,6 +553,17 @@ export default {
           window.location.reload();
         }
       );
+    },
+    showRefreshFeedModal() {
+      this.showRefreshModal = true;
+    },
+    closeRefreshModal() {
+      this.showRefreshModal = false;
+    },
+    executeRefreshFeed() {
+      // Reset only the recommendation system - do NOT clear history, likes, favorites, etc.
+      RecommendationSystem.resetRecommendations();
+      this.showRefreshModal = false;
     },
     async testAuth(source) {
         this.isTestingAuth = true;

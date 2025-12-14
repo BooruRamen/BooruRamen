@@ -254,6 +254,39 @@ class RecommendationSystem {
   }
 
   /**
+   * Reset the recommendation system to a fresh state.
+   * This clears tag scores and preferences but does NOT delete
+   * stored interactions, history, likes, favorites, or other user data.
+   */
+  resetRecommendations() {
+    console.log("Resetting recommendation system to fresh state...");
+
+    // Reset all scoring data
+    this.tagScores = {};
+    this.tagCategories = {};
+    this.ratingPreferences = {
+      general: 1.0,
+      sensitive: 0.0,
+      questionable: 0,
+      explicit: 0
+    };
+    this.mediaTypePreferences = {
+      image: 0.8,
+      video: 0.2
+    };
+
+    // Clear the post score cache
+    this.postScoreCache.clear();
+
+    // Reset explore session state
+    this.resetExploreSession();
+
+    this.lastUpdateTime = Date.now();
+
+    console.log("Recommendation system reset complete.");
+  }
+
+  /**
    * Track a new user interaction and optionally update the profile immediately
    */
   trackInteraction(postId, interactionType, value, postData, updateImmediately = false) {
