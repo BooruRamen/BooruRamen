@@ -300,8 +300,6 @@ export default {
       { name: 'Danbooru', type: 'danbooru', url: 'https://danbooru.donmai.us' },
       { name: 'Safebooru', type: 'gelbooru', url: 'https://safebooru.org' },
       { name: 'Gelbooru', type: 'gelbooru', url: 'https://gelbooru.com' },
-      { name: 'Konachan', type: 'moebooru', url: 'https://konachan.com' },
-      { name: 'Yande.re', type: 'moebooru', url: 'https://yande.re' },
     ];
     this.predefinedSources = defaultSources;
     this.customSources = preferences.customSources || [];
@@ -364,10 +362,8 @@ export default {
     toggleSource(source) {
        const index = this.activeSources.findIndex(s => s.url === source.url);
        if (index > -1) {
-           // Prevent removing the last source
-           if (this.activeSources.length > 1) {
-               this.activeSources.splice(index, 1);
-           }
+           // Allow deselecting all sources (validation happens on save)
+           this.activeSources.splice(index, 1);
        } else {
            this.activeSources.push(source);
        }
@@ -400,6 +396,18 @@ export default {
     },
 
     async saveSources() {
+        // Validate: at least one source must be selected
+        if (this.activeSources.length === 0) {
+            this.confirmAction(
+                'No Source Selected',
+                'At least one booru source must be selected. Please select a source before saving.',
+                () => {
+                    // Just close the modal, don't do anything
+                }
+            );
+            return;
+        }
+
         const preferences = StorageService.getPreferences();
         
         // Ensure activeSources have updated credentials from predefined/custom inputs
