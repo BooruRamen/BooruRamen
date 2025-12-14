@@ -31,6 +31,23 @@ class BooruAdapter {
         }
     }
 
+    /**
+     * Test authentication for this booru source
+     * @returns {{ success: boolean, message: string, tier?: 'free' | 'authenticated' }}
+     */
+    async testAuthentication() {
+        // Default implementation: just test connection (for sources without auth)
+        const result = await this.testConnection();
+        if (result.success) {
+            return {
+                success: true,
+                message: 'Authenticated Successfully! (Free Tier)',
+                tier: 'free'
+            };
+        }
+        return { success: false, message: result.message };
+    }
+
     // Explicitly test connection/auth, throwing errors on failure (Used by UI 'Verify' button)
     async verifyConnection() {
         const result = await this.testConnection();
@@ -45,8 +62,71 @@ class BooruAdapter {
 }
 
 export class DanbooruAdapter extends BooruAdapter {
-    constructor(baseUrl = 'https://danbooru.donmai.us') {
+    constructor(baseUrl = 'https://danbooru.donmai.us', credentials = {}) {
         super(baseUrl, 'danbooru');
+        this.credentials = credentials;
+    }
+
+    /**
+     * Test authentication for Danbooru
+     * - No credentials: Returns free tier message
+     * - With credentials: Tests via /profile.json endpoint
+     */
+    async testAuthentication() {
+        // If no credentials provided, test connectivity and return free tier message
+        if (!this.credentials.userId || !this.credentials.apiKey) {
+            const connectionResult = await this.testConnection();
+            if (!connectionResult.success) {
+                return { success: false, message: connectionResult.message };
+            }
+            return {
+                success: true,
+                message: 'Authenticated Successfully! (Free Tier)',
+                tier: 'free'
+            };
+        }
+
+        // Test authentication via /profile.json endpoint
+        try {
+            const params = new URLSearchParams({
+                login: this.credentials.userId,
+                api_key: this.credentials.apiKey
+            });
+
+            const url = `${this.baseUrl}/profile.json?${params.toString()}`;
+            console.log(`[Danbooru] Testing authentication...`);
+
+            const response = await fetch(url);
+
+            if (response.status === 401) {
+                return {
+                    success: false,
+                    message: 'Authentication failed: Invalid credentials'
+                };
+            }
+
+            if (!response.ok) {
+                return {
+                    success: false,
+                    message: `Authentication failed: HTTP ${response.status}`
+                };
+            }
+
+            const data = await response.json();
+            const username = data.name || this.credentials.userId;
+
+            return {
+                success: true,
+                message: `Authenticated as ${username}!`,
+                tier: 'authenticated'
+            };
+        } catch (error) {
+            console.error('[Danbooru] Auth test error:', error);
+            return {
+                success: false,
+                message: 'Failed to Authenticate'
+            };
+        }
     }
 
     async getPosts({ tags, page, limit, sort, sortOrder, skipSort, _isTest }) {
@@ -83,6 +163,12 @@ export class DanbooruAdapter extends BooruAdapter {
             page,
             limit,
         });
+
+        // Add credentials if available
+        if (this.credentials.userId && this.credentials.apiKey) {
+            params.append('login', this.credentials.userId);
+            params.append('api_key', this.credentials.apiKey);
+        }
 
         // Danbooru supports CORS natively, no proxy needed generally.
         // If we really need proxy, we can uncomment, but it seems to break things if headers aren't perfect.
@@ -136,6 +222,125 @@ export class GelbooruAdapter extends BooruAdapter {
         // Other Gelbooru-engine sites (safebooru.org, etc.) only host images/gifs
         if (url.includes('gelbooru.com')) return true;
         return false;
+    }
+
+    /**
+     * Check if this Gelbooru-engine site has a free tier (no auth required)
+     * @returns {boolean}
+     */
+    hasFreeTier() {
+        const url = this.baseUrl.toLowerCase();
+        // Safebooru.org has a free tier
+        // Gelbooru.com requires authentication
+        return url.includes('safebooru.org');
+    }
+
+    /**
+     * Test authentication for Gelbooru-engine sites
+     * - Safebooru: Has free tier, auth optional
+     * - Gelbooru: Requires authentication
+     */
+    async testAuthentication() {
+        const isGelbooru = this.baseUrl.toLowerCase().includes('gelbooru.com');
+        const isSafebooru = this.baseUrl.toLowerCase().includes('safebooru.org');
+        const hasCreds = this.credentials.userId && this.credentials.apiKey;
+
+        // Gelbooru requires authentication
+        if (isGelbooru && !hasCreds) {
+            return {
+                success: false,
+                message: 'Gelbooru requires authentication. Please enter your User ID and API Key.'
+            };
+        }
+
+        // Safebooru is a public API that doesn't validate credentials
+        if (isSafebooru && hasCreds) {
+            // Test connectivity first
+            const connectionResult = await this.testConnection();
+            if (!connectionResult.success) {
+                return { success: false, message: connectionResult.message };
+            }
+            // Safebooru ignores credentials - they're not validated
+            return {
+                success: true,
+                message: 'Authenticated Successfully! (Free Tier - credentials not required)',
+                tier: 'free'
+            };
+        }
+
+        // If no credentials and this site has free tier, test connectivity and return free tier message
+        if (!hasCreds) {
+            const connectionResult = await this.testConnection();
+            if (!connectionResult.success) {
+                return { success: false, message: connectionResult.message };
+            }
+            return {
+                success: true,
+                message: 'Authenticated Successfully! (Free Tier)',
+                tier: 'free'
+            };
+        }
+
+        // With credentials, test them by making an API call
+        try {
+            await this.throttle();
+
+            const params = new URLSearchParams({
+                page: 'dapi',
+                s: 'post',
+                q: 'index',
+                json: 1,
+                limit: 1,
+                user_id: this.credentials.userId,
+                api_key: this.credentials.apiKey
+            });
+
+            let cleanBaseUrl = this.baseUrl.endsWith('/') ? this.baseUrl.slice(0, -1) : this.baseUrl;
+            if (import.meta.env && import.meta.env.DEV) {
+                if (cleanBaseUrl.includes('gelbooru.com')) cleanBaseUrl = '/api/gelbooru';
+                if (cleanBaseUrl.includes('safebooru.org')) cleanBaseUrl = '/api/safebooru';
+            }
+
+            const url = `${cleanBaseUrl}/index.php?${params.toString()}`;
+            console.log(`[Gelbooru] Testing authentication...`);
+
+            const response = await fetch(url);
+
+            if (response.status === 401 || response.status === 403) {
+                return {
+                    success: false,
+                    message: 'Failed to Authenticate'
+                };
+            }
+
+            if (!response.ok) {
+                return {
+                    success: false,
+                    message: 'Failed to Authenticate'
+                };
+            }
+
+            // Try to parse response - invalid credentials might still return 200 with error in body
+            const text = await response.text();
+            if (text.includes('error') || text.includes('denied') || text.includes('invalid')) {
+                return {
+                    success: false,
+                    message: 'Failed to Authenticate'
+                };
+            }
+
+            return {
+                success: true,
+                message: 'Authenticated Successfully!',
+                tier: 'authenticated'
+            };
+        } catch (error) {
+            console.error('[Gelbooru] Auth test error:', error);
+            return {
+                success: false,
+                message: 'Failed to Authenticate'
+            };
+        }
     }
 
     // Throttle helper to prevent 429 errors

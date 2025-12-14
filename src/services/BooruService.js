@@ -51,7 +51,7 @@ class BooruService {
     createAdapter(source) {
         switch (source.type) {
             case 'danbooru':
-                return new DanbooruAdapter(source.url);
+                return new DanbooruAdapter(source.url, { userId: source.userId, apiKey: source.apiKey });
             case 'gelbooru':
                 return new GelbooruAdapter(source.url, { userId: source.userId, apiKey: source.apiKey });
             case 'moebooru':
@@ -137,6 +137,31 @@ class BooruService {
                 source: adapter.baseUrl,
                 success: result.success,
                 message: result.message
+            };
+        }));
+        return results;
+    }
+
+    /**
+     * Test authentication for a specific list of sources (not the saved ones)
+     * This is used by the UI to test currently selected sources before saving
+     * @param {Array} sources - Array of source configs to test
+     * @returns {Promise<Array>} - Array of test results
+     */
+    async testAuthenticationForSources(sources) {
+        if (!sources || sources.length === 0) {
+            return [{ source: 'None', success: false, message: 'No sources selected' }];
+        }
+
+        const results = await Promise.all(sources.map(async source => {
+            const adapter = this.createAdapter(source);
+            const result = await adapter.testAuthentication();
+            return {
+                source: source.name || adapter.baseUrl,
+                url: adapter.baseUrl,
+                success: result.success,
+                message: result.message,
+                tier: result.tier
             };
         }));
         return results;
