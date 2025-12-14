@@ -121,6 +121,21 @@ export class GelbooruAdapter extends BooruAdapter {
         // Rate limiting - Gelbooru has strict limits
         this.lastRequestTime = 0;
         this.minRequestInterval = 500; // Minimum 500ms between requests
+        // Detect if this site supports actual video files (MP4/WebM)
+        this.supportsVideoFiles = this.detectVideoSupport(baseUrl);
+    }
+
+    /**
+     * Detect if this Gelbooru-engine site supports actual video files
+     * @param {string} baseUrl - The base URL of the site
+     * @returns {boolean} - True if the site hosts video files
+     */
+    detectVideoSupport(baseUrl) {
+        const url = baseUrl.toLowerCase();
+        // Only gelbooru.com is known to have actual video file support
+        // Other Gelbooru-engine sites (safebooru.org, etc.) only host images/gifs
+        if (url.includes('gelbooru.com')) return true;
+        return false;
     }
 
     // Throttle helper to prevent 429 errors
@@ -280,12 +295,14 @@ export class GelbooruAdapter extends BooruAdapter {
                 .replace(/rating:s\b/g, 'rating:sensitive')
                 .replace(/rating:q\b/g, 'rating:questionable')
                 .replace(/rating:e\b/g, 'rating:explicit')
-                // Convert Danbooru filetype syntax to Gelbooru video/animated tag
-                .replace(/filetype:mp4,webm\b/g, 'video')
-                .replace(/-filetype:mp4,webm,gif\b/g, '-video -animated_gif')
-                .replace(/-filetype:mp4,webm\b/g, '-video')
+                // Handle video filetype tags based on site support
+                // Only gelbooru.com supports the 'video' meta-tag; others don't host video files
+                .replace(/filetype:mp4,webm\b/g, this.supportsVideoFiles ? 'video' : '')
+                .replace(/-filetype:mp4,webm,gif\b/g, this.supportsVideoFiles ? '-video -animated_gif' : '-animated_gif')
+                .replace(/-filetype:mp4,webm\b/g, this.supportsVideoFiles ? '-video' : '')
                 .replace(/\s+/g, ' ')
                 .trim();
+
 
             // If cleanTags becomes empty due to stripping (e.g. valid 'date:>1d' became ''),
             // we default to 'sort:updated' to ensure we get recent posts instead of an error or empty set.
