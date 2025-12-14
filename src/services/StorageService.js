@@ -52,11 +52,14 @@ const storeInteraction = (interaction) => {
     return false;
   }
 
+  // Derive source from metadata if available, defaulting to null/undefined
+  const source = interaction.metadata && interaction.metadata.post ? interaction.metadata.post.source : null;
+
   const timestamp = Date.now();
   const interactions = getStoredData(INTERACTIONS_KEY, []);
 
   const existingIndex = interactions.findIndex(
-    (i) => i.postId === interaction.postId && i.type === interaction.type
+    (i) => i.postId === interaction.postId && i.type === interaction.type && i.source === source
   );
 
   if (existingIndex > -1) {
@@ -64,12 +67,14 @@ const storeInteraction = (interaction) => {
     interactions[existingIndex] = {
       ...interactions[existingIndex],
       ...interaction,
+      source, // Ensure source is saved
       timestamp, // Always update the timestamp
     };
   } else {
     // Add new interaction with timestamp
     interactions.push({
       ...interaction,
+      source,
       timestamp,
     });
   }
@@ -115,8 +120,11 @@ const getPreferences = () => {
 
 /**
  * Track posts that have been viewed
+ * @param {string|number} postId - The post ID
+ * @param {Object} postData - The full post data object
+ * @param {string} source - The source URL (e.g., 'https://danbooru.donmai.us')
  */
-const trackPostView = (postId, postData) => {
+const trackPostView = (postId, postData, source = null) => {
   // Only track view if history is not disabled in settings
   const settings = loadAppSettings();
   if (settings && settings.settings && settings.settings.disableHistory) {
@@ -125,7 +133,10 @@ const trackPostView = (postId, postData) => {
 
   const history = getStoredData(VIEW_HISTORY_KEY, {});
 
-  history[postId] = {
+  // Create composite key consistent with FeedView.getCompositeKey
+  const key = source ? `${source}|${postId}` : String(postId);
+
+  history[key] = {
     lastViewed: Date.now(),
     data: postData
   };
@@ -135,10 +146,13 @@ const trackPostView = (postId, postData) => {
 
 /**
  * Check if a post has been viewed before
+ * @param {string|number} postId - The post ID
+ * @param {string} source - The source URL (optional)
  */
-const hasViewedPost = (postId) => {
+const hasViewedPost = (postId, source = null) => {
   const history = getStoredData(VIEW_HISTORY_KEY, {});
-  return !!history[postId];
+  const key = source ? `${source}|${postId}` : String(postId);
+  return !!history[key];
 };
 
 /**

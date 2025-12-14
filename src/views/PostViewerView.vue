@@ -173,7 +173,7 @@ export default {
         if (currentPost) {
           const videoEl = this.$refs.videoPlayer?.[this.currentPostIndex];
           this.$emit('current-post-changed', currentPost, videoEl);
-          StorageService.trackPostView(currentPost.id, currentPost);
+          StorageService.trackPostView(currentPost.id, currentPost, currentPost.source);
         }
       }
     },

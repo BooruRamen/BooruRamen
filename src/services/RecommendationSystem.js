@@ -6,6 +6,7 @@
 
 import * as tf from '@tensorflow/tfjs';
 import StorageService from './StorageService';
+import BooruService from './BooruService';
 
 // Constants for recommendation system
 const INTERACTION_WEIGHTS = {
@@ -27,7 +28,10 @@ export const COMMON_TAGS = [
   'greyscale', 'unknown_artist', 'text', 'commentary', 'translated',
   'multiple_girls', 'multiple_boys', 'scenery', 'original', 'highres',
   'absurdres', 'check_commentary', 'photo', 'parody',
-  'long_hair', 'breasts', 'large_breasts', 'looking_at_user', 'short_hair'
+  'long_hair', 'breasts', 'large_breasts', 'looking_at_user', 'short_hair',
+  'animated', 'tagme', 'copyright_request', 'spoiler', 'source_request',
+  'artist_request', 'character_request', 'cosplay_request', 'check_character',
+  'duplicate', 'sound', 'looking_at_viewer', 'looking_at_another'
 ];
 
 class RecommendationSystem {
@@ -52,11 +56,25 @@ class RecommendationSystem {
    * Initialize the recommendation system
    */
   initialize() {
+    // Session state for explore mode
+    this.strategyCursors = {};
+    this.exhaustedStrategies = new Set();
+
     // Build initial user profile from stored interactions
     this.updateUserProfile();
 
     // Set up periodic profile updates (every 5 minutes)
     setInterval(() => this.updateUserProfile(), 5 * 60 * 1000);
+  }
+
+  /**
+   * Reset the explore session state (cursors and exhausted list)
+   * Call this when the user refreshes the feed or starts a new search
+   */
+  resetExploreSession() {
+    this.strategyCursors = {};
+    this.exhaustedStrategies = new Set();
+    console.log("Explore session reset");
   }
 
   /**
@@ -546,42 +564,55 @@ class RecommendationSystem {
     // We need at least some tags to work with different strategies
     // If not enough tags, we'll fill with fallbacks
 
-    // --- Strategy 1: Top Single Tags (Limit 2) ---
+    // --- Filter out exhausted strategies ---
+    // If a specific query string has returned 0 posts previously in this session, skip it.
+
+    // --- Strategy 1: Top Single Tags ---
     const singleQueries = [];
-    for (let i = 0; i < 2; i++) {
-      if (i < topTags.length) {
-        singleQueries.push({ tags: topTags[i], type: 'single' });
-      } else {
-        const fallbacks = ['order:score', 'order:popular', 'date:>1w'];
-        const fallback = fallbacks[i % fallbacks.length];
-        if (!singleQueries.some(q => q.tags === fallback)) {
-          singleQueries.push({ tags: fallback, type: 'single' });
+    let tagIndex = 0;
+    while (singleQueries.length < 2 && tagIndex < topTags.length) {
+      const tag = topTags[tagIndex];
+      // Check if exhausted
+      if (!this.exhaustedStrategies.has(tag)) {
+        singleQueries.push({ tags: tag, type: 'single' });
+      }
+      tagIndex++;
+    }
+
+    // Fill with fallbacks if needed (checking exhaustion too)
+    if (singleQueries.length < 2) {
+      const fallbacks = ['order:score', 'order:popular', 'date:>1w', 'date:>1d', 'order:rank'];
+      for (const fb of fallbacks) {
+        if (singleQueries.length >= 2) break;
+        if (!this.exhaustedStrategies.has(fb) && !singleQueries.some(q => q.tags === fb)) {
+          singleQueries.push({ tags: fb, type: 'single' });
         }
       }
     }
 
-    // --- Strategy 2: Top Duo Tag Combinations (Limit 2) ---
+    // --- Strategy 2: Top Duo Tag Combinations ---
+    // Note: Duo combinations often return no results on Gelbooru with rating:safe
+    // So we prioritize single queries which include sort:score fallbacks
     const duoCombinations = [];
-
-    // ... (Duo generation logic with Discovery Pairs - preserved) ...
-    // [We need to regenerate the middle part here if we are replacing the block]
-    // Ideally we keep the logic but change the pushing.
-
     const pairingPool = COMMON_TAGS.filter(t => !this.avoidedTags.includes(t));
     const safePairingPool = pairingPool.length > 0 ? pairingPool : COMMON_TAGS;
 
-    if (topTags.length >= 2) {
-      const randomCommon1 = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
-      duoCombinations.push(`${topTags[0]} ${topTags[1]}`); // Direct Pair
-      duoCombinations.push(`${topTags[0]} ${randomCommon1}`); // Discovery Pair
-    } else if (topTags.length === 1) {
+    // Use available non-exhausted tags for pairing
+    const availableTags = topTags.filter(t => !this.exhaustedStrategies.has(t));
+
+    if (availableTags.length >= 2) {
+      // Duo 1: Best two available
+      duoCombinations.push(`${availableTags[0]} ${availableTags[1]}`);
+      // Duo 2: Best + Random
+      const rand = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
+      duoCombinations.push(`${availableTags[0]} ${rand}`);
+    } else if (availableTags.length === 1) {
       for (let k = 0; k < 3; k++) {
-        const randTag = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
-        if (randTag !== topTags[0]) {
-          duoCombinations.push(`${topTags[0]} ${randTag}`);
-        }
+        const rand = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
+        if (rand !== availableTags[0]) duoCombinations.push(`${availableTags[0]} ${rand}`);
       }
     } else {
+      // Fallback pairings if no user tags available
       for (let k = 0; k < 3; k++) {
         const t1 = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
         const t2 = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
@@ -589,25 +620,21 @@ class RecommendationSystem {
       }
     }
 
-    // Combine: DUO FIRST
-
-    // Take up to 2 Duo
-    for (let i = 0; i < 2; i++) {
-      if (i < duoCombinations.length) {
-        queries.push({ tags: duoCombinations[i], type: 'duo' });
+    // Add Single queries FIRST (they work more reliably on Gelbooru)
+    for (const q of singleQueries) {
+      if (queries.length < 2) {
+        queries.push(q);
       }
     }
 
-    // Take up to 2 Single
-    // Ensure we don't exceed 4 total queries
-    for (let i = 0; i < singleQueries.length && queries.length < 4; i++) {
-      queries.push(singleQueries[i]);
+    // Then add Duo queries (less reliable but more diverse)
+    for (const duoTag of duoCombinations) {
+      if (queries.length < 4 && !this.exhaustedStrategies.has(duoTag)) {
+        queries.push({ tags: duoTag, type: 'duo' });
+      }
     }
 
-    // Ensure single tag strategies are marked
-    queries.forEach(q => { if (!q.type) q.type = 'single'; });
-
-    // Return unique queries
+    // Ensure uniqueness
     return queries.filter((query, index, self) =>
       self.findIndex(q => q.tags === query.tags) === index
     );
@@ -727,7 +754,6 @@ class RecommendationSystem {
       }
 
       // 1. Mandatory 'Free' Tags (Rating, Filetype)
-      // These do not count towards the 2-tag limit on Danbooru
       const freeTags = [];
 
       // Rating
@@ -737,21 +763,17 @@ class RecommendationSystem {
         freeTags.push(`rating:${shortRatings.join(',')}`);
       }
 
-      // Filetype (handled via options now)
-      // GLOBAL IGNORE: Always exclude zip, swf
+      // Filetype filters (these don't count against Danbooru's 2-tag limit)
+      // Danbooru supports comma syntax: filetype:mp4,webm means mp4 OR webm
       freeTags.push('-filetype:zip,swf');
 
       if (options.wantsVideos && !options.wantsImages) {
         freeTags.push('filetype:mp4,webm');
       } else if (!options.wantsVideos && options.wantsImages) {
-        // "Images Only" -> Exclude video AND gifs
         freeTags.push('-filetype:mp4,webm,gif');
       }
 
       // 2. 'Expensive' Tags (Base Query + Whitelist + Blacklist)
-      // These count towards the limit.
-      // FIX: 'order:' tags ARE 'Expensive' (limit-consuming) on Danbooru free tier.
-      // We only exclude 'status:' as potentially free/default, though strictly we should count everything non-free.
       const baseTagCount = apiTags.filter(t => !t.startsWith('status:')).length;
       const whitelistCount = whitelist.length;
       const blacklistCount = blacklist.length;
@@ -761,12 +783,15 @@ class RecommendationSystem {
       let clientSideFilterNeeded = false;
       let finalApiTags = [...apiTags];
 
-      // Check if we exceed the limit (2 tags)
-      if (totalExpensiveTags > 2) {
+      // Check adapter tag limit
+      const tagLimit = BooruService.getTagLimit();
+
+      // Check if we exceed the limit
+      if (totalExpensiveTags > tagLimit) {
         // HYBRID MODE: Send only Base Query + Free Tags to API.
         // Filter Whitelist/Blacklist client-side.
         clientSideFilterNeeded = true;
-        console.log(`Query "${baseQuery.tags}" + filters exceeds API limit (${totalExpensiveTags} > 2). Using Client-Side Filtering.`);
+        console.log(`Query "${baseQuery.tags}" + filters exceeds API limit (${totalExpensiveTags} > ${tagLimit}). Using Client-Side Filtering.`);
 
         // We do NOT add whitelist/blacklist to finalApiTags here.
 
@@ -801,11 +826,22 @@ class RecommendationSystem {
         // If we need client side filtering, fetch MORE posts to ensure we have enough after filtering
         const limit = clientSideFilterNeeded ? 100 : postsPerFetch; // Fetch 100 if filtering, else standard amount
 
-        console.log(`Processing query: "${apiQuery.tags}" (ClientFilter: ${clientSideFilterNeeded})`);
+        // Use cursor for this specific query
+        const currentPage = this.strategyCursors[query.tags] || 1;
+        apiQuery.page = currentPage;
+
+        console.log(`Processing query: "${apiQuery.tags}" Page: ${currentPage} (ClientFilter: ${clientSideFilterNeeded})`);
 
         // Execute fetch
         return fetchFunction(apiQuery, limit)
           .then(posts => {
+            // If NO posts found (raw from API), mark strategy as exhausted
+            if (!posts || posts.length === 0) {
+              this.exhaustedStrategies.add(query.tags);
+              console.log(`Explorer: Strategy exhausted: "${query.tags}"`);
+              return [];
+            }
+
             let processedPosts = posts;
 
             // Apply Client-Side Filtering if needed
@@ -813,6 +849,13 @@ class RecommendationSystem {
               const beforeCount = processedPosts.length;
               processedPosts = this.applyClientSideFilters(processedPosts, { whitelist, blacklist });
               console.log(`Client-filter for "${query.tags}": ${beforeCount} -> ${processedPosts.length} posts`);
+            }
+
+            // If we got posts (even if filtered), increment cursor for next time
+            // (Note: if filtered down to 0, we still advance page to try next batch)
+            // But if API returned 0, we already handled it above.
+            if (posts.length > 0) {
+              this.strategyCursors[query.tags] = currentPage + 1;
             }
 
             // Attach detailed debug info
@@ -973,13 +1016,14 @@ class RecommendationSystem {
       // Remove duplicates, actively favoring 'duo' strategies
       const uniqueMap = new Map();
       allPosts.forEach(post => {
-        if (!uniqueMap.has(post.id)) {
-          uniqueMap.set(post.id, post);
+        const key = post.source ? `${post.source}|${post.id}` : String(post.id);
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, post);
         } else {
           // If duplicate, keep the one with the 'duo' strategy (more specific/diverse)
-          const existing = uniqueMap.get(post.id);
+          const existing = uniqueMap.get(key);
           if (existing._strategy !== 'duo' && post._strategy === 'duo') {
-            uniqueMap.set(post.id, post);
+            uniqueMap.set(key, post);
           }
         }
       });
@@ -990,7 +1034,10 @@ class RecommendationSystem {
 
       // Filter out posts that have already been seen
       if (existingPostIds.size > 0) {
-        uniquePosts = uniquePosts.filter(post => !existingPostIds.has(post.id));
+        uniquePosts = uniquePosts.filter(post => {
+          const key = post.source ? `${post.source}|${post.id}` : String(post.id);
+          return !existingPostIds.has(key);
+        });
       }
 
       // Rank the combined posts using our recommendation system
