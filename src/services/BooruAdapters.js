@@ -3,6 +3,8 @@
  * Adapter pattern for different Booru API types
  */
 
+import { gelbooruTagCache } from './GelbooruTagCache.js';
+
 class BooruAdapter {
     constructor(baseUrl, type) {
         this.baseUrl = baseUrl;
@@ -132,6 +134,95 @@ export class GelbooruAdapter extends BooruAdapter {
         this.lastRequestTime = Date.now();
     }
 
+    /**
+     * Fetch tag categories from Gelbooru API for tags not in cache
+     * @param {string[]} tags - Array of tag names to look up
+     * @returns {Promise<void>}
+     */
+    async fetchTagCategories(tags) {
+        // Filter to only tags we haven't cached yet
+        const uncachedTags = gelbooruTagCache.getUncachedTags(tags);
+        if (uncachedTags.length === 0) return;
+
+        // Batch tags in groups of 100 (API limit)
+        const batchSize = 100;
+        for (let i = 0; i < uncachedTags.length; i += batchSize) {
+            const batch = uncachedTags.slice(i, i + batchSize);
+
+            try {
+                await this.throttle();
+
+                // Build the tag query - Gelbooru accepts comma-separated names
+                const tagQuery = batch.join(' ');
+
+                // Build URL with authentication
+                const params = new URLSearchParams({
+                    page: 'dapi',
+                    s: 'tag',
+                    q: 'index',
+                    json: '1',
+                    limit: '100',
+                    names: tagQuery,
+                });
+
+                // Add credentials if available
+                if (this.credentials.userId) {
+                    params.append('user_id', this.credentials.userId);
+                }
+                if (this.credentials.apiKey) {
+                    params.append('api_key', this.credentials.apiKey);
+                }
+
+                const url = `/api/gelbooru/index.php?${params.toString()}`;
+                console.log(`[Gelbooru] Fetching tag categories for ${batch.length} tags`);
+
+                const response = await fetch(url);
+                if (!response.ok) {
+                    console.warn(`[Gelbooru] Tag API returned ${response.status}`);
+                    // Mark these tags as general (0) on failure to prevent repeated requests
+                    for (const tag of batch) {
+                        gelbooruTagCache.setCategory(tag, 0);
+                    }
+                    continue;
+                }
+
+                const data = await response.json();
+
+                // Process the response - it should be an array of tag objects
+                let tagList = Array.isArray(data) ? data : (data.tag || []);
+
+                // Map fetched tags to cache
+                const fetchedTagNames = new Set();
+                for (const tagObj of tagList) {
+                    const name = tagObj.name || tagObj.tag;
+                    const category = tagObj.type ?? tagObj.category ?? 0;
+                    if (name) {
+                        gelbooruTagCache.setCategory(name, category);
+                        fetchedTagNames.add(name);
+                    }
+                }
+
+                // Mark any tags that weren't found as general
+                for (const tag of batch) {
+                    if (!fetchedTagNames.has(tag)) {
+                        gelbooruTagCache.setCategory(tag, 0);
+                    }
+                }
+
+                console.log(`[Gelbooru] Cached ${tagList.length} tag categories`);
+            } catch (error) {
+                console.error('[Gelbooru] Error fetching tag categories:', error);
+                // Mark as general on error
+                for (const tag of batch) {
+                    gelbooruTagCache.setCategory(tag, 0);
+                }
+            }
+        }
+
+        // Save to localStorage after processing all batches
+        gelbooruTagCache.saveToStorage();
+    }
+
     async getPosts({ tags, page, limit, sort, sortOrder, _isTest }) {
         // Gelbooru 0.2 syntax: index.php?page=dapi&s=post&q=index&json=1...
         // Safebooru matches this.
@@ -249,12 +340,56 @@ export class GelbooruAdapter extends BooruAdapter {
                 posts = data.post;
             }
 
-            return posts.filter(post => post.file_url || post.image).map(p => this.normalizePost(p));
+            // Normalize posts first
+            const normalizedPosts = posts.filter(post => post.file_url || post.image).map(p => this.normalizePost(p));
+
+            // Collect all unique tags from all posts
+            const allTags = new Set();
+            for (const post of normalizedPosts) {
+                if (post.tag_string) {
+                    for (const tag of post.tag_string.split(' ')) {
+                        if (tag) allTags.add(tag);
+                    }
+                }
+            }
+
+            // Fetch categories for any new tags (async but non-blocking for UX)
+            // We'll still return posts immediately while categories are being fetched
+            this.fetchTagCategories(Array.from(allTags)).then(() => {
+                // Re-categorize tags on posts after cache is updated
+                for (const post of normalizedPosts) {
+                    this.applyTagCategories(post);
+                }
+            }).catch(e => console.error('[Gelbooru] Tag category fetch failed:', e));
+
+            // Apply any cached categories immediately
+            for (const post of normalizedPosts) {
+                this.applyTagCategories(post);
+            }
+
+            return normalizedPosts;
         } catch (error) {
             console.error(`Error fetching from ${this.baseUrl}:`, error);
             if (_isTest) throw error; // Re-throw for testConnection to catch
             return [];
         }
+    }
+
+    /**
+     * Apply tag categories from cache to a post
+     * @param {Object} post - Normalized post object
+     */
+    applyTagCategories(post) {
+        if (!post.tag_string) return;
+
+        const tags = post.tag_string.split(' ').filter(t => t);
+        const categorized = gelbooruTagCache.categorizeTags(tags);
+
+        post.tag_string_general = categorized.general.join(' ');
+        post.tag_string_artist = categorized.artist.join(' ');
+        post.tag_string_character = categorized.character.join(' ');
+        post.tag_string_copyright = categorized.copyright.join(' ');
+        post.tag_string_meta = categorized.meta.join(' ');
     }
 
     normalizePost(post) {
@@ -282,8 +417,13 @@ export class GelbooruAdapter extends BooruAdapter {
                 return new Date().toISOString();
             })(),
             score: post.score,
-            width: post.width,
-            height: post.height,
+            // Ensure width/height are numbers (both naming conventions for compatibility)
+            width: Number(post.width) || 0,
+            height: Number(post.height) || 0,
+            image_width: Number(post.width) || 0,
+            image_height: Number(post.height) || 0,
+            // File size - Gelbooru uses 'file_size' field
+            file_size: Number(post.file_size) || 0,
             file_url: (() => {
                 const rewrittenUrl = this.rewriteVideoUrl(fileUrl || post.file_url);
                 // Debug: log the URL rewriting
@@ -293,8 +433,11 @@ export class GelbooruAdapter extends BooruAdapter {
                 return rewrittenUrl;
             })(),
             preview_file_url: post.preview_url,
+            // Map rating properly
             rating: this.mapRating(post.rating),
             tag_string: post.tags,
+            // Gelbooru doesn't provide tag categories in the posts API
+            // All tags go to general for now
             tag_string_general: post.tags,
             tag_string_artist: '',
             tag_string_character: '',
@@ -315,12 +458,14 @@ export class GelbooruAdapter extends BooruAdapter {
     }
 
     mapRating(rating) {
-        if (!rating) return 'general';
+        if (!rating) return 'g'; // default to general
         const r = rating.toLowerCase();
-        if (r === 'safe' || r === 's') return 'general';
-        if (r === 'questionable' || r === 'q') return 'questionable';
-        if (r === 'explicit' || r === 'e') return 'explicit';
-        return 'active'; // fallback
+        // Return short codes to match Danbooru format (g, s, q, e)
+        if (r === 'safe' || r === 's' || r === 'general' || r === 'g') return 'g';
+        if (r === 'sensitive') return 's';
+        if (r === 'questionable' || r === 'q') return 'q';
+        if (r === 'explicit' || r === 'e') return 'e';
+        return 'g'; // fallback to general
     }
 
     // Rewrite video CDN URLs to use local proxy in development
@@ -414,11 +559,12 @@ export class MoebooruAdapter extends BooruAdapter {
     }
 
     mapRating(rating) {
-        if (!rating) return 'general';
+        if (!rating) return 'g';
         const r = rating.toLowerCase();
-        if (r === 's') return 'general';
-        if (r === 'q') return 'questionable';
-        if (r === 'e') return 'explicit';
-        return 'general';
+        // Return short codes to match Danbooru format (g, s, q, e)
+        if (r === 's' || r === 'safe') return 'g'; // Moebooru 's' = safe = general
+        if (r === 'q' || r === 'questionable') return 'q';
+        if (r === 'e' || r === 'explicit') return 'e';
+        return 'g';
     }
 }
