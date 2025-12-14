@@ -18,6 +18,7 @@
                            <div class="flex items-center gap-2">
                                <span class="text-sm font-medium">{{ source.name }}</span>
                                <span class="text-xs text-gray-500">({{ source.type }})</span>
+                               <span v-if="!supportsVideo(source)" class="text-xs text-yellow-400 italic">images only</span>
                            </div>
                            <div class="flex items-center gap-3">
                                <button 
@@ -68,6 +69,7 @@
                    <div class="flex items-center gap-2">
                        <span class="text-sm font-medium">{{ source.name }}</span>
                        <span class="text-xs text-gray-500">({{ source.type }})</span>
+                       <span v-if="!supportsVideo(source)" class="text-xs text-yellow-400 italic">images only</span>
                    </div>
                    <div class="flex items-center gap-3">
                        <button 
@@ -544,6 +546,16 @@ export default {
         } finally {
             this.isTestingAuth = false;
         }
+    },
+    supportsVideo(source) {
+        // Danbooru supports video files natively
+        if (source.type === 'danbooru') return true;
+        // Gelbooru.com supports video files, other Gelbooru-engine sites (Safebooru, etc.) do not
+        if (source.type === 'gelbooru') {
+            return source.url.toLowerCase().includes('gelbooru.com');
+        }
+        // Moebooru sites typically do not host video files
+        return false;
     },
   },
 };
