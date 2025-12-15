@@ -151,19 +151,58 @@
         <span class="text-xl font-bold">{{ showPostDetails ? '<<' : '>>' }}</span>
       </button>
       
-      <!-- Main content area -->
       <div class="h-full w-full relative overflow-hidden pb-14">
         <router-view 
           :key="routerViewKey"
           @current-post-changed="updateCurrentPost"
           @video-state-change="handleVideoStateChange"
-          :auto-scroll="settings.autoScroll"
-          :auto-scroll-seconds="settings.autoScrollSeconds"
-          :disable-scroll-animation="settings.disableScrollAnimation"
-          :autoplay-videos="settings.autoplayVideos"
-          :is-muted="isMuted"
-          :volume="volumeLevel"
         ></router-view>
+        
+        <!-- Debug Overlay -->
+        <div v-if="debugMode && currentPost" class="absolute top-0 left-1/2 transform -translate-x-1/2 mt-4 p-0 bg-black bg-opacity-75 text-xs text-white z-40 max-w-xs pointer-events-none font-mono rounded shadow-lg">
+          <h3 class="font-bold mb-1 text-pink-400">Recommendation Debug</h3>
+          
+          <div class="mb-2 border-b border-gray-700 pb-2">
+            
+            <!-- Show Actual Query (from adapter) if available, otherwise fallback -->
+            <div v-if="currentPost._actualQuery" class="mt-1">
+              <p class="text-gray-400 text-xs tracking-wide">Query:</p>
+              <p class="text-xs break-words font-mono text-cyan-300 bg-gray-900 p-1 rounded mt-0.5">{{ currentPost._actualQuery }}</p>
+            </div>
+            <div v-else-if="currentPost._debugMetadata?.apiQuery || currentPost._searchCriteria" class="mt-1">
+              <p class="text-gray-400 text-xs uppercase tracking-wide">Internal Query:</p>
+              <p class="text-xs break-all font-mono text-gray-300 bg-gray-900 p-1 rounded mt-0.5">{{ currentPost._debugMetadata?.apiQuery || currentPost._searchCriteria }}</p>
+            </div>
+            <p><span class="text-gray-400">Strategy:</span> {{ currentPost._strategy || 'Default' }}</p>
+            <div v-if="currentPost._debugMetadata?.clientFilters && currentPost._debugMetadata?.clientFilters !== 'None'">
+               <p><span class="text-red-400">Filters:</span> {{ currentPost._debugMetadata.clientFilters }}</p>
+            </div>
+          </div>
+
+          <div v-if="debugDetails">
+            <p><span class="text-gray-400">Rec. Score:</span> {{ debugDetails.totalScore?.toFixed(2) }}</p>
+            
+            <div v-if="debugDetails.contributingTags && debugDetails.contributingTags.length > 0" class="mt-2">
+              <p class="font-semibold text-gray-300">Top Influencing Tags:</p>
+              <ul class="list-none pl-0 mt-1 space-y-0.5">
+                <li v-for="tag in debugDetails.contributingTags" :key="tag.tag" class="flex justify-between">
+                  <span class="truncate pr-2" :class="tag.score > 0 ? 'text-green-400' : 'text-red-400'">{{ tag.tag }}</span>
+                  <span>{{ (tag.score).toFixed(2) }}</span>
+                </li>
+              </ul>
+            </div>
+            
+            <div v-if="debugDetails.ratingScore" class="mt-1 text-gray-400">
+               Rating Bonus: +{{ debugDetails.ratingScore.toFixed(2) }}
+            </div>
+             <div v-if="debugDetails.mediaScore" class="text-gray-400">
+               Media Bonus: +{{ debugDetails.mediaScore.toFixed(2) }}
+            </div>
+          </div>
+          <div v-else>
+             <p class="italic text-gray-500">Calculating score details...</p>
+          </div>
+        </div>
       </div>
         
       <!-- Custom Video Controls -->
@@ -258,20 +297,20 @@
             <div class="flex items-center justify-between">
               <label class="text-sm font-medium">Auto-scroll</label>
               <button 
-                @click="settings.autoScroll = !settings.autoScroll" 
+                @click="autoScroll = !autoScroll" 
                 class="relative inline-flex h-6 w-11 items-center rounded-full"
-                :class="settings.autoScroll ? 'bg-pink-600' : 'bg-gray-600'"
+                :class="autoScroll ? 'bg-pink-600' : 'bg-gray-600'"
               >
                 <span 
                   class="inline-block h-4 w-4 transform rounded-full bg-white transition"
-                  :class="settings.autoScroll ? 'translate-x-6' : 'translate-x-1'"
+                  :class="autoScroll ? 'translate-x-6' : 'translate-x-1'"
                 ></span>
               </button>
             </div>
             <div class="mt-2">
               <label class="text-sm text-gray-400 block mb-1">Seconds between scrolls</label>
               <input 
-                v-model.number="settings.autoScrollSeconds" 
+                v-model.number="autoScrollSeconds" 
                 type="number" 
                 min="1" 
                 max="60"
@@ -285,13 +324,13 @@
             <div class="flex items-center justify-between">
               <label class="text-sm font-medium">Disable auto-scroll animation</label>
               <button 
-                @click="settings.disableScrollAnimation = !settings.disableScrollAnimation" 
+                @click="disableScrollAnimation = !disableScrollAnimation" 
                 class="relative inline-flex h-6 w-11 items-center rounded-full"
-                :class="settings.disableScrollAnimation ? 'bg-pink-600' : 'bg-gray-600'"
+                :class="disableScrollAnimation ? 'bg-pink-600' : 'bg-gray-600'"
               >
                 <span 
                   class="inline-block h-4 w-4 transform rounded-full bg-white transition"
-                  :class="settings.disableScrollAnimation ? 'translate-x-6' : 'translate-x-1'"
+                  :class="disableScrollAnimation ? 'translate-x-6' : 'translate-x-1'"
                 ></span>
               </button>
             </div>
@@ -302,13 +341,13 @@
             <div class="flex items-center justify-between">
               <label class="text-sm font-medium">Autoplay Videos</label>
               <button 
-                @click="settings.autoplayVideos = !settings.autoplayVideos" 
+                @click="autoplayVideos = !autoplayVideos" 
                 class="relative inline-flex h-6 w-11 items-center rounded-full"
-                :class="settings.autoplayVideos ? 'bg-pink-600' : 'bg-gray-600'"
+                :class="autoplayVideos ? 'bg-pink-600' : 'bg-gray-600'"
               >
                 <span 
                   class="inline-block h-4 w-4 transform rounded-full bg-white transition"
-                  :class="settings.autoplayVideos ? 'translate-x-6' : 'translate-x-1'"
+                  :class="autoplayVideos ? 'translate-x-6' : 'translate-x-1'"
                 ></span>
               </button>
             </div>
@@ -321,26 +360,26 @@
               <div class="flex items-center justify-between">
                 <label class="text-sm">Images</label>
                 <button 
-                  @click="settings.mediaType.images = !settings.mediaType.images" 
+                  @click="mediaType.images = !mediaType.images" 
                   class="relative inline-flex h-6 w-11 items-center rounded-full"
-                  :class="settings.mediaType.images ? 'bg-pink-600' : 'bg-gray-600'"
+                  :class="mediaType.images ? 'bg-pink-600' : 'bg-gray-600'"
                 >
                   <span 
                     class="inline-block h-4 w-4 transform rounded-full bg-white transition"
-                    :class="settings.mediaType.images ? 'translate-x-6' : 'translate-x-1'"
+                    :class="mediaType.images ? 'translate-x-6' : 'translate-x-1'"
                   ></span>
                 </button>
               </div>
               <div class="flex items-center justify-between">
                 <label class="text-sm">Videos</label>
                 <button 
-                  @click="settings.mediaType.videos = !settings.mediaType.videos" 
+                  @click="mediaType.videos = !mediaType.videos" 
                   class="relative inline-flex h-6 w-11 items-center rounded-full"
-                  :class="settings.mediaType.videos ? 'bg-pink-600' : 'bg-gray-600'"
+                  :class="mediaType.videos ? 'bg-pink-600' : 'bg-gray-600'"
                 >
                   <span 
                     class="inline-block h-4 w-4 transform rounded-full bg-white transition"
-                    :class="settings.mediaType.videos ? 'translate-x-6' : 'translate-x-1'"
+                    :class="mediaType.videos ? 'translate-x-6' : 'translate-x-1'"
                   ></span>
                 </button>
               </div>
@@ -356,11 +395,11 @@
                 <button 
                   @click="toggleRating(rating)" 
                   class="relative inline-flex h-6 w-11 items-center rounded-full"
-                  :class="settings.ratings.includes(rating) ? 'bg-pink-600' : 'bg-gray-600'"
+                  :class="ratings.includes(rating) ? 'bg-pink-600' : 'bg-gray-600'"
                 >
                   <span 
                     class="inline-block h-4 w-4 transform rounded-full bg-white transition"
-                    :class="settings.ratings.includes(rating) ? 'translate-x-6' : 'translate-x-1'"
+                    :class="ratings.includes(rating) ? 'translate-x-6' : 'translate-x-1'"
                   ></span>
                 </button>
               </div>
@@ -387,7 +426,7 @@
             </div>
             <div class="flex flex-wrap gap-2 mt-2">
               <div 
-                v-for="(tag, index) in settings.whitelistTags" 
+                v-for="(tag, index) in whitelistTags" 
                 :key="index"
                 class="bg-gray-700 px-2 py-1 rounded text-xs flex items-center"
               >
@@ -418,7 +457,7 @@
             </div>
             <div class="flex flex-wrap gap-2 mt-2">
               <div 
-                v-for="(tag, index) in settings.blacklistTags" 
+                v-for="(tag, index) in blacklistTags" 
                 :key="index"
                 class="bg-gray-700 px-2 py-1 rounded text-xs flex items-center"
               >
@@ -461,7 +500,7 @@
                 >
                   {{ tag }}
                   <button 
-                    @click="settings.whitelistTags.push(tag); newWhitelistTag = ''" 
+                    @click="whitelistTags.push(tag); newWhitelistTag = ''" 
                     class="ml-1 text-xs hover:text-white"
                   >
                     + Add
@@ -481,7 +520,7 @@
             
             <!-- Reset Recommendations Button -->
             <button 
-              @click="recommendationSystem.updateUserProfile(); posts = []; settings.page = 1; fetchPosts()" 
+              @click="recommendationSystem.updateUserProfile(); posts = []; settings_page = 1; fetchPosts()" 
               class="w-full bg-gray-700 hover:bg-gray-600 text-white py-1.5 rounded-md text-xs"
             >
               Reset Recommendations
@@ -542,6 +581,10 @@
 
 <script>
 import { X, Settings, Heart, ThumbsDown, Star } from 'lucide-vue-next';
+import { mapState, mapWritableState, mapActions } from 'pinia';
+import { useSettingsStore } from './stores/settings';
+import { usePlayerStore } from './stores/player';
+import { useInteractionsStore } from './stores/interactions';
 import StorageService from './services/StorageService.js';
 import BooruService from './services/BooruService.js';
 import recommendationSystem from './services/RecommendationSystem.js';
@@ -559,67 +602,53 @@ export default {
     BottomNavBar,
   },
   data() {
-    const savedSettings = StorageService.loadAppSettings();
-    const defaultSettings = {
-      autoScroll: false,
-      autoScrollSeconds: 5,
-      autoScrollSpeed: 'medium',
-      disableHistory: false,
-      autoplayVideos: true,
-      mediaType: { images: true, videos: true },
-      ratings: ['general'],
-      whitelistTags: [],
-      blacklistTags: [],
-      activeSource: { type: 'danbooru', url: 'https://danbooru.donmai.us', name: 'Danbooru' },
-      customSources: [],
-    };
-
     return {
       currentPost: null,
       currentVideoElement: null,
       showPostDetails: false,
       linkCopied: false,
       showSettingsSidebar: false,
-      settings: savedSettings ? { ...defaultSettings, ...savedSettings.settings } : defaultSettings,
       newWhitelistTag: '',
       newBlacklistTag: '',
       
-      exploreMode: savedSettings ? savedSettings.exploreMode : true,
       routerViewKey: 0,
       
-      // Video player state
-      isPlaying: true,
-      videoProgress: 0,
-      volumeLevel: 1,
-      isMuted: false,
+      // UI state for controls
       showVideoControls: true,
       isVideoControlsHovered: false,
       isProgressDragging: false,
+      videoProgress: 0, // Keep progress local as it is high frequency
       isVolumeSliderHovered: false,
       isVolumeHovered: false,
-      isVolumeDragging: false, // Explicitly add to data
-      lastVolumeUpdate: 0,
-      lastUserInteraction: 0, 
-      sliderRect: null, // Cache for drag performance
-      lastVideoPropUpdate: 0, // Throttle for video element property writes
+      isVolumeDragging: false,
+      sliderRect: null,
+      lastVideoPropUpdate: 0,
       
       // Time tracking
       watchStartTime: null,
       accumulatedWatchTime: 0,
       
       // Sidebar filter state
-      // ... (keep this)
       hasRecommendations: false,
       recommendedTags: [],
-      recommendationSystem, // Expose to template
-
+      recommendationSystem,
+      
+      debugDetails: null, // Store for calculated debug info
     };
   },
   watch: {
     currentPost(newPost) {
       if (!newPost) {
         this.showPostDetails = false;
+        this.debugDetails = null;
+      } else if (this.debugMode) {
+          this.updateDebugDetails();
       }
+    },
+    debugMode(newVal) {
+        if (newVal && this.currentPost) {
+            this.updateDebugDetails();
+        }
     },
     $route(to, from) {
       // Hide post details and video controls when leaving the viewer
@@ -641,60 +670,121 @@ export default {
   },
 
   computed: {
+    // Map settings store state
+    ...mapWritableState(useSettingsStore, [
+      'autoScroll',
+      'autoScrollSeconds',
+      'autoScrollSpeed',
+      'disableScrollAnimation',
+      'disableHistory',
+      'autoplayVideos',
+      'mediaType',
+      'ratings',
+      'whitelistTags',
+      'blacklistTags',
+      'activeSource',
+      'customSources',
+      'exploreMode',
+      'debugMode'
+    ]),
+    // Map player store state
+    ...mapWritableState(usePlayerStore, [
+      'volume',
+      'muted',
+      'isPlaying'
+    ]),
+    
+    // Alias to match template usage
+    volumeLevel: {
+      get() { return this.volume },
+      set(val) { this.volume = val }
+    },
+    isMuted: {
+      get() { return this.muted },
+      set(val) { this.muted = val }
+    },
+
     isCurrentPostVideo() {
       if (!this.currentPost) return false;
       const ext = this.currentPost.file_ext;
       return ['mp4', 'webm'].includes(ext);
     },
-    // ... (keep other computed properties)
   },
   methods: {
+    // Map store actions
+    ...mapActions(useSettingsStore, {
+        toggleRatingAction: 'toggleRating',
+        addWhitelistTagAction: 'addWhitelistTag',
+        removeWhitelistTag: 'removeWhitelistTag',
+        addBlacklistTagAction: 'addBlacklistTag',
+        removeBlacklistTag: 'removeBlacklistTag', 
+        toggleExploreMode: 'toggleExploreMode',
+        saveSettings: 'saveSettings'
+    }),
+    ...mapActions(usePlayerStore, {
+        setPlayerVolume: 'setVolume',
+        setPlayerMuted: 'setMuted',
+        setPlayerPlaying: 'setPlaying',
+        initializePlayer: 'initialize'
+    }),
+    ...mapActions(useInteractionsStore, {
+        logInteraction: 'logInteraction',
+        initializeInteractions: 'initialize'
+    }),
+
     navigateToFeed() {
-      // Prevents navigation if already on the feed with the correct query
       if (this.$route.name === 'Home' && JSON.stringify(this.$route.query) === JSON.stringify(this.generateQueryFromSettings())) {
         return;
       }
       this.$router.push({ name: 'Home', query: this.generateQueryFromSettings() });
     },
     updateCurrentPost(post, videoEl) {
-      // Save time for previous post
       if (this.currentPost) {
           this.saveWatchTime(this.currentPost);
       }
       
-      // Reset tracking
       this.watchStartTime = null;
       this.accumulatedWatchTime = 0;
+      this.startWatchTimeTracking();
 
       if (post) {
         const interactions = StorageService.getPostInteractions(post.id);
         post.liked = interactions.some(i => i.type === 'like' && i.value > 0);
         post.disliked = interactions.some(i => i.type === 'dislike' && i.value > 0);
         post.favorited = interactions.some(i => i.type === 'favorite' && i.value > 0);
-        
-        // If auto-play is on and it's a video, start tracking immediately? 
-        // handleVideoStateChange should handle it when the 'play' event fires from the child.
       }
       
       this.currentPost = post;
       this.currentVideoElement = videoEl;
 
       if (videoEl) {
-        // Apply persisted volume and mute settings to the new video element.
-        // The IntersectionObserver in PostViewerView is now responsible for autoplay.
-        videoEl.volume = this.volumeLevel;
-        videoEl.muted = this.isMuted;
+        videoEl.volume = this.volume;
+        videoEl.muted = this.muted;
+      }
+      
+      if (this.debugMode && post) {
+          this.updateDebugDetails();
       }
     },
+
+    updateDebugDetails() {
+        if (!this.currentPost) return;
+        // Calculate score breakdown using the recommendation system
+        this.debugDetails = this.recommendationSystem.getPostScoreDetails(this.currentPost);
+    },
+    
+    startWatchTimeTracking() {
+        this.watchStartTime = Date.now();
+    },
+
     saveWatchTime(post) {
         let totalTime = this.accumulatedWatchTime;
         if (this.watchStartTime) {
             totalTime += (Date.now() - this.watchStartTime);
         }
         
-        // Save if viewed for more than 1 second (1000ms)
         if (totalTime > 1000) {
-            StorageService.storeInteraction({
+            this.logInteraction({
                 postId: post.id,
                 type: 'timeSpent',
                 value: totalTime,
@@ -707,7 +797,6 @@ export default {
       return ratingMap[rating] || 'Unknown';
     },
     formatFileSize(bytes) {
-      // Gelbooru API doesn't return file size, so show "Unknown" for 0/undefined
       if (!bytes || bytes === 0) return 'Unknown';
       const k = 1024;
       const sizes = ['Bytes', 'KB', 'MB', 'GB'];
@@ -723,13 +812,10 @@ export default {
         'https://konachan.com': 'Konachan',
         'https://yande.re': 'Yande.re',
       };
-      // Check for exact match first
       if (sourceMap[sourceUrl]) return sourceMap[sourceUrl];
-      // Check for partial match (in case of trailing slashes or variants)
       for (const [url, name] of Object.entries(sourceMap)) {
         if (sourceUrl.includes(url.replace('https://', ''))) return name;
       }
-      // Fallback: extract domain name
       try {
         const url = new URL(sourceUrl);
         return url.hostname;
@@ -750,379 +836,235 @@ export default {
       this.showPostDetails = !this.showPostDetails;
     },
     
-    // Settings methods
+    toggleLike(post) {
+        if (!post) return;
+        post.liked = !post.liked;
+        if (post.liked) post.disliked = false;
+        
+        this.logInteraction({
+            postId: post.id,
+            type: 'like',
+            value: post.liked ? 1 : 0,
+            metadata: { post }
+        });
+        if (post.liked) {
+             this.logInteraction({
+                postId: post.id,
+                type: 'dislike',
+                value: 0,
+                metadata: { post }
+            });
+        }
+    },
+    toggleDislike(post) {
+        if (!post) return;
+        post.disliked = !post.disliked;
+        if (post.disliked) post.liked = false;
+        
+        this.logInteraction({
+            postId: post.id,
+            type: 'dislike',
+            value: post.disliked ? 1 : 0,
+            metadata: { post }
+        });
+        if (post.disliked) {
+             this.logInteraction({
+                postId: post.id,
+                type: 'like',
+                value: 0,
+                metadata: { post }
+            });
+        }
+    },
+    toggleFavorite(post) {
+        if (!post) return;
+        post.favorited = !post.favorited;
+        
+        this.logInteraction({
+            postId: post.id,
+            type: 'favorite',
+            value: post.favorited ? 1 : 0,
+            metadata: { post }
+        });
+    },
+
     toggleRating(rating) {
-      const index = this.settings.ratings.indexOf(rating);
-      if (index > -1) {
-        this.settings.ratings.splice(index, 1);
-      } else {
-        this.settings.ratings.push(rating);
-      }
+        this.toggleRatingAction(rating);
     },
     addWhitelistTag() {
-      if (this.newWhitelistTag && !this.settings.whitelistTags.includes(this.newWhitelistTag)) {
-        this.settings.whitelistTags.push(this.newWhitelistTag);
-        this.newWhitelistTag = '';
-      }
-    },
-    removeWhitelistTag(index) {
-      this.settings.whitelistTags.splice(index, 1);
+      this.addWhitelistTagAction(this.newWhitelistTag);
+      this.newWhitelistTag = '';
     },
     addBlacklistTag() {
-      if (this.newBlacklistTag && !this.settings.blacklistTags.includes(this.newBlacklistTag)) {
-        this.settings.blacklistTags.push(this.newBlacklistTag);
-        this.newBlacklistTag = '';
-      }
-    },
-    removeBlacklistTag(index) {
-      this.settings.blacklistTags.splice(index, 1);
-    },
-    toggleExploreMode() {
-      this.exploreMode = !this.exploreMode;
-      this.saveSettingsToStorage();
-    },
-
-    saveSettingsToStorage() {
-      StorageService.saveAppSettings({
-        settings: this.settings,
-        exploreMode: this.exploreMode
-      });
-    },
-
-    syncSettingsFromQuery(query) {
-      this.settings.ratings = query.ratings ? query.ratings.split(',') : ['general'];
-      this.settings.mediaType.images = query.images !== '0';
-      this.settings.mediaType.videos = query.videos !== '0';
-      this.settings.whitelistTags = query.whitelist ? query.whitelist.split(',') : [];
-      this.settings.blacklistTags = query.blacklist ? query.blacklist.split(',') : [];
-      this.exploreMode = query.explore === '1';
-    },
-
-    generateQueryFromSettings() {
-      const query = {};
-      
-      if (this.settings.ratings.length > 0) {
-        query.ratings = this.settings.ratings.slice().sort().join(',');
-      }
-      
-      query.images = this.settings.mediaType.images ? '1' : '0';
-      query.videos = this.settings.mediaType.videos ? '1' : '0';
-
-      if (this.settings.whitelistTags.length > 0) {
-        query.whitelist = this.settings.whitelistTags.slice().sort().join(',');
-      }
-      
-      if (this.settings.blacklistTags.length > 0) {
-        query.blacklist = this.settings.blacklistTags.slice().sort().join(',');
-      }
-      
-      query.explore = this.exploreMode ? '1' : '0';
-
-      return query;
+      this.addBlacklistTagAction(this.newBlacklistTag);
+      this.newBlacklistTag = '';
     },
 
     applySettings() {
+      this.saveSettings();
+      // Navigate to feed with new settings
+      this.navigateToFeed();
       this.showSettingsSidebar = false;
-      this.saveSettingsToStorage();
-
-      // Force a reload of settings into the reactive state
-      const savedSettings = StorageService.loadAppSettings();
-      if (savedSettings) {
-        Object.assign(this.settings, savedSettings.settings);
-        this.exploreMode = savedSettings.exploreMode;
-      }
-      
-      const currentRouteName = this.$route.name;
-
-      if (currentRouteName === 'Home') {
-        const newQuery = this.generateQueryFromSettings();
-        if (JSON.stringify(newQuery) !== JSON.stringify(this.$route.query)) {
-          this.$router.push({ name: 'Home', query: newQuery });
-        }
-      } else if (['History', 'Likes', 'Favorites'].includes(currentRouteName)) {
-        this.routerViewKey++;
-      }
     },
 
-    handleVideoStateChange(state) {
-      if (state.isPlaying !== undefined) {
-        if (this.isPlaying !== state.isPlaying) {
-             this.isPlaying = state.isPlaying;
-             
-             if (this.isPlaying) {
-                 // Started playing
-                 this.watchStartTime = Date.now();
-             } else {
-                 // Paused
-                 if (this.watchStartTime) {
-                     this.accumulatedWatchTime += (Date.now() - this.watchStartTime);
-                     this.watchStartTime = null;
-                 }
-             }
-        }
-      }
-      if (state.progress !== undefined) this.videoProgress = state.progress;
-      
-      // Ignore volume/mute updates from the video while we are manually dragging the slider
-      // This prevents the "old state" event echo from overwriting our "new state" intent
-      if (this.isVolumeDragging) {
-          return;
-      }
-
-      if (state.volume !== undefined) {
-         if (Math.abs(this.volumeLevel - state.volume) > 0.01) {
-             this.volumeLevel = state.volume;
-         }
-      }
-      if (state.muted !== undefined) {
-          // Grace period: Ignore external mute changes if user interacted recently (< 500ms)
-          // This prevents "echoes" or browser autostate from reverting user's manual action
-          if (Date.now() - this.lastUserInteraction < 500) {
-              // If incoming state differs from our intent, RE-APPLY our intent
-              if (this.isMuted !== state.muted && this.currentVideoElement) {
-                   // console.log('[App] Re-enforcing mute state during grace period');
-                   this.currentVideoElement.muted = this.isMuted;
-                   this.currentVideoElement.volume = this.volumeLevel;
-              }
-              return;
-          }
-          
-          if (this.isMuted !== state.muted) {
-              console.log('[App] detailed video state sync: muted changing from', this.isMuted, 'to', state.muted);
-              this.isMuted = state.muted;
-          }
-      }
+    generateQueryFromSettings() {
+      const query = {
+        ratings: this.ratings.join(','),
+        images: this.mediaType.images ? '1' : '0',
+        videos: this.mediaType.videos ? '1' : '0',
+        whitelist: this.whitelistTags.join(','),
+        blacklist: this.blacklistTags.join(','),
+        explore: this.exploreMode ? '1' : '0'
+      };
+      return query;
     },
 
-    // All video methods remain
+    syncSettingsFromQuery(query) {
+      if (query.ratings) this.ratings = query.ratings.split(',');
+      if (query.images !== undefined) this.mediaType.images = query.images !== '0';
+      if (query.videos !== undefined) this.mediaType.videos = query.videos !== '0';
+      if (query.whitelist) this.whitelistTags = query.whitelist.split(',');
+      if (query.blacklist) this.blacklistTags = query.blacklist.split(',');
+      if (query.explore !== undefined) this.exploreMode = query.explore === '1';
+    },
+    
+    // Video Controls
     togglePlayPause() {
-      if (!this.currentVideoElement) return;
-      if (this.currentVideoElement.paused) {
-        this.currentVideoElement.play().catch(() => {
-          // Silently handle failed play attempts (e.g., no supported sources)
-        });
-      } else {
-        this.currentVideoElement.pause();
-      }
+        if (this.currentVideoElement) {
+            if (this.currentVideoElement.paused) {
+                this.currentVideoElement.play();
+                this.isPlaying = true;
+            } else {
+                this.currentVideoElement.pause();
+                this.isPlaying = false;
+            }
+        }
     },
-    
-    seekVideo(event) {
-      if (!this.currentVideoElement || !this.currentVideoElement.duration) return;
-      const progressBar = this.$refs.progressBar;
-      const rect = progressBar.getBoundingClientRect();
-      const percent = (event.clientX - rect.left) / rect.width;
-      this.currentVideoElement.currentTime = this.currentVideoElement.duration * percent;
+    handleVideoStateChange(state) {
+        // Update local state from event, relying on store writable computing to update store via setters
+        if (state.isPlaying !== undefined) this.isPlaying = state.isPlaying;
+        if (state.progress !== undefined) this.videoProgress = state.progress;
+        if (state.volume !== undefined) this.volume = state.volume;
+        if (state.muted !== undefined) this.muted = state.muted;
     },
-
+    seekVideo(e) {
+        if (!this.currentVideoElement) return;
+        const rect = e.target.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const width = rect.width;
+        const percentage = x / width;
+        const time = percentage * this.currentVideoElement.duration;
+        this.currentVideoElement.currentTime = time;
+        this.videoProgress = percentage * 100;
+    },
     startProgressDrag(e) {
-      if (!this.currentVideoElement || !this.currentVideoElement.duration) return;
-      this.isProgressDragging = true;
-      document.addEventListener('mousemove', this.handleProgressDrag);
-      document.addEventListener('mouseup', this.stopProgressDrag);
+        this.isProgressDragging = true;
+        document.addEventListener('mousemove', this.handleProgressDrag);
+        document.addEventListener('mouseup', this.stopProgressDrag);
     },
-
     handleProgressDrag(e) {
-      if (!this.isProgressDragging || !this.currentVideoElement) return;
-      const progressBar = this.$refs.progressBar;
-      const rect = progressBar.getBoundingClientRect();
-      const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      this.videoProgress = percent * 100;
-      this.currentVideoElement.currentTime = this.currentVideoElement.duration * percent;
+        if (!this.isProgressDragging || !this.$refs.progressBar) return;
+        const rect = this.$refs.progressBar.getBoundingClientRect();
+        let x = e.clientX - rect.left;
+        x = Math.max(0, Math.min(x, rect.width));
+        const percentage = x / rect.width;
+        this.videoProgress = percentage * 100;
+        if (this.currentVideoElement) {
+             const time = percentage * this.currentVideoElement.duration;
+             this.currentVideoElement.currentTime = time;
+        }
     },
-
     stopProgressDrag() {
-      this.isProgressDragging = false;
-      document.removeEventListener('mousemove', this.handleProgressDrag);
-      document.removeEventListener('mouseup', this.stopProgressDrag);
-    },
-
-    toggleMute() {
-      this.isMuted = !this.isMuted;
-      this.lastUserInteraction = Date.now();
-      
-      // Apply to current video element if available
-      if (this.currentVideoElement) {
-        this.currentVideoElement.muted = this.isMuted;
-        // If unmuting, also ensure volume is set correctly
-        if (!this.isMuted) {
-            this.currentVideoElement.volume = this.volumeLevel || 0.5;
-        }
-      } else {
-        console.warn('[App] toggleMute called but currentVideoElement is null');
-      }
+        this.isProgressDragging = false;
+        document.removeEventListener('mousemove', this.handleProgressDrag);
+        document.removeEventListener('mouseup', this.stopProgressDrag);
     },
     
-    // Optimized volume application
-    applyVolume(newVolume) {
-       // 1. Update UI immediately (Instant feedback)
-       this.volumeLevel = newVolume;
-       this.isMuted = newVolume === 0;
-       
-       // 2. Throttle Hardware Updates (Prevent audio engine stutter/cutout)
-       // Updating video properties 60fps causes audio glitches. 10fps (100ms) is safe.
-       const now = Date.now();
-       if (now - this.lastVideoPropUpdate > 100) {
-           this.lastVideoPropUpdate = now;
-           this.syncVideoProperties();
-       }
-    },
-    
-    syncVideoProperties() {
-       if (this.currentVideoElement) {
-         // Force unmute if we are raising volume
-         if (this.volumeLevel > 0 && this.currentVideoElement.muted) {
-             this.currentVideoElement.muted = false;
-         } else if (this.volumeLevel === 0 && !this.currentVideoElement.muted) {
-             this.currentVideoElement.muted = true;
-         }
-         
-         // Only write if significant change
-         if (Math.abs(this.currentVideoElement.volume - this.volumeLevel) > 0.001) {
-             this.currentVideoElement.volume = this.volumeLevel;
-         }
-         
-         // Enforce playback rate (Fix "Fast Forward" glitch)
-         if (this.currentVideoElement.playbackRate !== 1.0) {
-             console.warn('[App] Resetting playback rate from', this.currentVideoElement.playbackRate);
-             this.currentVideoElement.playbackRate = 1.0;
-         }
-       }
-    },
-
-    changeVolumeVertical(event) {
-      this.lastUserInteraction = Date.now();
-      const slider = this.$refs.volumeSlider;
-      if (!slider) return;
-      
-      // On simple click, we MUST read the rect
-      const rect = slider.getBoundingClientRect();
-      const percent = 1 - (event.clientY - rect.top) / rect.height;
-      const newVolume = Math.max(0, Math.min(1, percent));
-      
-      this.applyVolume(newVolume);
-    },
-
+    // Volume
     startVolumeChange(e) {
-      if (!this.currentVideoElement) return;
-      this.isVolumeDragging = true;
-      e.preventDefault();
-      document.body.classList.add('user-select-none');
-      
-      // Cache rect for performance
-      const slider = this.$refs.volumeSlider;
-      if (slider) {
-          this.sliderRect = slider.getBoundingClientRect();
-      }
-
-      this.changeVolumeVertical(e); // Apply initial click
-      this.syncVideoProperties(); // Force initial hardware sync
-      
-      document.addEventListener('mousemove', this.handleVolumeChange);
-      document.addEventListener('mouseup', this.stopVolumeChange);
+        this.isVolumeDragging = true;
+        this.sliderRect = this.$refs.volumeSlider.getBoundingClientRect();
+        document.addEventListener('mousemove', this.handleVolumeDrag);
+        document.addEventListener('mouseup', this.stopVolumeDrag);
+        this.handleVolumeDrag(e);
     },
-
-    handleVolumeChange(e) {
-      if (!this.isVolumeDragging || !this.currentVideoElement || !this.sliderRect) return;
-      
-      // No throttle needed FOR UI if we avoid layout thrashing
-      // We use the cached sliderRect
-      const rect = this.sliderRect;
-      const percent = 1 - (e.clientY - rect.top) / rect.height;
-      const newVolume = Math.max(0, Math.min(1, percent));
-      
-      this.lastUserInteraction = Date.now();
-      this.applyVolume(newVolume);
-    },
-
-    stopVolumeChange() {
-      this.isVolumeDragging = false;
-      this.syncVideoProperties(); // Ensure final value is applied to hardware
-      
-      document.body.classList.remove('user-select-none');
-      document.removeEventListener('mousemove', this.handleVolumeChange);
-      document.removeEventListener('mouseup', this.stopVolumeChange);
-    },
-
-    // All sidebar/filter methods remain
-    // ...
-
-    handleKeydown(e) {
-      // console.log('[App] Keydown:', e.key);
-      // ... (implementation remains)
-    },
-    toggleLike(post) {
-      if (!post) return;
-      if (post.liked) {
-        // Unlike the post
-        post.liked = false;
-        StorageService.storeInteraction({ postId: post.id, type: 'like', value: 0, metadata: { post } });
-      } else {
-        // Like the post
-        post.liked = true;
-        StorageService.storeInteraction({ postId: post.id, type: 'like', value: 1, metadata: { post } });
-        if (post.disliked) {
-          // If it was disliked, remove the dislike
-          post.disliked = false;
-          StorageService.storeInteraction({ postId: post.id, type: 'dislike', value: 0, metadata: { post } });
+    handleVolumeDrag(e) {
+        if (!this.isVolumeDragging || !this.sliderRect) return;
+        
+        const bottom = this.sliderRect.bottom;
+        const height = this.sliderRect.height;
+        let y = bottom - e.clientY;
+        y = Math.max(0, Math.min(y, height));
+        
+        const newVol = y / height;
+        this.volume = newVol; // Update store
+        
+        if (this.currentVideoElement) {
+            this.currentVideoElement.volume = newVol;
+            if (newVol > 0) this.currentVideoElement.muted = false;
         }
-      }
     },
-    toggleDislike(post) {
-      if (!post) return;
-      if (post.disliked) {
-        // Undislike the post
-        post.disliked = false;
-        StorageService.storeInteraction({ postId: post.id, type: 'dislike', value: 0, metadata: { post } });
-      } else {
-        // Dislike the post
-        post.disliked = true;
-        StorageService.storeInteraction({ postId: post.id, type: 'dislike', value: 1, metadata: { post } });
-        if (post.liked) {
-          // If it was liked, remove the like
-          post.liked = false;
-          StorageService.storeInteraction({ postId: post.id, type: 'like', value: 0, metadata: { post } });
+    stopVolumeDrag() {
+         this.isVolumeDragging = false;
+         document.removeEventListener('mousemove', this.handleVolumeDrag);
+         document.removeEventListener('mouseup', this.stopVolumeDrag);
+         this.saveSettings(); 
+    },
+    changeVolumeVertical(e) {
+        const rect = e.target.getBoundingClientRect();
+        const bottom = rect.bottom;
+        const height = rect.height;
+        let y = bottom - e.clientY;
+        y = Math.max(0, Math.min(y, height));
+        this.volume = y / height;
+        
+        if (this.currentVideoElement) {
+            this.currentVideoElement.volume = this.volume;
+            if (this.volume > 0) this.currentVideoElement.muted = false;
         }
-      }
+        this.saveSettings();
     },
-    toggleFavorite(post) {
-      if (!post) return;
-      post.favorited = !post.favorited;
-      StorageService.storeInteraction({ postId: post.id, type: 'favorite', value: post.favorited ? 1 : 0, metadata: { post } });
+    toggleMute() {
+        this.muted = !this.muted; // Update store
+        if (this.currentVideoElement) {
+            this.currentVideoElement.muted = this.muted;
+        }
     },
+
     updateRecommendationStatus() {
-      const interactions = StorageService.getInteractions();
-      this.hasRecommendations = interactions.length > 0;
-      if (this.hasRecommendations) {
-        this.recommendedTags = recommendationSystem.getRecommendedTags();
-      } else {
-        this.recommendedTags = [];
-      }
+       this.hasRecommendations = true; // Placeholder
     },
-  },
-
-  mounted() {
-    window.addEventListener('keydown', this.handleKeydown);
-    // On initial load, if we are on the Home page, make sure the URL
-    // reflects the currently loaded (or default) settings.
-    if (this.$route.name === 'Home') {
-      const currentQuery = this.generateQueryFromSettings();
-      if (JSON.stringify(this.$route.query) !== JSON.stringify(currentQuery)) {
-        this.$router.replace({ name: 'Home', query: currentQuery });
+    
+    handleKeydown(e) {
+      if (e.target.tagName === 'INPUT') return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        this.togglePlayPause();
+      } else if (e.code === 'ArrowRight') {
+        if (this.currentVideoElement) {
+            this.currentVideoElement.currentTime += 5;
+        }
+      } else if (e.code === 'ArrowLeft') {
+        if (this.currentVideoElement) {
+            this.currentVideoElement.currentTime -= 5;
+        }
       }
     }
-
-    const savedSettings = StorageService.loadAppSettings();
-    if (savedSettings) {
-      this.settings = savedSettings.settings;
-      this.exploreMode = savedSettings.exploreMode;
-    }
-    this.updateRecommendationStatus();
   },
-
+  created() {
+      this.initializePlayer();
+      this.initializeInteractions();
+      
+      if (Object.keys(this.$route.query).length > 0) {
+          this.syncSettingsFromQuery(this.$route.query);
+      }
+      
+      window.addEventListener('keydown', this.handleKeydown);
+  },
   beforeUnmount() {
-    window.removeEventListener('keydown', this.handleKeydown);
-  },
-};
+      window.removeEventListener('keydown', this.handleKeydown);
+  }
+}
 </script>
 
 <style>
@@ -1300,4 +1242,3 @@ export default {
   -ms-user-select: none;
 }
 </style>
-

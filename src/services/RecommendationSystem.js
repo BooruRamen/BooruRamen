@@ -591,6 +591,8 @@ class RecommendationSystem {
       .filter(([tag]) => this.tagCategories[tag] !== 'meta')
       // Filter out avoided tags
       .filter(([tag]) => !this.avoidedTags.includes(tag))
+      // Filter out explicit 'video' tag as it is handled by filetype filters
+      .filter(([tag]) => tag !== 'video')
       // Sort by score descending
       .sort((a, b) => b[1] - a[1])
       // Return just the tag strings
@@ -614,6 +616,9 @@ class RecommendationSystem {
       topTags = whitelist.slice(0, 5);
       console.log("Using whitelist as seed for fresh profile queries:", topTags);
     }
+
+    // Explicitly filter out 'video' tag from all strategies as per user request
+    topTags = topTags.filter(t => t !== 'video');
 
     // We need at least some tags to work with different strategies
     // If not enough tags, we'll fill with fallbacks
