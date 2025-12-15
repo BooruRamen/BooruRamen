@@ -1,3 +1,5 @@
+import { httpFetch } from './httpClient.js';
+
 const BASE_URL = 'https://danbooru.donmai.us';
 
 const getPosts = async ({ tags, page, limit, sort, sortOrder, skipSort }) => {
@@ -43,7 +45,7 @@ const getPosts = async ({ tags, page, limit, sort, sortOrder, skipSort }) => {
   console.log('Danbooru Fetch:', url);
 
   try {
-    const response = await fetch(url);
+    const response = await httpFetch(url);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
