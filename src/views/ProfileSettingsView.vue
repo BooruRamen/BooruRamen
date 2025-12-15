@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="p-4 text-white h-full overflow-y-auto">
     <router-link to="/profile" class="text-pink-500 mb-4 inline-block">&lt; Back to Profile</router-link>
     <h1 class="text-2xl font-bold mb-8 text-center">Profile Settings</h1>
@@ -19,12 +19,14 @@
                                                                <span class="w-2 h-2 rounded-full flex-shrink-0" :class="getStatusClass(source.url)"></span>
                                 <span class="text-sm font-medium">{{ source.name }}</span>
                                <span class="text-xs text-gray-500">({{ source.type }})</span>
-                               <span v-if="!supportsVideo(source)" class="text-xs text-yellow-400 italic">images only</span>
+                               <span v-if="!supportsVideo(source)" class="text-xs text-yellow-400 italic">Images Only</span>
+                               <span v-if="requiresAuth(source)" class="text-xs text-yellow-400 italic">API Auth Required</span>
                            </div>
                            <div class="flex items-center gap-3">
-                               <button 
-                                @click="toggleAuth(source)"
-                                class="text-gray-500 hover:text-white"
+                                <button
+                                 v-if="showAuthButton(source)"
+                                 @click="toggleAuth(source)"
+                                 class="text-gray-500 hover:text-white" :class="getAuthClass(source.url)"
                                 title="Configure Authentication"
                                >
                                  <svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2">
@@ -71,7 +73,7 @@
                        <span class="w-2 h-2 rounded-full flex-shrink-0" :class="getStatusClass(source.url)"></span>
                        <span class="text-sm font-medium">{{ source.name }}</span>
                        <span class="text-xs text-gray-500">({{ source.type }})</span>
-                       <span v-if="!supportsVideo(source)" class="text-xs text-yellow-400 italic">images only</span>
+                       <span v-if="!supportsVideo(source)" class="text-xs text-yellow-400 italic">Images Only</span>
                    </div>
                    <div class="flex items-center gap-3">
                        <button 
@@ -315,6 +317,7 @@ export default {
       authTestResult: null, // { url: string, success: boolean, message: string }
       testResults: [], // { source: string, success: boolean, message: string }[]
       sourceStatus: {}, // { sourceUrl: 'pending' | 'success' | 'failed' }
+      authStatus: {}, // { sourceUrl: 'pending' | 'authenticated' | 'unauthenticated' }
     };
   },
   mounted() {
@@ -360,6 +363,9 @@ export default {
 
     // Check connection status for all sources on page load
     this.checkAllSourceStatus();
+    
+    // Check authentication status for all sources on page load
+    this.checkAllAuthStatus();
   },
   methods: {
     toggleHistory() {
@@ -488,6 +494,14 @@ export default {
             return { ...active, userId: source.userId, apiKey: source.apiKey };
         });
         this.testResults = await BooruService.testAuthenticationForSources(sourcesToTest);
+        
+        // Update auth status for each tested source based on results
+        for (const result of this.testResults) {
+            if (result.url) {
+                this.authStatus[result.url] = result.success ? 'authenticated' : 'unauthenticated';
+            }
+        }
+        this.authStatus = { ...this.authStatus };
     },
     resetAvoidedTags() {
       this.avoidedTagsInput = COMMON_TAGS.join(' ');
@@ -590,6 +604,10 @@ export default {
                  success: result.success, 
                  message: result.message 
             };
+            
+            // Update auth status for key icon color
+            this.authStatus[source.url] = result.success ? 'authenticated' : 'unauthenticated';
+            this.authStatus = { ...this.authStatus };
         } catch (error) {
             console.error('Test authentication failed:', error);
             this.authTestResult = { 
@@ -597,6 +615,10 @@ export default {
                 success: false, 
                 message: `Failed: ${error.message}` 
             };
+            
+            // Update auth status for key icon color
+            this.authStatus[source.url] = 'unauthenticated';
+            this.authStatus = { ...this.authStatus };
         } finally {
             this.isTestingAuth = false;
         }
@@ -627,7 +649,8 @@ export default {
         // Test each source in parallel
         const promises = allSources.map(async source => {
             try {
-                const results = await BooruService.testAuthenticationForSources([source]);
+                // Use testConnectionForSources to check reachability only, not authentication
+                const results = await BooruService.testConnectionForSources([source]);
                 if (results.length > 0 && results[0].success) {
                     this.sourceStatus[source.url] = 'success';
                 } else {
@@ -652,6 +675,75 @@ export default {
         }
         // Moebooru sites typically do not host video files
         return false;
+    },
+    /**
+     * Check if a source requires API authentication
+     * @param {Object} source - Source config
+     * @returns {boolean}
+     */
+    requiresAuth(source) {
+        // Gelbooru.com requires authentication for API access
+        if (source.type === 'gelbooru' && source.url.toLowerCase().includes('gelbooru.com')) {
+            return true;
+        }
+        return false;
+    },
+    /**
+     * Check if a source should show the authentication button
+     * @param {Object} source - Source config
+     * @returns {boolean} - False for sources that dont support/need auth config
+     */
+    showAuthButton(source) {
+        // Safebooru doesnt need/support authentication, hide the button
+        if (source.type === 'gelbooru' && source.url.toLowerCase().includes('safebooru.org')) {
+            return false;
+        }
+        // Show auth button for all other sources
+        return true;
+    },
+    /**
+     * Get CSS class for auth key icon based on authentication status
+     * @param {string} sourceUrl - URL of the source
+     * @returns {string} - CSS classes
+     */
+    getAuthClass(sourceUrl) {
+        const status = this.authStatus[sourceUrl];
+        if (status === 'authenticated') return 'text-green-500 hover:text-green-400';
+        if (status === 'unauthenticated') return 'text-gray-500 hover:text-white';
+        // pending - gray with subtle animation
+        return 'text-gray-500 hover:text-white';
+    },
+    /**
+     * Check authentication status for all sources on page load
+     */
+    async checkAllAuthStatus() {
+        const allSources = [...this.predefinedSources, ...this.customSources];
+        
+        // Mark all as pending initially
+        allSources.forEach(source => {
+            this.authStatus[source.url] = 'pending';
+        });
+        // Force reactivity update
+        this.authStatus = { ...this.authStatus };
+        
+        // Test each source in parallel
+        const promises = allSources.map(async source => {
+            try {
+                const results = await BooruService.testAuthenticationForSources([source]);
+                if (results.length > 0 && results[0].success) {
+                    this.authStatus[source.url] = 'authenticated';
+                } else {
+                    this.authStatus[source.url] = 'unauthenticated';
+                }
+            } catch (error) {
+                console.error(`Auth check failed for ${source.url}:`, error);
+                this.authStatus[source.url] = 'unauthenticated';
+            }
+            // Force reactivity update after each result
+            this.authStatus = { ...this.authStatus };
+        });
+        
+        await Promise.all(promises);
     },
   },
 };

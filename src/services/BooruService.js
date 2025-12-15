@@ -166,6 +166,30 @@ class BooruService {
         }));
         return results;
     }
+
+    /**
+     * Test reachability for a specific list of sources (connection only, not authentication)
+     * This is used by the UI status indicators to show if a site is reachable
+     * @param {Array} sources - Array of source configs to test
+     * @returns {Promise<Array>} - Array of test results
+     */
+    async testConnectionForSources(sources) {
+        if (!sources || sources.length === 0) {
+            return [{ source: 'None', success: false, message: 'No sources selected' }];
+        }
+
+        const results = await Promise.all(sources.map(async source => {
+            const adapter = this.createAdapter(source);
+            const result = await adapter.testConnection();
+            return {
+                source: source.name || adapter.baseUrl,
+                url: adapter.baseUrl,
+                success: result.success,
+                message: result.message
+            };
+        }));
+        return results;
+    }
 }
 
 // Singleton instance

@@ -82,9 +82,9 @@ class RecommendationSystem {
    */
   updateUserProfile() {
     console.log("Updating user recommendation profile...");
-    const interactions = StorageService.getInteractions();
+    let interactions = StorageService.getInteractions();
 
-    // Load preferences including avoided tags
+    // Load preferences including avoided tags and reset timestamp
     const preferences = StorageService.getPreferences();
     if (preferences.avoidedTags && Array.isArray(preferences.avoidedTags)) {
       this.avoidedTags = preferences.avoidedTags;
@@ -92,8 +92,16 @@ class RecommendationSystem {
       this.avoidedTags = [...COMMON_TAGS];
     }
 
+    // Filter out interactions that occurred before the recommendation reset
+    const resetTimestamp = preferences.recommendationResetTime || 0;
+    if (resetTimestamp > 0) {
+      const beforeCount = interactions.length;
+      interactions = interactions.filter(i => i.timestamp > resetTimestamp);
+      console.log(`Filtered interactions: ${beforeCount} -> ${interactions.length} (reset at ${new Date(resetTimestamp).toISOString()})`);
+    }
+
     if (interactions.length === 0) {
-      console.log("No interactions found, using default profile");
+      console.log("No interactions found (or all filtered by reset), using default profile");
       this.initializeDefaultProfile();
       return;
     }
@@ -260,6 +268,19 @@ class RecommendationSystem {
    */
   resetRecommendations() {
     console.log("Resetting recommendation system to fresh state...");
+
+    // Store reset timestamp so future profile rebuilds ignore old interactions
+    const resetTime = Date.now();
+    StorageService.storePreferences({ recommendationResetTime: resetTime });
+    console.log(`Recommendation reset timestamp set to: ${new Date(resetTime).toISOString()}`);
+
+    // Reload avoided tags from preferences
+    const preferences = StorageService.getPreferences();
+    if (preferences.avoidedTags && Array.isArray(preferences.avoidedTags)) {
+      this.avoidedTags = preferences.avoidedTags;
+    } else {
+      this.avoidedTags = [...COMMON_TAGS];
+    }
 
     // Reset all scoring data
     this.tagScores = {};
@@ -627,8 +648,6 @@ class RecommendationSystem {
     // Note: Duo combinations often return no results on Gelbooru with rating:safe
     // So we prioritize single queries which include sort:score fallbacks
     const duoCombinations = [];
-    const pairingPool = COMMON_TAGS.filter(t => !this.avoidedTags.includes(t));
-    const safePairingPool = pairingPool.length > 0 ? pairingPool : COMMON_TAGS;
 
     // Use available non-exhausted tags for pairing
     const availableTags = topTags.filter(t => !this.exhaustedStrategies.has(t));
@@ -636,22 +655,20 @@ class RecommendationSystem {
     if (availableTags.length >= 2) {
       // Duo 1: Best two available
       duoCombinations.push(`${availableTags[0]} ${availableTags[1]}`);
-      // Duo 2: Best + Random
-      const rand = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
-      duoCombinations.push(`${availableTags[0]} ${rand}`);
-    } else if (availableTags.length === 1) {
-      for (let k = 0; k < 3; k++) {
-        const rand = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
-        if (rand !== availableTags[0]) duoCombinations.push(`${availableTags[0]} ${rand}`);
+      // Duo 2: Best + third best (if available)
+      if (availableTags.length >= 3) {
+        duoCombinations.push(`${availableTags[0]} ${availableTags[2]}`);
       }
-    } else {
-      // Fallback pairings if no user tags available
-      for (let k = 0; k < 3; k++) {
-        const t1 = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
-        const t2 = safePairingPool[Math.floor(Math.random() * safePairingPool.length)];
-        if (t1 !== t2) duoCombinations.push(`${t1} ${t2}`);
+    } else if (availableTags.length === 1 && topTags.length > 1) {
+      // Pair the single available tag with other user tags
+      for (let k = 1; k < Math.min(4, topTags.length); k++) {
+        if (!this.avoidedTags.includes(topTags[k])) {
+          duoCombinations.push(`${availableTags[0]} ${topTags[k]}`);
+        }
       }
     }
+    // For fresh profiles with no user tags, we rely on single queries with order filters
+    // (added in singleQueries fallbacks above) instead of duo combinations
 
     // Add Single queries FIRST (they work more reliably on Gelbooru)
     for (const q of singleQueries) {
