@@ -1,4 +1,4 @@
-/**
+﻿/**
  * BooruAdapters.js
  * Adapter pattern for different Booru API types
  */
@@ -358,18 +358,41 @@ export class GelbooruAdapter extends BooruAdapter {
 
             // Try to parse response - invalid credentials might still return 200 with error in body
             const text = await response.text();
-            if (text.includes('error') || text.includes('denied') || text.includes('invalid')) {
+            
+            // Try to parse as JSON first
+            try {
+                const data = JSON.parse(text);
+                // Check for explicit error responses from the API
+                if (data.error || data.success === false) {
+                    return {
+                        success: false,
+                        message: 'Failed to Authenticate'
+                    };
+                }
+                // If we got valid JSON with posts or attributes, authentication worked
                 return {
-                    success: false,
-                    message: 'Failed to Authenticate'
+                    success: true,
+                    message: 'Authenticated Successfully!',
+                    tier: 'authenticated'
+                };
+            } catch (parseError) {
+                // If not valid JSON, check for error text in the raw response
+                const lowerText = text.toLowerCase();
+                if (lowerText.includes('access denied') || 
+                    lowerText.includes('invalid api') || 
+                    lowerText.includes('authentication failed')) {
+                    return {
+                        success: false,
+                        message: 'Failed to Authenticate'
+                    };
+                }
+                // If we got a response that's not JSON but also not an obvious error, assume success
+                return {
+                    success: true,
+                    message: 'Authenticated Successfully!',
+                    tier: 'authenticated'
                 };
             }
-
-            return {
-                success: true,
-                message: 'Authenticated Successfully!',
-                tier: 'authenticated'
-            };
         } catch (error) {
             console.error('[Gelbooru] Auth test error:', error);
             return {
