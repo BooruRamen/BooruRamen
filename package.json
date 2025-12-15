@@ -10,6 +10,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@tauri-apps/plugin-http": "^2.5.4",
     "@tensorflow/tfjs": "^4.22.0",
     "core-js": "^3.8.3",
     "lucide-vue-next": "^0.477.0",

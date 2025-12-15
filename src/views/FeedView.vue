@@ -30,26 +30,20 @@
           />
           <video 
             v-else-if="getFileExtension(post) === 'mp4' || getFileExtension(post) === 'webm' || isVideoPost(post)" 
-            :src="post.file_url" 
-            :ref="(el) => { 
-              if (el) {
-                videoElements[getCompositeKey(post)] = el;
-                el.volume = volume;
-                el.muted = isMuted;
-              }
-            }"
+            :src="getVideoSrc(post)" 
+            :ref="(el) => setVideoRef(el, post)"
             autoplay 
             loop 
             playsinline
             preload="auto"
-            :muted="isMuted" 
+            muted 
             :referrerpolicy="'origin-when-cross-origin'"
             class="max-h-[calc(100vh-56px)] max-w-full"
             @click="togglePlayPause"
-            @play="onVideoPlay"
-            @pause="onVideoPause"
-            @timeupdate="onVideoTimeUpdate"
-            @volumechange="onVideoVolumeChange"
+            @play="onVideoPlay($event, post)"
+            @pause="onVideoPause($event, post)"
+            @timeupdate="onVideoTimeUpdate($event, post)"
+            @volumechange="onVideoVolumeChange($event, post)"
           ></video>
           <div 
             v-else
@@ -155,6 +149,7 @@
 import BooruService from '../services/BooruService';
 import StorageService from '../services/StorageService';
 import recommendationSystem from '../services/RecommendationSystem';
+import { getPlayableVideoUrl } from '../services/videoProxy.js';
 
 export default {
   name: 'FeedView',
@@ -192,17 +187,12 @@ export default {
       isFetching: false,
       lastPostY: 0,
       observer: null,
-      videoElements: {},
-      autoScrollInterval: null,
-      autoScrollInterval: null,
-      debugMode: false,
-      hasMorePosts: true,
+      videoBlobUrls: {}, // Map of original URL -> blob URL for Tauri production
     }
   },
-  beforeUpdate() {
-    this.videoElements = {};
-  },
+  // beforeUpdate removed to prevent clearing refs and causing infinite loops/resetting state
   created() {
+    this.videoElements = {}; // Non-reactive to prevent infinite render loops
     this.recommendationSystem = recommendationSystem;
     const preferences = StorageService.getPreferences();
     this.debugMode = preferences.debugMode || false;
@@ -211,6 +201,26 @@ export default {
     getCompositeKey(post) {
       if (!post) return '';
       return post.source ? `${post.source}|${post.id}` : String(post.id);
+    },
+    getVideoSrc(post) {
+      if (!post || !post.file_url) return '';
+      // Use blob URL if available (for Tauri production), otherwise use original
+      return this.videoBlobUrls[post.file_url] || post.file_url;
+    },
+    async processVideoUrls(posts) {
+      // Pre-fetch video URLs as blobs for Tauri production
+      for (const post of posts) {
+        if (this.isVideoPost(post) && post.file_url && !this.videoBlobUrls[post.file_url]) {
+          try {
+            const blobUrl = await getPlayableVideoUrl(post.file_url);
+            if (blobUrl !== post.file_url) {
+              this.videoBlobUrls[post.file_url] = blobUrl;
+            }
+          } catch (e) {
+            console.error('[FeedView] Failed to proxy video:', e);
+          }
+        }
+      }
     },
     buildTagsFromRouteQuery(overrideQuery = null) {
       const query = overrideQuery || this.$route.query;
@@ -391,6 +401,8 @@ export default {
           if (newPosts[0]) {
             console.log('First post file_url:', newPosts[0].file_url, 'file_ext:', newPosts[0].file_ext);
           }
+          // Pre-fetch video URLs as blobs for Tauri production (non-blocking)
+          this.processVideoUrls(newPosts);
           // Page increment is handled inside the loop for normal mode.
           // For explore mode, we rely on RecommendationSystem cursors.
         } else if (!exploreMode && newPosts.length === 0 && this.posts.length > 0) {
@@ -468,6 +480,20 @@ export default {
         const postElements = this.$refs.feedContainer.querySelectorAll('.snap-start');
         postElements.forEach(el => this.observer.observe(el));
     },
+    setVideoRef(el, post) {
+      if (el) {
+        const key = this.getCompositeKey(post);
+        // Only initialize settings if this is a NEW element for this post
+        // This prevents resetting muted=true during re-renders (e.g. volume updates)
+        if (!this.videoElements[key] || this.videoElements[key] !== el) {
+            this.videoElements[key] = el;
+            el.volume = this.volume;
+            // Start muted - IntersectionObserver will apply user pref when visible
+            el.muted = true;
+        }
+      }
+    },
+    
     getFileExtension(post) {
       if (post && post.file_url) {
         return post.file_url.split('.').pop();
@@ -486,20 +512,36 @@ export default {
             video.pause();
         }
     },
-    onVideoPlay() {
+    onVideoPlay(event, post) {
+      if (this.posts[this.currentPostIndex] && this.getCompositeKey(this.posts[this.currentPostIndex]) !== this.getCompositeKey(post)) return;
+      
+      // Enforce playback rate to prevent accidental speed changes
+      const video = event.target;
+      if (video.playbackRate !== 1.0) {
+          video.playbackRate = 1.0;
+      }
+      
       this.$emit('video-state-change', { isPlaying: true });
     },
-    onVideoPause() {
+    onVideoPause(event, post) {
+      if (this.posts[this.currentPostIndex] && this.getCompositeKey(this.posts[this.currentPostIndex]) !== this.getCompositeKey(post)) return;
       this.$emit('video-state-change', { isPlaying: false });
     },
-    onVideoTimeUpdate(event) {
+    onVideoTimeUpdate(event, post) {
+      if (this.posts[this.currentPostIndex] && this.getCompositeKey(this.posts[this.currentPostIndex]) !== this.getCompositeKey(post)) return;
+      
       const { currentTime, duration } = event.target;
       if (duration > 0) {
         this.$emit('video-state-change', { progress: (currentTime / duration) * 100 });
       }
     },
-    onVideoVolumeChange(event) {
-      const { volume, muted } = event.target;
+    onVideoVolumeChange(event, post) {
+      // Only emit volume changes from the CURRENT video
+      // This prevents non-visible videos (muted by IntersectionObserver) from overwriting user preference
+      if (this.posts[this.currentPostIndex] && this.getCompositeKey(this.posts[this.currentPostIndex]) !== this.getCompositeKey(post)) return;
+      
+      const video = event.target;
+      const { volume, muted } = video;
       this.$emit('video-state-change', { volume, muted });
     },
     startAutoScroll() {
@@ -533,19 +575,27 @@ export default {
           const video = entry.target.querySelector('video');
           if (entry.isIntersecting) {
             if (video) {
-              // Ensure video is muted for autoplay policy compliance
+              // Apply user's volume and mute preferences when video becomes visible
+              video.volume = this.volume;
               video.muted = this.isMuted;
               video.play().catch(e => {
                 // If autoplay fails, try again with muted=true
                 if (e.name === 'NotAllowedError') {
                   video.muted = true;
                   video.play().catch(() => {}); // Silently fail if still blocked
+                  // Sync global state to reflect fallback to muted
+                  this.$emit('video-state-change', { muted: true });
                 }
               });
             }
           } else {
             if (video) {
+              // console.log('[FeedView] IntersectionObserver: Video not intersecting. Pausing and Muting.');
               video.pause();
+              // Only mute if we aren't already muted (reduce spam)
+              if (!video.muted) {
+                  video.muted = true; // Always mute non-visible videos
+              }
             }
           }
         });
@@ -597,14 +647,10 @@ export default {
       });
     },
     volume(newVolume) {
-      Object.values(this.videoElements).forEach(el => {
-        if (el) el.volume = newVolume;
-      });
+      // Watcher removed to prevent conflict with App.vue
     },
     isMuted(newMuted) {
-      Object.values(this.videoElements).forEach(el => {
-        if (el) el.muted = newMuted;
-      });
+      // Watcher removed to prevent conflict with App.vue
     }
   },
 }

@@ -4,6 +4,7 @@
  */
 
 import { gelbooruTagCache } from './GelbooruTagCache.js';
+import { httpFetch } from './httpClient.js';
 
 class BooruAdapter {
     constructor(baseUrl, type) {
@@ -96,7 +97,7 @@ export class DanbooruAdapter extends BooruAdapter {
             const url = `${this.baseUrl}/profile.json?${params.toString()}`;
             console.log(`[Danbooru] Testing authentication...`);
 
-            const response = await fetch(url);
+            const response = await httpFetch(url);
 
             if (response.status === 401) {
                 return {
@@ -176,7 +177,7 @@ export class DanbooruAdapter extends BooruAdapter {
 
         try {
             console.log(`[Danbooru] Fetching: ${url}`);
-            const response = await fetch(url);
+            const response = await httpFetch(url);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
             return data.filter(post => post.id && (post.file_url || post.large_file_url)).map(p => this.normalizePost(p));
@@ -256,7 +257,7 @@ export class GelbooruAdapter extends BooruAdapter {
             const url = `${cleanBaseUrl}/index.php?page=dapi&s=post&q=index&json=1&limit=0`;
             console.log(`[Gelbooru] Testing connection to ${url}...`);
 
-            const response = await fetch(url, { method: 'GET' });
+            const response = await httpFetch(url, { method: 'GET' });
 
             // Any response (even 401/403) means the site is reachable
             // We only care about network errors or complete failures
@@ -340,7 +341,7 @@ export class GelbooruAdapter extends BooruAdapter {
             const url = `${cleanBaseUrl}/index.php?${params.toString()}`;
             console.log(`[Gelbooru] Testing authentication...`);
 
-            const response = await fetch(url);
+            const response = await httpFetch(url);
 
             if (response.status === 401 || response.status === 403) {
                 return {
@@ -358,7 +359,7 @@ export class GelbooruAdapter extends BooruAdapter {
 
             // Try to parse response - invalid credentials might still return 200 with error in body
             const text = await response.text();
-            
+
             // Try to parse as JSON first
             try {
                 const data = JSON.parse(text);
@@ -378,8 +379,8 @@ export class GelbooruAdapter extends BooruAdapter {
             } catch (parseError) {
                 // If not valid JSON, check for error text in the raw response
                 const lowerText = text.toLowerCase();
-                if (lowerText.includes('access denied') || 
-                    lowerText.includes('invalid api') || 
+                if (lowerText.includes('access denied') ||
+                    lowerText.includes('invalid api') ||
                     lowerText.includes('authentication failed')) {
                     return {
                         success: false,
@@ -455,7 +456,7 @@ export class GelbooruAdapter extends BooruAdapter {
                 const url = `/api/gelbooru/index.php?${params.toString()}`;
                 console.log(`[Gelbooru] Fetching tag categories for ${batch.length} tags`);
 
-                const response = await fetch(url);
+                const response = await httpFetch(url);
                 if (!response.ok) {
                     console.warn(`[Gelbooru] Tag API returned ${response.status}`);
                     // Mark these tags as general (0) on failure to prevent repeated requests
@@ -593,7 +594,7 @@ export class GelbooruAdapter extends BooruAdapter {
             // Rate limit requests to avoid 429 errors
             await this.throttle();
             console.log(`[Gelbooru] Fetching: ${url}`);
-            const response = await fetch(url);
+            const response = await httpFetch(url);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
             // Safely handle non-JSON or empty responses
@@ -801,7 +802,7 @@ export class MoebooruAdapter extends BooruAdapter {
 
         try {
             console.log(`[Moebooru] Fetching: ${url}`);
-            const response = await fetch(url);
+            const response = await httpFetch(url);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
             return data.filter(p => p.file_url).map(p => this.normalizePost(p));

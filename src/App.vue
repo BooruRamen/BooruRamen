@@ -209,8 +209,8 @@
             <div 
               class="absolute bottom-2 left-1/2 transform -translate-x-1/2 h-24 w-2 bg-gray-700 rounded cursor-pointer"
               :class="{ 'hidden': !isVolumeSliderHovered && !isVolumeHovered }"
-              @mousedown="startVolumeChange"
-              @click="changeVolumeVertical"
+              @mousedown.stop="startVolumeChange"
+              @click.stop="changeVolumeVertical"
               ref="volumeSlider"
             >
               <div 
@@ -222,7 +222,7 @@
           
           <!-- Mute button with improved hover behavior -->
           <button 
-            @click="toggleMute" 
+            @click.stop="toggleMute" 
             @mouseenter="isVolumeHovered = true"
             @mouseleave="isVolumeHovered = false"
             class="text-white p-2 w-8 h-8 flex items-center justify-center"
@@ -597,6 +597,11 @@ export default {
       isProgressDragging: false,
       isVolumeSliderHovered: false,
       isVolumeHovered: false,
+      isVolumeDragging: false, // Explicitly add to data
+      lastVolumeUpdate: 0,
+      lastUserInteraction: 0, 
+      sliderRect: null, // Cache for drag performance
+      lastVideoPropUpdate: 0, // Throttle for video element property writes
       
       // Time tracking
       watchStartTime: null,
@@ -857,8 +862,36 @@ export default {
         }
       }
       if (state.progress !== undefined) this.videoProgress = state.progress;
-      if (state.volume !== undefined) this.volumeLevel = state.volume;
-      if (state.muted !== undefined) this.isMuted = state.muted;
+      
+      // Ignore volume/mute updates from the video while we are manually dragging the slider
+      // This prevents the "old state" event echo from overwriting our "new state" intent
+      if (this.isVolumeDragging) {
+          return;
+      }
+
+      if (state.volume !== undefined) {
+         if (Math.abs(this.volumeLevel - state.volume) > 0.01) {
+             this.volumeLevel = state.volume;
+         }
+      }
+      if (state.muted !== undefined) {
+          // Grace period: Ignore external mute changes if user interacted recently (< 500ms)
+          // This prevents "echoes" or browser autostate from reverting user's manual action
+          if (Date.now() - this.lastUserInteraction < 500) {
+              // If incoming state differs from our intent, RE-APPLY our intent
+              if (this.isMuted !== state.muted && this.currentVideoElement) {
+                   // console.log('[App] Re-enforcing mute state during grace period');
+                   this.currentVideoElement.muted = this.isMuted;
+                   this.currentVideoElement.volume = this.volumeLevel;
+              }
+              return;
+          }
+          
+          if (this.isMuted !== state.muted) {
+              console.log('[App] detailed video state sync: muted changing from', this.isMuted, 'to', state.muted);
+              this.isMuted = state.muted;
+          }
+      }
     },
 
     // All video methods remain
@@ -904,39 +937,107 @@ export default {
     },
 
     toggleMute() {
-      if (!this.currentVideoElement) return;
-      this.currentVideoElement.muted = !this.currentVideoElement.muted;
+      this.isMuted = !this.isMuted;
+      this.lastUserInteraction = Date.now();
+      
+      // Apply to current video element if available
+      if (this.currentVideoElement) {
+        this.currentVideoElement.muted = this.isMuted;
+        // If unmuting, also ensure volume is set correctly
+        if (!this.isMuted) {
+            this.currentVideoElement.volume = this.volumeLevel || 0.5;
+        }
+      } else {
+        console.warn('[App] toggleMute called but currentVideoElement is null');
+      }
     },
     
+    // Optimized volume application
+    applyVolume(newVolume) {
+       // 1. Update UI immediately (Instant feedback)
+       this.volumeLevel = newVolume;
+       this.isMuted = newVolume === 0;
+       
+       // 2. Throttle Hardware Updates (Prevent audio engine stutter/cutout)
+       // Updating video properties 60fps causes audio glitches. 10fps (100ms) is safe.
+       const now = Date.now();
+       if (now - this.lastVideoPropUpdate > 100) {
+           this.lastVideoPropUpdate = now;
+           this.syncVideoProperties();
+       }
+    },
+    
+    syncVideoProperties() {
+       if (this.currentVideoElement) {
+         // Force unmute if we are raising volume
+         if (this.volumeLevel > 0 && this.currentVideoElement.muted) {
+             this.currentVideoElement.muted = false;
+         } else if (this.volumeLevel === 0 && !this.currentVideoElement.muted) {
+             this.currentVideoElement.muted = true;
+         }
+         
+         // Only write if significant change
+         if (Math.abs(this.currentVideoElement.volume - this.volumeLevel) > 0.001) {
+             this.currentVideoElement.volume = this.volumeLevel;
+         }
+         
+         // Enforce playback rate (Fix "Fast Forward" glitch)
+         if (this.currentVideoElement.playbackRate !== 1.0) {
+             console.warn('[App] Resetting playback rate from', this.currentVideoElement.playbackRate);
+             this.currentVideoElement.playbackRate = 1.0;
+         }
+       }
+    },
+
     changeVolumeVertical(event) {
-      if (!this.currentVideoElement) return;
+      this.lastUserInteraction = Date.now();
       const slider = this.$refs.volumeSlider;
+      if (!slider) return;
+      
+      // On simple click, we MUST read the rect
       const rect = slider.getBoundingClientRect();
       const percent = 1 - (event.clientY - rect.top) / rect.height;
       const newVolume = Math.max(0, Math.min(1, percent));
-      this.currentVideoElement.volume = newVolume;
-      this.currentVideoElement.muted = newVolume === 0;
+      
+      this.applyVolume(newVolume);
     },
 
     startVolumeChange(e) {
       if (!this.currentVideoElement) return;
       this.isVolumeDragging = true;
-      // Prevent text selection
       e.preventDefault();
       document.body.classList.add('user-select-none');
+      
+      // Cache rect for performance
+      const slider = this.$refs.volumeSlider;
+      if (slider) {
+          this.sliderRect = slider.getBoundingClientRect();
+      }
 
-      // Add listeners
+      this.changeVolumeVertical(e); // Apply initial click
+      this.syncVideoProperties(); // Force initial hardware sync
+      
       document.addEventListener('mousemove', this.handleVolumeChange);
       document.addEventListener('mouseup', this.stopVolumeChange);
     },
 
     handleVolumeChange(e) {
-      if (!this.isVolumeDragging || !this.currentVideoElement) return;
-      this.changeVolumeVertical(e);
+      if (!this.isVolumeDragging || !this.currentVideoElement || !this.sliderRect) return;
+      
+      // No throttle needed FOR UI if we avoid layout thrashing
+      // We use the cached sliderRect
+      const rect = this.sliderRect;
+      const percent = 1 - (e.clientY - rect.top) / rect.height;
+      const newVolume = Math.max(0, Math.min(1, percent));
+      
+      this.lastUserInteraction = Date.now();
+      this.applyVolume(newVolume);
     },
 
     stopVolumeChange() {
       this.isVolumeDragging = false;
+      this.syncVideoProperties(); // Ensure final value is applied to hardware
+      
       document.body.classList.remove('user-select-none');
       document.removeEventListener('mousemove', this.handleVolumeChange);
       document.removeEventListener('mouseup', this.stopVolumeChange);
@@ -946,6 +1047,7 @@ export default {
     // ...
 
     handleKeydown(e) {
+      // console.log('[App] Keydown:', e.key);
       // ... (implementation remains)
     },
     toggleLike(post) {
