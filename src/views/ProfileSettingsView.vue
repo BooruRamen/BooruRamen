@@ -19,7 +19,8 @@
                                                                <span class="w-2 h-2 rounded-full flex-shrink-0" :class="getStatusClass(source.url)"></span>
                                 <span class="text-sm font-medium">{{ source.name }}</span>
                                <span class="text-xs text-gray-500">({{ source.type }})</span>
-                               <span v-if="!supportsVideo(source)" class="text-xs text-yellow-400 italic">images only</span>
+                               <span v-if="!supportsVideo(source)" class="text-xs text-yellow-400 italic">Images Only</span>
+                               <span v-if="requiresAuth(source)" class="text-xs text-yellow-400 italic">API Auth Required</span>
                            </div>
                            <div class="flex items-center gap-3">
                                <button 
@@ -71,7 +72,7 @@
                        <span class="w-2 h-2 rounded-full flex-shrink-0" :class="getStatusClass(source.url)"></span>
                        <span class="text-sm font-medium">{{ source.name }}</span>
                        <span class="text-xs text-gray-500">({{ source.type }})</span>
-                       <span v-if="!supportsVideo(source)" class="text-xs text-yellow-400 italic">images only</span>
+                       <span v-if="!supportsVideo(source)" class="text-xs text-yellow-400 italic">Images Only</span>
                    </div>
                    <div class="flex items-center gap-3">
                        <button 
@@ -627,7 +628,8 @@ export default {
         // Test each source in parallel
         const promises = allSources.map(async source => {
             try {
-                const results = await BooruService.testAuthenticationForSources([source]);
+                // Use testConnectionForSources to check reachability only, not authentication
+                const results = await BooruService.testConnectionForSources([source]);
                 if (results.length > 0 && results[0].success) {
                     this.sourceStatus[source.url] = 'success';
                 } else {
@@ -651,6 +653,18 @@ export default {
             return source.url.toLowerCase().includes('gelbooru.com');
         }
         // Moebooru sites typically do not host video files
+        return false;
+    },
+    /**
+     * Check if a source requires API authentication
+     * @param {Object} source - Source config
+     * @returns {boolean}
+     */
+    requiresAuth(source) {
+        // Gelbooru.com requires authentication for API access
+        if (source.type === 'gelbooru' && source.url.toLowerCase().includes('gelbooru.com')) {
+            return true;
+        }
         return false;
     },
   },
