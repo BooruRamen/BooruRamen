@@ -43,6 +43,7 @@ export default defineConfig({
             // Gelbooru might require a valid referer matching the domain?
             // changeOrigin: true handles the Host header.
             // We set User-Agent to satisfy WAF.
+            proxyReq.setHeader('Referer', 'https://gelbooru.com/'); // Added Referer often helps with 401/403
             proxyReq.setHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
             proxyReq.removeHeader('cookie'); // Still remove localhost cookies
           });

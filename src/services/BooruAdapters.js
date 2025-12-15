@@ -135,7 +135,8 @@ export class DanbooruAdapter extends BooruAdapter {
 
         // Danbooru supports comma syntax for filetypes natively (e.g., filetype:mp4,webm)
         // No expansion needed
-        let queryTags = tags;
+        // Strip explicit 'video' tag as we rely on filetype filters for Danbooru as per user request
+        let queryTags = tags.replace(/\bvideo\b/g, '').replace(/\s+/g, ' ').trim();
 
         // Smart sort logic specific to Danbooru's low tag limit
         if (!hasOrder && !skipSort) {
@@ -180,7 +181,13 @@ export class DanbooruAdapter extends BooruAdapter {
             const response = await httpFetch(url);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
-            return data.filter(post => post.id && (post.file_url || post.large_file_url)).map(p => this.normalizePost(p));
+            // Attach actual query for debugging
+            return data.filter(post => post.id && (post.file_url || post.large_file_url))
+                .map(p => {
+                    const normalized = this.normalizePost(p);
+                    normalized._actualQuery = queryTags;
+                    return normalized;
+                });
         } catch (error) {
             console.error('Error fetching posts from Danbooru:', error);
             if (_isTest) throw error; // Re-throw for testConnection to catch
@@ -509,34 +516,6 @@ export class GelbooruAdapter extends BooruAdapter {
 
         let queryTags = tags;
 
-        // Map Danbooru rating tags (g,s,q,e) to Gelbooru's rating tags
-        // Gelbooru uses: rating:general, rating:sensitive, rating:questionable, rating:explicit
-        queryTags = queryTags
-            .replace(/rating:g\b/g, 'rating:general')
-            .replace(/rating:s\b/g, 'rating:sensitive')
-            .replace(/rating:q\b/g, 'rating:questionable')
-            .replace(/rating:e\b/g, 'rating:explicit');
-
-        // Map "order:score" (Danbooru) to "sort:score" (Gelbooru) logic
-        // Gelbooru uses 'sort:score' in tags, usually with 'order:desc' implicit or explicit?
-        // Actually Gelbooru supports 'sort:score:desc'. Ref: Gelbooru wiki.
-
-        let hasOrder = false;
-        if (queryTags.includes('order:')) {
-            // Strip unknown 'order:' tags that would break Gelbooru search
-            queryTags = queryTags.replace(/order:\w+/g, '');
-            hasOrder = true;
-        }
-
-        // Apply sort if requested and not present in tags
-        if (sort === 'score' && !queryTags.includes('sort:')) {
-            queryTags = `${queryTags.trim()} sort:score:desc`;
-        } else if (hasOrder && !queryTags.includes('sort:')) {
-            // If original query had "order:..." (likely score/rank), map to sort:score
-            // Default to sort:score:desc as it's the most common mapping for order:score
-            queryTags = `${queryTags.trim()} sort:score:desc`;
-        }
-
         const params = new URLSearchParams({
             page: 'dapi',
             s: 'post',
@@ -552,22 +531,81 @@ export class GelbooruAdapter extends BooruAdapter {
         }
 
         if (queryTags) {
-            // Strip unsupported tags for Gelbooru and map ratings/filetypes
-            let cleanTags = queryTags
-                .replace(/date:\S+/g, '') // Gelbooru doesn't support date:>...
-                .replace(/order:\S+/g, '') // Strip remaining order tags
-                .replace(/rating:g\b/g, 'rating:general')
-                .replace(/rating:s\b/g, 'rating:sensitive')
-                .replace(/rating:q\b/g, 'rating:questionable')
-                .replace(/rating:e\b/g, 'rating:explicit')
-                // Handle video filetype tags based on site support
-                // Only gelbooru.com supports the 'video' meta-tag; others don't host video files
-                .replace(/filetype:mp4,webm\b/g, this.supportsVideoFiles ? 'video' : '')
-                .replace(/-filetype:mp4,webm,gif\b/g, this.supportsVideoFiles ? '-video -animated_gif' : '-animated_gif')
-                .replace(/-filetype:mp4,webm\b/g, this.supportsVideoFiles ? '-video' : '')
-                .replace(/\s+/g, ' ')
-                .trim();
+            let cleanTags = queryTags;
 
+            // 1. Handle Ratings (Danbooru style 'rating:g,s' -> Gelbooru style 'rating:general rating:sensitive')
+            // Match any rating: tag
+            cleanTags = cleanTags.replace(/rating:([gsqe,]+)/g, (match, codeString) => {
+                const codes = codeString.split(',');
+
+                // If only one rating, use direct inclusion
+                if (codes.length === 1) {
+                    const c = codes[0];
+                    if (c === 'g') return 'rating:general';
+                    if (c === 's') return 'rating:sensitive';
+                    if (c === 'q') return 'rating:questionable';
+                    if (c === 'e') return 'rating:explicit';
+                    return '';
+                }
+
+                // If multiple ratings, use NEGATION of the missing ones
+                // This is safer than OR (~) which often fails for metatags
+                const allCodes = ['g', 's', 'q', 'e'];
+                const missingCodes = allCodes.filter(c => !codes.includes(c));
+
+                const exclusions = missingCodes.map(c => {
+                    if (c === 'g') return '-rating:general';
+                    if (c === 's') return '-rating:sensitive';
+                    if (c === 'q') return '-rating:questionable';
+                    if (c === 'e') return '-rating:explicit';
+                    return '';
+                }).filter(t => t !== '');
+
+                return exclusions.join(' ');
+            });
+
+            // 2. Handle Filetypes
+            // Remove unsupported date/order tags
+            cleanTags = cleanTags
+                .replace(/date:\S+/g, '')
+                .replace(/order:\S+/g, '');
+
+            // Handle -filetype:mp4,webm,gif
+            cleanTags = cleanTags.replace(/-filetype:([a-z0-9,]+)/g, (match, types) => {
+                // Convert exclusion list to individual excluded tags
+                const typeList = types.split(',');
+                const exclusions = [];
+                if (typeList.includes('mp4') || typeList.includes('webm')) {
+                    if (this.supportsVideoFiles) exclusions.push('-video');
+                }
+                if (typeList.includes('gif')) {
+                    exclusions.push('-animated_gif');
+                }
+                if (typeList.includes('swf')) {
+                    exclusions.push('-flash'); // Gelbooru uses flash tag? or -filetype:swf works? Gelbooru usually supports filetype:swf.
+                    // But safest for "image only" is likely excluding known video/anim tags.
+                    // Actually let's just stick to the specific mappings we know
+                }
+                return exclusions.join(' ');
+            });
+
+            // Handle +filetype (inclusion) - rarely used for Gelbooru in this App but good to have
+            cleanTags = cleanTags.replace(/filetype:([a-z0-9,]+)/g, (match, types) => {
+                const typeList = types.split(',');
+                if (typeList.includes('mp4') || typeList.includes('webm')) {
+                    if (this.supportsVideoFiles) return 'video';
+                }
+                return '';
+            });
+
+            // Cleanup and ensure sort order
+            cleanTags = cleanTags.replace(/\s+/g, ' ').trim();
+
+            // Apply sort if requested and not present in tags
+            // Note: Gelbooru uses 'sort:score:desc'
+            if (!cleanTags.includes('sort:') && (sort === 'score' || tags.includes('order:score') || tags.includes('order:rank'))) {
+                cleanTags = `${cleanTags} sort:score:desc`;
+            }
 
             // If cleanTags becomes empty due to stripping (e.g. valid 'date:>1d' became ''),
             // we default to 'sort:updated' to ensure we get recent posts instead of an error or empty set.
@@ -608,22 +646,30 @@ export class GelbooruAdapter extends BooruAdapter {
             try {
                 data = JSON.parse(text);
             } catch (e) {
-                // Check if it's XML (old API error) or just garbage
-                console.warn(`[Gelbooru] Failed to parse JSON: ${e.message}`);
+                // If text is not JSON (e.g. XML or HTML), return empty
+                console.warn(`[Gelbooru] Failed to parse JSON from ${url}:`, e);
                 if (_isTest) throw new Error(`Failed to parse JSON response: ${e.message}`); // Re-throw for testConnection
                 return [];
             }
 
-            // Gelbooru API is inconsistent: sometimes [posts], sometimes { post: [posts] }, sometimes []
+            // Format check - Gelbooru API varies slightly by version/site
             let posts = [];
             if (Array.isArray(data)) {
                 posts = data;
-            } else if (data && Array.isArray(data.post)) {
-                posts = data.post;
+            } else if (data.post) {
+                posts = Array.isArray(data.post) ? data.post : [data.post];
             }
 
+            // Attach actual query for debugging
+            const finalQueryTags = params.get('tags');
+
             // Normalize posts first
-            const normalizedPosts = posts.filter(post => post.file_url || post.image).map(p => this.normalizePost(p));
+            const normalizedPosts = posts.filter(post => post.id && (post.file_url || post.image))
+                .map(p => {
+                    const normalized = this.normalizePost(p);
+                    normalized._actualQuery = finalQueryTags;
+                    return normalized;
+                });
 
             // Collect all unique tags from all posts
             const allTags = new Set();

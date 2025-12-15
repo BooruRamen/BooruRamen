@@ -146,6 +146,9 @@
 </template>
 
 <script>
+import { mapState } from 'pinia';
+import { useSettingsStore } from '../stores/settings';
+import { usePlayerStore } from '../stores/player';
 import BooruService from '../services/BooruService';
 import StorageService from '../services/StorageService';
 import recommendationSystem from '../services/RecommendationSystem';
@@ -153,28 +156,7 @@ import { getPlayableVideoUrl } from '../services/videoProxy.js';
 
 export default {
   name: 'FeedView',
-  props: {
-    autoScroll: {
-      type: Boolean,
-      default: false
-    },
-    autoScrollSeconds: {
-      type: Number,
-      default: 5
-    },
-    disableScrollAnimation: {
-      type: Boolean,
-      default: false
-    },
-    volume: {
-      type: Number,
-      default: 1
-    },
-    isMuted: {
-      type: Boolean,
-      default: false
-    },
-  },
+  // Props removed as we use stores now
   data() {
     return {
       posts: [],
@@ -188,6 +170,20 @@ export default {
       lastPostY: 0,
       observer: null,
       videoBlobUrls: {}, // Map of original URL -> blob URL for Tauri production
+      // Local tracking for video elements to interactions
+      videoElements: {}, 
+      debugMode: false,
+    }
+  },
+  computed: {
+    ...mapState(useSettingsStore, ['autoScroll', 'autoScrollSeconds', 'disableScrollAnimation']),
+    ...mapState(usePlayerStore, ['volume', 'muted']),
+    
+    // Alias to match template if needed, or just updated template to use 'muted'
+    // The template uses 'isMuted' prop, so we alias it or change template.
+    // Let's alias it for minimal template changes.
+    isMuted() {
+        return this.muted;
     }
   },
   // beforeUpdate removed to prevent clearing refs and causing infinite loops/resetting state
@@ -339,12 +335,6 @@ export default {
               newPosts = [...newPosts, ...batch];
               batch.forEach(p => blockedKeys.add(this.getCompositeKey(p)));
             }
-            
-            
-            // If we haven't met our target, move to next page of results
-            // In NEW Explore Logic, RecommendationSystem handles pagination internally via cursors.
-            // We do NOT increment this.page here.
-            
           }
 
         } else {
@@ -397,37 +387,19 @@ export default {
         if (newPosts && newPosts.length > 0) {
           this.posts = [...this.posts, ...newPosts];
           console.log(`Added ${newPosts.length} new posts. Total: ${this.posts.length}`);
-          // Debug: Log first post's file_url to check if it's correct
-          if (newPosts[0]) {
-            console.log('First post file_url:', newPosts[0].file_url, 'file_ext:', newPosts[0].file_ext);
-          }
           // Pre-fetch video URLs as blobs for Tauri production (non-blocking)
           this.processVideoUrls(newPosts);
-          // Page increment is handled inside the loop for normal mode.
-          // For explore mode, we rely on RecommendationSystem cursors.
         } else if (!exploreMode && newPosts.length === 0 && this.posts.length > 0) {
-            // If we found no new posts in normal mode but have existing posts, 
-            // we might have filtered everything out. 
             console.log("No new unique posts found in this batch (normal mode).");
             this.hasMorePosts = false;
         } else if (exploreMode && newPosts.length === 0) {
-            // In explore mode, if we get nothing after all attempts, mark exhausted
             console.log("No new posts found in explore mode batch.");
-            // Don't immediately set hasMorePosts to false - let cursor-based exploration continue
-            // Only mark exhausted if ALL strategies are exhausted
         }
       } catch (error) {
         console.error('Failed to fetch posts:', error);
       } finally {
         this.isFetching = false;
         this.loading = false;
-        
-        // If we tried to fetch but got nothing, mark as exhausted
-        // We check if we are not loading (initial) and just finished a fetch loop
-        if (!newSearch && this.hasMorePosts && this.posts.length > 0) {
-             // If we are at the bottom and stopped fetching without adding enough posts...
-             // Actually, simplest check: if logic above failed to add ANY new posts despite trying MAX attempts.
-        }
         
         this.$nextTick(() => {
           this.observePosts();
@@ -476,6 +448,8 @@ export default {
         if (this.observer) {
             this.observer.disconnect();
         }
+
+        if (!this.$refs.feedContainer) return;
 
         const postElements = this.$refs.feedContainer.querySelectorAll('.snap-start');
         postElements.forEach(el => this.observer.observe(el));
@@ -577,6 +551,7 @@ export default {
             if (video) {
               // Apply user's volume and mute preferences when video becomes visible
               video.volume = this.volume;
+              // If global mute is off, but browser blocked autoplay, we might need to handle it.
               video.muted = this.isMuted;
               video.play().catch(e => {
                 // If autoplay fails, try again with muted=true
@@ -590,7 +565,6 @@ export default {
             }
           } else {
             if (video) {
-              // console.log('[FeedView] IntersectionObserver: Video not intersecting. Pausing and Muting.');
               video.pause();
               // Only mute if we aren't already muted (reduce spam)
               if (!video.muted) {
@@ -646,12 +620,6 @@ export default {
         this.determineCurrentPost();
       });
     },
-    volume(newVolume) {
-      // Watcher removed to prevent conflict with App.vue
-    },
-    isMuted(newMuted) {
-      // Watcher removed to prevent conflict with App.vue
-    }
   },
 }
 </script> 

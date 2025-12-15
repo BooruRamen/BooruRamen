@@ -51,6 +51,9 @@
 </template>
 
 <script>
+import { mapState } from 'pinia';
+import { useSettingsStore } from '../stores/settings';
+import { usePlayerStore } from '../stores/player';
 import StorageService from '../services/StorageService';
 
 export default {
@@ -59,14 +62,6 @@ export default {
     source: {
       type: String,
       required: true,
-    },
-    autoplayVideos: {
-      type: Boolean,
-      default: true,
-    },
-    isMuted: {
-      type: Boolean,
-      default: true,
     }
   },
   data() {
@@ -76,6 +71,15 @@ export default {
       currentPostIndex: 0,
       observer: null,
     };
+  },
+  computed: {
+    ...mapState(useSettingsStore, ['autoplayVideos']),
+    ...mapState(usePlayerStore, ['volume', 'muted']),
+    
+    // Alias to match template usage
+    isMuted() {
+        return this.muted;
+    }
   },
   mounted() {
     this.loadPosts();
@@ -99,6 +103,8 @@ export default {
             const video = entry.target.querySelector('video');
             if (entry.isIntersecting) {
               if (this.autoplayVideos && video) {
+                video.volume = this.volume;
+                video.muted = this.muted;
                 video.play().catch(e => console.warn("Autoplay was prevented in viewer.", e));
               }
             } else {
