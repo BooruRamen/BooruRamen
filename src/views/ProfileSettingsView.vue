@@ -154,6 +154,7 @@
             v-model="avoidedTagsInput" 
             class="w-full h-32 bg-gray-900 border border-gray-700 rounded p-2 text-sm text-gray-200 focus:border-pink-500 focus:outline-none mb-3"
             placeholder="e.g. 1girl, solo, comic..."
+            @keydown.space.stop
           ></textarea>
           
           <div class="flex justify-between items-center">
@@ -175,13 +176,12 @@
         </div>
 
         <!-- Toggle Debug Mode -->
-        <div class="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
+        <div @click="toggleDebugMode" class="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-750">
           <div class="flex flex-col">
-            <label class="text-lg" for="debug-mode">Debug Mode</label>
+            <label class="text-lg cursor-pointer" for="debug-mode">Debug Mode</label>
             <span class="text-sm text-gray-400">Show recommendation analytics overlay</span>
           </div>
-          <button 
-            @click="toggleDebugMode" 
+          <div 
             class="relative inline-flex h-6 w-11 items-center rounded-full"
             :class="debugMode ? 'bg-pink-600' : 'bg-gray-600'"
           >
@@ -189,14 +189,16 @@
               class="inline-block h-4 w-4 transform rounded-full bg-white transition"
               :class="debugMode ? 'translate-x-6' : 'translate-x-1'"
             ></span>
-          </button>
+          </div>
         </div>
 
         <!-- Toggle History -->
-        <div class="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
-          <label class="text-lg" for="disable-history">Disable View History</label>
-          <button 
-            @click="toggleHistory" 
+        <div @click="toggleHistory" class="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-750">
+          <div class="flex flex-col">
+            <label class="text-lg cursor-pointer" for="disable-history">Disable View History</label>
+            <span class="text-sm text-gray-400">Disabling view history may cause the feed to show previously viewed posts</span>
+          </div>
+          <div 
             class="relative inline-flex h-6 w-11 items-center rounded-full"
             :class="disableHistory ? 'bg-pink-600' : 'bg-gray-600'"
           >
@@ -204,7 +206,7 @@
               class="inline-block h-4 w-4 transform rounded-full bg-white transition"
               :class="disableHistory ? 'translate-x-6' : 'translate-x-1'"
             ></span>
-          </button>
+          </div>
         </div>
 
         <!-- Clear Buttons -->
@@ -345,7 +347,7 @@ export default {
     // Wait, if I change activeSource to activeSources in store...
     
   },
-  mounted() {
+  async mounted() {
     // Initialize local state from store
     // actually, let's just read from store directly if mapped.
     // But specific logic for sources might need local state.
@@ -355,7 +357,7 @@ export default {
     // `StorageService` loaded it.
     // I should add `avoidedTags` to settings store.
 
-    const preferences = StorageService.getPreferences(); // Still need this for things not in store yet?
+    const preferences = await StorageService.getPreferences(); // Still need this for things not in store yet?
     // Actually, everything should be in store.
     // I missed `avoidedTags` in store. I will add it.
     
@@ -409,7 +411,7 @@ export default {
       this.saveSettings();
     },
 
-    saveAvoidedTags() {
+    async saveAvoidedTags() {
       const tags = this.avoidedTagsInput
         .split(/[\s,]+/)
         .map(t => t.trim())
@@ -423,7 +425,7 @@ export default {
       // `RecommendationSystem` likely reads from StorageService.
       // So it's fine to write to StorageService for now for `avoidedTags`.
       
-      StorageService.storePreferences({ avoidedTags: uniqueTags });
+      await StorageService.storePreferences({ avoidedTags: uniqueTags });
       
       this.avoidedTagsInput = uniqueTags.join(' ');
       this.saveMessage = 'Settings saved!';
@@ -483,7 +485,7 @@ export default {
             return;
         }
 
-        const preferences = StorageService.getPreferences();
+        const preferences = await StorageService.getPreferences();
         
         this.localActiveSources = this.localActiveSources.map(active => {
              const updatedPredefined = this.predefinedSources.find(p => p.url === active.url);
@@ -502,7 +504,7 @@ export default {
         // Update Store
         // I need to support activeSources in store.
         // For now I'll just save to storage manually as well to keep compatibility
-        StorageService.storePreferences({
+        await StorageService.storePreferences({
              customSources: this.customSources,
              activeSources: this.localActiveSources,
              sourceConfigs: sourceConfigs
@@ -528,8 +530,8 @@ export default {
       this.confirmAction(
         'Clear History',
         'Are you sure you want to clear your entire viewing history?',
-        () => {
-          StorageService.clearHistory();
+        async () => {
+          await StorageService.clearHistory();
           // Update store if it caches history
         }
       );
@@ -538,8 +540,8 @@ export default {
       this.confirmAction(
         'Clear Likes',
         'Are you sure you want to clear all your liked posts?',
-        () => {
-          StorageService.clearLikes();
+        async () => {
+          await StorageService.clearLikes();
         }
       );
     },
@@ -547,8 +549,8 @@ export default {
       this.confirmAction(
         'Clear Favorites',
         'Are you sure you want to clear all your favorited posts?',
-        () => {
-          StorageService.clearFavorites();
+        async () => {
+          await StorageService.clearFavorites();
         }
       );
     },
@@ -556,8 +558,8 @@ export default {
       this.confirmAction(
         'Clear All Data',
         'Are you sure you want to clear ALL your data?',
-        () => {
-          StorageService.clearAllData();
+        async () => {
+          await StorageService.clearAllData();
           window.location.reload();
         }
       );
@@ -608,8 +610,8 @@ export default {
     closeRefreshModal() {
       this.showRefreshModal = false;
     },
-    executeRefreshFeed() {
-      RecommendationSystem.resetRecommendations();
+    async executeRefreshFeed() {
+      await RecommendationSystem.resetRecommendations();
       this.showRefreshModal = false;
     },
     async testAuth(source) {

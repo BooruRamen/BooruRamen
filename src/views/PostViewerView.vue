@@ -116,22 +116,22 @@ export default {
       );
       this.observePosts();
     },
-    loadPosts() {
+    async loadPosts() {
       this.loading = true;
       let postData = [];
       if (this.source === 'history') {
-        const history = StorageService.getViewedPosts();
+        const history = await StorageService.getViewedPosts();
         postData = Object.values(history)
           .sort((a, b) => b.lastViewed - a.lastViewed)
           .map(item => item.data);
       } else if (this.source === 'likes') {
-        const likedInteractions = StorageService.getInteractions('like');
+        const likedInteractions = await StorageService.getInteractions('like');
         postData = likedInteractions
           .filter(i => i.value > 0)
           .sort((a, b) => b.timestamp - a.timestamp)
           .map(i => i.metadata.post);
       } else if (this.source === 'favorites') {
-        const favoritedInteractions = StorageService.getInteractions('favorite');
+        const favoritedInteractions = await StorageService.getInteractions('favorite');
         postData = favoritedInteractions
           .filter(i => i.value > 0)
           .sort((a, b) => b.timestamp - a.timestamp)
@@ -153,7 +153,7 @@ export default {
             }
         }
     },
-    determineCurrentPost() {
+    async determineCurrentPost() {
       const container = this.$refs.viewerContainer;
       if (!container) return;
 
@@ -179,7 +179,7 @@ export default {
         if (currentPost) {
           const videoEl = this.$refs.videoPlayer?.[this.currentPostIndex];
           this.$emit('current-post-changed', currentPost, videoEl);
-          StorageService.trackPostView(currentPost.id, currentPost, currentPost.source);
+          await StorageService.trackPostView(currentPost.id, currentPost, currentPost.source);
         }
       }
     },

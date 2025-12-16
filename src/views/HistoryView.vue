@@ -25,12 +25,12 @@ export default {
     this.loadHistory();
   },
   methods: {
-    loadHistory() {
-      const history = StorageService.getViewedPosts();
+    async loadHistory() {
+      const history = await StorageService.getViewedPosts();
       const allPosts = Object.values(history)
         .sort((a, b) => b.lastViewed - a.lastViewed)
         .map(item => item.data);
-      this.posts = this.filterPostsBySettings(allPosts);
+      this.posts = await this.filterPostsBySettings(allPosts);
     },
     onPostClicked({ index }) {
       this.$router.push({ 

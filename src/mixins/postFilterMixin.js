@@ -2,8 +2,8 @@ import StorageService from '../services/StorageService';
 
 export const postFilterMixin = {
   methods: {
-    filterPostsBySettings(posts) {
-      const appSettings = StorageService.loadAppSettings();
+    async filterPostsBySettings(posts) {
+      const appSettings = await StorageService.loadAppSettings();
       if (!appSettings || !appSettings.settings) {
         return posts;
       }
@@ -53,4 +53,4 @@ export const postFilterMixin = {
       });
     }
   }
-}; 
+};

@@ -70,75 +70,44 @@
     <!-- Debug Overlay -->
     <div 
       v-if="debugMode && posts[currentPostIndex]" 
-      class="absolute top-4 left-1/2 transform -translate-x-1/2 p-4 bg-black bg-opacity-70 text-white text-xs z-40 pointer-events-none rounded-lg border border-gray-700 backdrop-blur-sm"
+      class="absolute top-0 left-1/2 transform -translate-x-1/2 mt-4 p-3 bg-black bg-opacity-75 text-xs text-white z-40 max-w-xs pointer-events-none font-mono rounded shadow-lg"
     >
-      <div class="flex justify-between items-start">
-        <div>
-          <h3 class="font-bold text-pink-500 mb-1">Recommendation Insights</h3>
-          
-          <!-- Score -->
-          <p class="mb-1">
-            <span class="text-gray-400">Likelihood:</span> 
-            <span class="font-mono text-yellow-400">
-              {{ (recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).totalScore * 10).toFixed(2) }}%
-            </span>
-          </p>
-          
-          <!-- Search Criteria -->
-          <!-- Search Criteria -->
-          <div class="mb-2 max-w-md border-b border-gray-700 pb-2">
-            <p>
-              <span class="text-gray-400">API Query:</span> 
-              <span class="font-mono text-blue-300 break-all text-xs">
-                {{ posts[currentPostIndex]._debugMetadata?.apiQuery || posts[currentPostIndex]._searchCriteria || 'N/A' }}
-              </span>
-            </p>
-            <p v-if="posts[currentPostIndex]._debugMetadata?.clientFilters && posts[currentPostIndex]._debugMetadata?.clientFilters !== 'None'">
-              <span class="text-gray-400">Client Filter:</span> 
-              <span class="font-mono text-pink-300 break-all text-xs">
-                {{ posts[currentPostIndex]._debugMetadata?.clientFilters }}
-              </span>
-            </p>
-            <p>
-              <span class="text-gray-400">Strategy:</span> 
-              <span class="font-mono text-orange-300">
-                {{ posts[currentPostIndex]._debugMetadata?.strategy || 'N/A' }}
-              </span>
-            </p>
-            <p>
-              <span class="text-gray-400">Order:</span> 
-              <span class="font-mono text-green-300">
-                {{ posts[currentPostIndex]._debugMetadata?.order || 'N/A' }}
-              </span>
-            </p>
-             <p>
-              <span class="text-gray-400">Rating:</span> 
-              <span class="font-mono text-yellow-300">
-                {{ posts[currentPostIndex]._debugMetadata?.rating || 'N/A' }}
-              </span>
-            </p>
-             <p>
-              <span class="text-gray-400">Filetype:</span> 
-              <span class="font-mono text-purple-300">
-                {{ posts[currentPostIndex]._debugMetadata?.filetype || 'N/A' }}
-              </span>
-            </p>
-          </div>
-          
-          <!-- Contributors -->
-          <div>
-             <span class="text-gray-400 block mb-1">Top Contributors:</span>
-             <div class="space-y-1">
-               <div 
-                  v-for="(contrib, idx) in recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).contributingTags" 
-                  :key="idx"
-                  class="flex items-center gap-2"
-                >
-                  <span class="bg-gray-700 px-1 rounded">{{ contrib.tag }}</span>
-                  <span class="text-green-400">+{{ (contrib.score * 100).toFixed(1) }}</span>
-               </div>
-             </div>
-          </div>
+      <h3 class="font-bold mb-1 text-pink-400">Recommendation Debug</h3>
+      
+      <div class="mb-2 border-b border-gray-700 pb-2">
+        <!-- Show Actual Query (from adapter) if available, otherwise fallback -->
+        <div v-if="posts[currentPostIndex]._actualQuery" class="mt-1">
+          <p class="text-gray-400 text-xs tracking-wide">Query:</p>
+          <p class="text-xs break-words font-mono text-cyan-300 bg-gray-900 p-1 rounded mt-0.5">{{ posts[currentPostIndex]._actualQuery }}</p>
+        </div>
+        <div v-else-if="posts[currentPostIndex]._debugMetadata?.apiQuery || posts[currentPostIndex]._searchCriteria" class="mt-1">
+          <p class="text-gray-400 text-xs uppercase tracking-wide">Internal Query:</p>
+          <p class="text-xs break-all font-mono text-gray-300 bg-gray-900 p-1 rounded mt-0.5">{{ posts[currentPostIndex]._debugMetadata?.apiQuery || posts[currentPostIndex]._searchCriteria }}</p>
+        </div>
+        <p><span class="text-gray-400">Strategy:</span> {{ posts[currentPostIndex]._strategy || posts[currentPostIndex]._debugMetadata?.strategy || 'Default' }}</p>
+        <div v-if="posts[currentPostIndex]._debugMetadata?.clientFilters && posts[currentPostIndex]._debugMetadata?.clientFilters !== 'None'">
+          <p><span class="text-red-400">Filters:</span> {{ posts[currentPostIndex]._debugMetadata.clientFilters }}</p>
+        </div>
+      </div>
+
+      <div>
+        <p><span class="text-gray-400">Rec. Score:</span> {{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).totalScore?.toFixed(2) }}</p>
+        
+        <div v-if="recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).contributingTags?.length > 0" class="mt-2">
+          <p class="font-semibold text-gray-300">Top Influencing Tags:</p>
+          <ul class="list-none pl-0 mt-1 space-y-0.5">
+            <li v-for="tag in recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).contributingTags" :key="tag.tag" class="flex justify-between">
+              <span class="truncate pr-2" :class="tag.score > 0 ? 'text-green-400' : 'text-red-400'">{{ tag.tag }}</span>
+              <span>{{ (tag.score).toFixed(2) }}</span>
+            </li>
+          </ul>
+        </div>
+        
+        <div v-if="recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).ratingScore" class="mt-1 text-gray-400">
+           Rating Bonus: +{{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).ratingScore.toFixed(2) }}
+        </div>
+        <div v-if="recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).mediaScore" class="text-gray-400">
+           Media Bonus: +{{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).mediaScore.toFixed(2) }}
         </div>
       </div>
     </div>
@@ -173,6 +142,7 @@ export default {
       // Local tracking for video elements to interactions
       videoElements: {}, 
       debugMode: false,
+      hasMorePosts: true,
     }
   },
   computed: {
@@ -187,10 +157,12 @@ export default {
     }
   },
   // beforeUpdate removed to prevent clearing refs and causing infinite loops/resetting state
-  created() {
+  async created() {
     this.videoElements = {}; // Non-reactive to prevent infinite render loops
     this.recommendationSystem = recommendationSystem;
-    const preferences = StorageService.getPreferences();
+    // Initialize recommendation system (async)
+    await this.recommendationSystem.initialize();
+    const preferences = await StorageService.getPreferences();
     this.debugMode = preferences.debugMode || false;
   },
   methods: {
@@ -256,7 +228,7 @@ export default {
       }
 
       // Get view history to exclude seen posts
-      const viewedHistory = StorageService.getViewedPosts();
+      const viewedHistory = await StorageService.getViewedPosts();
       // Create a set of IDs to exclude (viewed history + currently loaded posts)
       const blockedKeys = new Set([
         ...Object.keys(viewedHistory), 
@@ -414,7 +386,7 @@ export default {
         this.fetchPosts();
       }
     },
-    determineCurrentPost() {
+    async determineCurrentPost() {
       const container = this.$refs.feedContainer;
       if (!container) return;
 
@@ -440,7 +412,7 @@ export default {
         if (currentPost) {
           const videoEl = this.videoElements[this.getCompositeKey(currentPost)] || null;
           this.$emit('current-post-changed', currentPost, videoEl);
-          StorageService.trackPostView(currentPost.id, currentPost, currentPost.source);
+          await StorageService.trackPostView(currentPost.id, currentPost, currentPost.source);
         }
       }
     },
