@@ -169,9 +169,17 @@ class RecommendationSystem {
    * Update the profile based on interaction with a specific post
    */
   updateProfileWithPost(post, weight) {
+    // Create a Set for fast lookups of avoided/common tags
+    // These tags should NEVER influence the user profile
+    const avoidedSet = new Set(this.avoidedTags || []);
+
     // Helper to process a single tag
     const processTag = (tag, category) => {
       if (!tag) return;
+
+      // BLOCK COMMON TAGS: Don't let tags like '1girl', 'long_hair' accumulate score
+      // This prevents them from dominating recommendations
+      if (avoidedSet.has(tag)) return;
 
       // Initialize if first time seeing this tag
       if (this.tagScores[tag] === undefined) {
@@ -202,6 +210,9 @@ class RecommendationSystem {
     const generalTags = post.tag_string || '';
     if (generalTags) {
       generalTags.split(' ').forEach(tag => {
+        // Block avoided tags here too
+        if (avoidedSet.has(tag)) return;
+
         // Only process if not already in a specific category
         if (tag && this.tagCategories[tag] === undefined) {
           processTag(tag, 'general');
@@ -420,10 +431,14 @@ class RecommendationSystem {
       if (tagString) {
         tagString.split(' ').forEach(tag => {
           if (!tag) return;
+
+          // SKIP NOISE in score calculation too - don't let common tags influence ranking
+          if (noiseTags.has(tag)) return;
+
           tagCount++;
           const tagScoreValue = this.tagScores[tag] || 0;
 
-          // Add to tag score calculation (still includes all tags for scoring)
+          // Add to tag score calculation
           if (this.tagScores[tag] !== undefined) {
             tagScore += tagScoreValue;
           }
@@ -439,11 +454,15 @@ class RecommendationSystem {
     if (generalTags) {
       generalTags.split(' ').forEach(tag => {
         if (!tag) return;
+
+        // SKIP NOISE in score calculation - don't let common tags influence ranking
+        if (noiseTags.has(tag)) return;
+
         if (!TAG_CATEGORIES.some(cat => post[`tag_string_${cat}`]?.includes(tag))) {
           tagCount++;
           const tagScoreValue = this.tagScores[tag] || 0;
 
-          // Add to tag score calculation (still includes all tags for scoring)
+          // Add to tag score calculation
           if (this.tagScores[tag] !== undefined) {
             tagScore += tagScoreValue;
           }
@@ -521,13 +540,17 @@ class RecommendationSystem {
     // Helper to process tags - uses ENGAGEMENT + CATEGORY WEIGHTING for discovery bonus
     const processTag = (tag, category) => {
       if (!tag) return;
+
+      // SKIP NOISE FIRST: Common tags don't count for scoring or discovery
+      if (noiseTags.has(tag)) return;
+
       const tagScoreValue = this.tagScores[tag] || 0;
       const tagEngagementValue = this.tagEngagement?.[tag] || 0;
 
       // Retrieve stored category, fallback to passed category or 'general'
       const storedCategory = this.tagCategories?.[tag] || category || 'general';
 
-      // Track score contributors if tag has any score history (includes all tags)
+      // Track score contributors if tag has any score history
       if (this.tagScores[tag] !== undefined) {
         tagCount++;
         tagScoreSum += tagScoreValue;
@@ -537,9 +560,6 @@ class RecommendationSystem {
           category: storedCategory
         });
       }
-
-      // SKIP NOISE: Common tags don't count for novelty or familiarity
-      if (noiseTags.has(tag)) return;
 
       // Use engagement + category weighting to determine familiarity
       if (tagEngagementValue > 0) {
