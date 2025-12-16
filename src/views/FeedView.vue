@@ -109,6 +109,10 @@
         <div v-if="recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).mediaScore" class="text-gray-400">
            Media Bonus: +{{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).mediaScore.toFixed(2) }}
         </div>
+        <div v-if="recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).discoveryBonus" class="text-purple-400 mt-1">
+           Discovery Bonus: +{{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).discoveryBonus.toFixed(2) }}
+           <span class="text-gray-500 text-xs block">({{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).familiarTagCount }} familiar, {{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).novelTagCount }} novel tags)</span>
+        </div>
       </div>
     </div>
   </div>
@@ -141,12 +145,11 @@ export default {
       videoBlobUrls: {}, // Map of original URL -> blob URL for Tauri production
       // Local tracking for video elements to interactions
       videoElements: {}, 
-      debugMode: false,
       hasMorePosts: true,
     }
   },
   computed: {
-    ...mapState(useSettingsStore, ['autoScroll', 'autoScrollSeconds', 'disableScrollAnimation']),
+    ...mapState(useSettingsStore, ['autoScroll', 'autoScrollSeconds', 'disableScrollAnimation', 'debugMode']),
     ...mapState(usePlayerStore, ['volume', 'muted']),
     
     // Alias to match template if needed, or just updated template to use 'muted'
@@ -162,8 +165,6 @@ export default {
     this.recommendationSystem = recommendationSystem;
     // Initialize recommendation system (async)
     await this.recommendationSystem.initialize();
-    const preferences = await StorageService.getPreferences();
-    this.debugMode = preferences.debugMode || false;
   },
   methods: {
     getCompositeKey(post) {

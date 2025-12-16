@@ -198,6 +198,10 @@
              <div v-if="debugDetails.mediaScore" class="text-gray-400">
                Media Bonus: +{{ debugDetails.mediaScore.toFixed(2) }}
             </div>
+            <div v-if="debugDetails.discoveryBonus" class="text-purple-400 mt-1">
+               Discovery Bonus: +{{ debugDetails.discoveryBonus.toFixed(2) }}
+               <span class="text-gray-500 text-xs block">({{ debugDetails.familiarTagCount }} familiar, {{ debugDetails.novelTagCount }} novel tags)</span>
+            </div>
           </div>
           <div v-else>
              <p class="italic text-gray-500">Calculating score details...</p>

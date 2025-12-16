@@ -38,6 +38,7 @@ class RecommendationSystem {
   constructor() {
     this.userEmbedding = null;
     this.tagScores = null;
+    this.tagEngagement = null; // Tracks total engagement regardless of sentiment
     this.tagCategories = null;
     this.ratingPreferences = null;
     this.avoidedTags = [...COMMON_TAGS]; // Default to common tags
@@ -111,8 +112,9 @@ class RecommendationSystem {
     const now = Date.now();
     this.lastUpdateTime = now;
 
-    // Initialize tag scores object
+    // Initialize tag scores and engagement objects
     this.tagScores = {};
+    this.tagEngagement = {}; // Tracks total engagement regardless of sentiment
     this.tagCategories = {};
 
 
@@ -166,20 +168,32 @@ class RecommendationSystem {
    * Update the profile based on interaction with a specific post
    */
   updateProfileWithPost(post, weight) {
+    // Helper to process a single tag
+    const processTag = (tag, category) => {
+      if (!tag) return;
+
+      // Initialize if first time seeing this tag
+      if (this.tagScores[tag] === undefined) {
+        this.tagScores[tag] = 0;
+        this.tagCategories[tag] = category;
+      }
+      if (this.tagEngagement[tag] === undefined) {
+        this.tagEngagement[tag] = 0;
+      }
+
+      // Update net score (sentiment: likes cancel dislikes)
+      this.tagScores[tag] += weight;
+
+      // Update engagement (history: always positive)
+      // Like (+1.0) adds 1. Dislike (-1.0) also adds 1.
+      this.tagEngagement[tag] += Math.abs(weight);
+    };
+
     // Process all tag categories
     TAG_CATEGORIES.forEach(category => {
       const tagString = post[`tag_string_${category}`] || '';
       if (tagString) {
-        tagString.split(' ').forEach(tag => {
-          if (tag) {
-            if (!this.tagScores[tag]) {
-              this.tagScores[tag] = 0;
-              this.tagCategories[tag] = category;
-            }
-            this.tagScores[tag] += weight;
-
-          }
-        });
+        tagString.split(' ').forEach(tag => processTag(tag, category));
       }
     });
 
@@ -187,11 +201,13 @@ class RecommendationSystem {
     const generalTags = post.tag_string || '';
     if (generalTags) {
       generalTags.split(' ').forEach(tag => {
-        if (tag && !this.tagScores[tag]) {
-          this.tagScores[tag] = 0;
-          this.tagCategories[tag] = 'general';
+        // Only process if not already in a specific category
+        if (tag && this.tagCategories[tag] === undefined) {
+          processTag(tag, 'general');
+        } else if (tag && this.tagCategories[tag] === 'general') {
+          // Already processed as general, just update scores
           this.tagScores[tag] += weight;
-
+          this.tagEngagement[tag] += Math.abs(weight);
         }
       });
     }
@@ -248,6 +264,7 @@ class RecommendationSystem {
    */
   initializeDefaultProfile() {
     this.tagScores = {};
+    this.tagEngagement = {};
     this.tagCategories = {};
     this.ratingPreferences = {
       general: 1.0,
@@ -285,6 +302,7 @@ class RecommendationSystem {
 
     // Reset all scoring data
     this.tagScores = {};
+    this.tagEngagement = {};
     this.tagCategories = {};
     this.ratingPreferences = {
       general: 1.0,
@@ -352,14 +370,36 @@ class RecommendationSystem {
     let tagScore = 0;
     let tagCount = 0;
 
+    // Discovery Bonus tracking: count familiar vs novel tags
+    // Uses ENGAGEMENT (not score) to determine if a tag is familiar
+    // This prevents "controversial" tags (liked then disliked = net 0) from being classified as novel
+    let familiarTagCount = 0;  // Tags with any engagement history
+    let novelTagCount = 0;      // Tags with zero engagement (truly new)
+
     // Process all tag categories
     TAG_CATEGORIES.forEach(category => {
       const tagString = post[`tag_string_${category}`] || '';
       if (tagString) {
         tagString.split(' ').forEach(tag => {
+          if (!tag) return;
           tagCount++;
-          if (this.tagScores[tag]) {
-            tagScore += this.tagScores[tag];
+          const tagScoreValue = this.tagScores[tag] || 0;
+          const tagEngagementValue = this.tagEngagement?.[tag] || 0;
+
+          // Add to tag score calculation
+          if (this.tagScores[tag] !== undefined) {
+            tagScore += tagScoreValue;
+          }
+
+          // Use engagement to determine familiarity (not score)
+          if (tagEngagementValue > 0) {
+            // Tag has been interacted with - only count as "good familiar" if positively scored
+            if (tagScoreValue > 0.5) {
+              familiarTagCount++;
+            }
+          } else {
+            // Truly novel (zero engagement)
+            novelTagCount++;
           }
         });
       }
@@ -369,10 +409,26 @@ class RecommendationSystem {
     const generalTags = post.tag_string || '';
     if (generalTags) {
       generalTags.split(' ').forEach(tag => {
+        if (!tag) return;
         if (!TAG_CATEGORIES.some(cat => post[`tag_string_${cat}`]?.includes(tag))) {
           tagCount++;
-          if (this.tagScores[tag]) {
-            tagScore += this.tagScores[tag];
+          const tagScoreValue = this.tagScores[tag] || 0;
+          const tagEngagementValue = this.tagEngagement?.[tag] || 0;
+
+          // Add to tag score calculation
+          if (this.tagScores[tag] !== undefined) {
+            tagScore += tagScoreValue;
+          }
+
+          // Use engagement to determine familiarity (not score)
+          if (tagEngagementValue > 0) {
+            // Tag has been interacted with - only count as "good familiar" if positively scored
+            if (tagScoreValue > 0.5) {
+              familiarTagCount++;
+            }
+          } else {
+            // Truly novel (zero engagement)
+            novelTagCount++;
           }
         }
       });
@@ -381,6 +437,14 @@ class RecommendationSystem {
     // Average tag score and add to total
     if (tagCount > 0) {
       score += (tagScore / tagCount) * 3.0; // Weight tag matching heavily
+    }
+
+    // Discovery Bonus: Reward "Novelty in a Familiar Context"
+    // Posts with at least 1 familiar tag AND 3+ novel tags get a bonus
+    // This helps break the echo chamber by promoting content that introduces
+    // new tags while still having some connection to user preferences
+    if (familiarTagCount >= 1 && novelTagCount >= 3) {
+      score += 0.25;
     }
 
     // Score based on rating
@@ -416,6 +480,9 @@ class RecommendationSystem {
       ratingScore: 0,
       mediaScore: 0,
       tagScore: 0,
+      discoveryBonus: 0,
+      familiarTagCount: 0,
+      novelTagCount: 0,
       contributingTags: []
     };
 
@@ -427,16 +494,32 @@ class RecommendationSystem {
     let tagCount = 0;
     const contributors = [];
 
-    // Helper to process tags
+    // Helper to process tags - uses ENGAGEMENT to track familiar/novel for discovery bonus
     const processTag = (tag, category) => {
-      if (this.tagScores[tag]) {
+      if (!tag) return;
+      const tagScoreValue = this.tagScores[tag] || 0;
+      const tagEngagementValue = this.tagEngagement?.[tag] || 0;
+
+      // Track score contributors if tag has any score history
+      if (this.tagScores[tag] !== undefined) {
         tagCount++;
-        tagScoreSum += this.tagScores[tag];
+        tagScoreSum += tagScoreValue;
         contributors.push({
           tag,
-          score: this.tagScores[tag],
+          score: tagScoreValue,
           category
         });
+      }
+
+      // Use engagement (not score) to determine familiarity
+      if (tagEngagementValue > 0) {
+        // Tag has been interacted with - only count as "good familiar" if positively scored
+        if (tagScoreValue > 0.5) {
+          details.familiarTagCount++;
+        }
+      } else {
+        // Truly novel (zero engagement)
+        details.novelTagCount++;
       }
     };
 
@@ -465,6 +548,12 @@ class RecommendationSystem {
 
     // Sort contributors by score descending
     details.contributingTags = contributors.sort((a, b) => b.score - a.score).slice(0, 10);
+
+    // Discovery Bonus: Reward "Novelty in a Familiar Context"
+    if (details.familiarTagCount >= 1 && details.novelTagCount >= 3) {
+      details.discoveryBonus = 0.25;
+      details.totalScore += details.discoveryBonus;
+    }
 
     // Rating score
     if (post.rating && this.ratingPreferences[post.rating]) {
