@@ -200,7 +200,7 @@
             </div>
             <div v-if="debugDetails.discoveryBonus" class="text-purple-400 mt-1">
                Discovery Bonus: +{{ debugDetails.discoveryBonus.toFixed(2) }}
-               <span class="text-gray-500 text-xs block">({{ debugDetails.familiarTagCount }} familiar, {{ debugDetails.novelTagCount }} novel tags)</span>
+               <span class="text-gray-500 text-xs block">({{ debugDetails.familiarWeight?.toFixed(1) }} anchor weight, {{ debugDetails.novelTagCount }} novel tags)</span>
             </div>
           </div>
           <div v-else>

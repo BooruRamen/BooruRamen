@@ -372,17 +372,18 @@ class RecommendationSystem {
     let tagCount = 0;
 
     // ---------------------------------------------------------
-    // REFINED: Discovery Bonus Logic
+    // REFINED: Category-Weighted Discovery Logic
     // ---------------------------------------------------------
-    // Uses ENGAGEMENT (not just score) to determine if a tag is familiar
-    // Filters out common/noise tags to prevent trivially satisfying the condition
-    let familiarTagCount = 0;  // Tags you've LIKED (score > 0.5), excluding noise
-    let novelTagCount = 0;      // Truly new tags (zero engagement), excluding noise
+    // Uses ENGAGEMENT + CATEGORY WEIGHTING to determine anchor quality
+    // Character/Copyright/Artist = Strong Anchor (1.0)
+    // General/Meta = Weak Anchor (0.2) - need 5 to equal one strong anchor
+    let familiarWeight = 0;  // Weighted sum of familiar anchors
+    let novelCount = 0;      // Truly new tags (zero engagement), excluding noise
 
     // Use avoidedTags (COMMON_TAGS) to filter noise - these shouldn't count for discovery
     const noiseTags = new Set(this.avoidedTags || []);
 
-    // Helper to process a tag for discovery bonus (excludes noise)
+    // Helper to process a tag for discovery bonus (excludes noise, weights by category)
     const processTagForDiscovery = (tag) => {
       if (!tag) return;
 
@@ -392,15 +393,24 @@ class RecommendationSystem {
       const engagement = this.tagEngagement?.[tag] || 0;
       const tagScoreVal = this.tagScores?.[tag] || 0;
 
+      // Retrieve category. Fallback to 'general' if unknown.
+      const category = this.tagCategories?.[tag] || 'general';
+
       if (engagement > 0) {
-        // TIGHTER ANCHOR: Only count as "Familiar" if you actually LIKE it
-        // A score > 0.5 usually implies a Like/Favorite, not just a View (0.2)
-        if (tagScoreVal > 0.5) {
-          familiarTagCount++;
+        // Only consider positive sentiments as anchors (lowered to 0.3 for weighted system)
+        if (tagScoreVal > 0.3) {
+          // WEIGHTING LOGIC:
+          // Specific Identifiers (Character, Copyright, Artist) = 1.0 (Strong Anchor)
+          // Broad Descriptors (General, Meta) = 0.2 (Weak Anchor)
+          if (['character', 'copyright', 'artist'].includes(category)) {
+            familiarWeight += 1.0;
+          } else {
+            familiarWeight += 0.2; // It takes 5 generic tags to equal 1 character
+          }
         }
       } else {
         // Truly novel (zero engagement)
-        novelTagCount++;
+        novelCount++;
       }
     };
 
@@ -418,7 +428,7 @@ class RecommendationSystem {
             tagScore += tagScoreValue;
           }
 
-          // Process for discovery (filters noise)
+          // Process for discovery (filters noise, weights by category)
           processTagForDiscovery(tag);
         });
       }
@@ -438,7 +448,7 @@ class RecommendationSystem {
             tagScore += tagScoreValue;
           }
 
-          // Process for discovery (filters noise)
+          // Process for discovery (filters noise, weights by category)
           processTagForDiscovery(tag);
         }
       });
@@ -450,11 +460,11 @@ class RecommendationSystem {
     }
 
     // Discovery Bonus: Reward "Novelty in a Familiar Context"
-    // TIGHTER THRESHOLDS:
-    // - Need 2 strong anchors (things you definitely like, not just viewed)
-    // - Need 5 new elements (to ensure it's actually different, not just 1-2 new tags)
+    // CATEGORY-WEIGHTED THRESHOLDS:
+    // - Need familiarWeight >= 1.0 (1 Character OR 5 General tags as anchor)
+    // - Need 5 new elements (to ensure it's actually different)
     // Common tags like 1girl, long_hair are filtered out so they don't trigger this trivially
-    if (familiarTagCount >= 2 && novelTagCount >= 5) {
+    if (familiarWeight >= 1.0 && novelCount >= 5) {
       score += 0.25;
     }
 
@@ -492,7 +502,7 @@ class RecommendationSystem {
       mediaScore: 0,
       tagScore: 0,
       discoveryBonus: 0,
-      familiarTagCount: 0,
+      familiarWeight: 0,  // Changed from familiarTagCount to weighted system
       novelTagCount: 0,
       contributingTags: []
     };
@@ -508,12 +518,14 @@ class RecommendationSystem {
     // Use avoidedTags (COMMON_TAGS) to filter noise - these shouldn't count for discovery
     const noiseTags = new Set(this.avoidedTags || []);
 
-    // Helper to process tags - uses ENGAGEMENT to track familiar/novel for discovery bonus
-    // Filters out noise tags for discovery calculations
+    // Helper to process tags - uses ENGAGEMENT + CATEGORY WEIGHTING for discovery bonus
     const processTag = (tag, category) => {
       if (!tag) return;
       const tagScoreValue = this.tagScores[tag] || 0;
       const tagEngagementValue = this.tagEngagement?.[tag] || 0;
+
+      // Retrieve stored category, fallback to passed category or 'general'
+      const storedCategory = this.tagCategories?.[tag] || category || 'general';
 
       // Track score contributors if tag has any score history (includes all tags)
       if (this.tagScores[tag] !== undefined) {
@@ -522,18 +534,25 @@ class RecommendationSystem {
         contributors.push({
           tag,
           score: tagScoreValue,
-          category
+          category: storedCategory
         });
       }
 
       // SKIP NOISE: Common tags don't count for novelty or familiarity
       if (noiseTags.has(tag)) return;
 
-      // Use engagement (not score) to determine familiarity
+      // Use engagement + category weighting to determine familiarity
       if (tagEngagementValue > 0) {
-        // TIGHTER ANCHOR: Only count as "Familiar" if you actually LIKE it
-        if (tagScoreValue > 0.5) {
-          details.familiarTagCount++;
+        // Only consider positive sentiments as anchors
+        if (tagScoreValue > 0.3) {
+          // WEIGHTING LOGIC:
+          // Specific Identifiers (Character, Copyright, Artist) = 1.0 (Strong Anchor)
+          // Broad Descriptors (General, Meta) = 0.2 (Weak Anchor)
+          if (['character', 'copyright', 'artist'].includes(storedCategory)) {
+            details.familiarWeight += 1.0;
+          } else {
+            details.familiarWeight += 0.2;
+          }
         }
       } else {
         // Truly novel (zero engagement)
@@ -568,10 +587,10 @@ class RecommendationSystem {
     details.contributingTags = contributors.sort((a, b) => b.score - a.score).slice(0, 10);
 
     // Discovery Bonus: Reward "Novelty in a Familiar Context"
-    // TIGHTER THRESHOLDS (matching scorePost):
-    // - Need 2 strong anchors (things you definitely like)
+    // CATEGORY-WEIGHTED THRESHOLDS (matching scorePost):
+    // - Need familiarWeight >= 1.0 (1 Character OR 5 General tags as anchor)
     // - Need 5 new elements (to ensure it's actually different)
-    if (details.familiarTagCount >= 2 && details.novelTagCount >= 5) {
+    if (details.familiarWeight >= 1.0 && details.novelTagCount >= 5) {
       details.discoveryBonus = 0.25;
       details.totalScore += details.discoveryBonus;
     }

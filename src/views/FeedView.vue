@@ -111,7 +111,7 @@
         </div>
         <div v-if="recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).discoveryBonus" class="text-purple-400 mt-1">
            Discovery Bonus: +{{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).discoveryBonus.toFixed(2) }}
-           <span class="text-gray-500 text-xs block">({{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).familiarTagCount }} familiar, {{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).novelTagCount }} novel tags)</span>
+           <span class="text-gray-500 text-xs block">({{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).familiarWeight?.toFixed(1) }} anchor weight, {{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).novelTagCount }} novel tags)</span>
         </div>
       </div>
     </div>
