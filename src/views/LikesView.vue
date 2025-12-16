@@ -27,12 +27,12 @@ export default {
     });
   },
   methods: {
-    loadLikes() {
-      const likedInteractions = StorageService.getInteractions('like');
+    async loadLikes() {
+      const likedInteractions = await StorageService.getInteractions('like');
       const allPosts = likedInteractions
         .filter(interaction => interaction.value > 0)
         .map(interaction => interaction.metadata.post);
-      this.posts = this.filterPostsBySettings(allPosts);
+      this.posts = await this.filterPostsBySettings(allPosts);
     },
     onPostClicked({ index }) {
       this.$router.push({ 

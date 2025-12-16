@@ -48,20 +48,21 @@ class RecommendationSystem {
     // Cache for post scores to avoid recalculating
     this.postScoreCache = new Map();
 
-    // Initialize the system
-    this.initialize();
+    // Session state for explore mode
+    this.strategyCursors = {};
+    this.exhaustedStrategies = new Set();
   }
 
   /**
    * Initialize the recommendation system
    */
-  initialize() {
+  async initialize() {
     // Session state for explore mode
     this.strategyCursors = {};
     this.exhaustedStrategies = new Set();
 
     // Build initial user profile from stored interactions
-    this.updateUserProfile();
+    await this.updateUserProfile();
 
     // Set up periodic profile updates (every 5 minutes)
     setInterval(() => this.updateUserProfile(), 5 * 60 * 1000);
@@ -80,12 +81,12 @@ class RecommendationSystem {
   /**
    * Update the user's profile based on their interaction history
    */
-  updateUserProfile() {
+  async updateUserProfile() {
     console.log("Updating user recommendation profile...");
-    let interactions = StorageService.getInteractions();
+    let interactions = await StorageService.getInteractions();
 
     // Load preferences including avoided tags and reset timestamp
-    const preferences = StorageService.getPreferences();
+    const preferences = await StorageService.getPreferences();
     if (preferences.avoidedTags && Array.isArray(preferences.avoidedTags)) {
       this.avoidedTags = preferences.avoidedTags;
     } else {
@@ -266,16 +267,16 @@ class RecommendationSystem {
    * This clears tag scores and preferences but does NOT delete
    * stored interactions, history, likes, favorites, or other user data.
    */
-  resetRecommendations() {
+  async resetRecommendations() {
     console.log("Resetting recommendation system to fresh state...");
 
     // Store reset timestamp so future profile rebuilds ignore old interactions
     const resetTime = Date.now();
-    StorageService.storePreferences({ recommendationResetTime: resetTime });
+    await StorageService.storePreferences({ recommendationResetTime: resetTime });
     console.log(`Recommendation reset timestamp set to: ${new Date(resetTime).toISOString()}`);
 
     // Reload avoided tags from preferences
-    const preferences = StorageService.getPreferences();
+    const preferences = await StorageService.getPreferences();
     if (preferences.avoidedTags && Array.isArray(preferences.avoidedTags)) {
       this.avoidedTags = preferences.avoidedTags;
     } else {
@@ -310,9 +311,9 @@ class RecommendationSystem {
   /**
    * Track a new user interaction and optionally update the profile immediately
    */
-  trackInteraction(postId, interactionType, value, postData, updateImmediately = false) {
+  async trackInteraction(postId, interactionType, value, postData, updateImmediately = false) {
     // Store the interaction
-    StorageService.storeInteraction({
+    await StorageService.storeInteraction({
       postId,
       type: interactionType,
       value,
@@ -324,7 +325,7 @@ class RecommendationSystem {
 
     // Optionally update the profile immediately
     if (updateImmediately) {
-      this.updateUserProfile();
+      await this.updateUserProfile();
     }
   }
 

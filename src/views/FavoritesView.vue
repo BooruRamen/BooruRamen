@@ -27,12 +27,12 @@ export default {
     });
   },
   methods: {
-    loadFavorites() {
-      const favoritedInteractions = StorageService.getInteractions('favorite');
+    async loadFavorites() {
+      const favoritedInteractions = await StorageService.getInteractions('favorite');
       const allPosts = favoritedInteractions
         .filter(interaction => interaction.value > 0)
         .map(interaction => interaction.metadata.post);
-      this.posts = this.filterPostsBySettings(allPosts);
+      this.posts = await this.filterPostsBySettings(allPosts);
     },
     onPostClicked({ index }) {
       this.$router.push({ 

@@ -738,7 +738,7 @@ export default {
       }
       this.$router.push({ name: 'Home', query: this.generateQueryFromSettings() });
     },
-    updateCurrentPost(post, videoEl) {
+    async updateCurrentPost(post, videoEl) {
       if (this.currentPost) {
           this.saveWatchTime(this.currentPost);
       }
@@ -748,7 +748,7 @@ export default {
       this.startWatchTimeTracking();
 
       if (post) {
-        const interactions = StorageService.getPostInteractions(post.id);
+        const interactions = await StorageService.getPostInteractions(post.id);
         post.liked = interactions.some(i => i.type === 'like' && i.value > 0);
         post.disliked = interactions.some(i => i.type === 'dislike' && i.value > 0);
         post.favorited = interactions.some(i => i.type === 'favorite' && i.value > 0);

@@ -7,20 +7,19 @@ export const useInteractionsStore = defineStore('interactions', {
         // For now, these might be loaded on demand or we trust the components to check.
         // However, to make it truly reactive, we should probably keep track of the current view's posts interactions.
         // Storing ALL interactions in memory might be too much if there are 1000s, but 1000 items is fine.
-        recentInteractions: []
+        recentInteractions: [],
+        initialized: false
     }),
 
     actions: {
-        initialize() {
-            this.recentInteractions = StorageService.getInteractions()
+        async initialize() {
+            if (this.initialized) return
+            this.recentInteractions = await StorageService.getInteractions()
+            this.initialized = true
         },
 
         async logInteraction(interaction) {
-            // Async wrapper around synchronous storage for now, 
-            // but enables future async storage replacement
-            await new Promise(resolve => setTimeout(resolve, 0))
-
-            StorageService.storeInteraction(interaction)
+            await StorageService.storeInteraction(interaction)
 
             // Update local state for reactivity
             const existingIndex = this.recentInteractions.findIndex(

@@ -1,42 +1,55 @@
 /**
- * Service for caching Gelbooru tag categories locally
+ * Service for caching Gelbooru tag categories using IndexedDB
  * This avoids making repeated API calls for the same tags
  */
 
-const STORAGE_KEY = 'gelbooru_tag_cache';
+import { db } from './db.js';
 
 class GelbooruTagCache {
     constructor() {
-        this.cache = new Map();
-        this.loadFromStorage();
+        // In-memory cache for fast lookups during session
+        this.memoryCache = new Map();
+        this.initialized = false;
     }
 
     /**
-     * Load cached tags from localStorage
+     * Initialize the cache by loading from IndexedDB into memory
      */
-    loadFromStorage() {
+    async init() {
+        if (this.initialized) return;
         try {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                this.cache = new Map(Object.entries(parsed));
-                console.log(`[TagCache] Loaded ${this.cache.size} cached tags`);
+            const entries = await db.tagCache.toArray();
+            for (const entry of entries) {
+                this.memoryCache.set(entry.tag, entry.category);
             }
+            console.log(`[TagCache] Loaded ${this.memoryCache.size} cached tags from IndexedDB`);
+            this.initialized = true;
         } catch (e) {
-            console.error('[TagCache] Failed to load from storage:', e);
-            this.cache = new Map();
+            console.error('[TagCache] Failed to load from IndexedDB:', e);
         }
     }
 
     /**
-     * Save cache to localStorage
+     * Save a batch of tag categories to IndexedDB
+     * @param {Map|Object} tagCategories - Map or object of tag -> category
      */
-    saveToStorage() {
+    async saveBatch(tagCategories) {
         try {
-            const obj = Object.fromEntries(this.cache);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+            const entries = [];
+            const iterator = tagCategories instanceof Map
+                ? tagCategories.entries()
+                : Object.entries(tagCategories);
+
+            for (const [tag, category] of iterator) {
+                this.memoryCache.set(tag, category);
+                entries.push({ tag, category });
+            }
+
+            if (entries.length > 0) {
+                await db.tagCache.bulkPut(entries);
+            }
         } catch (e) {
-            console.error('[TagCache] Failed to save to storage:', e);
+            console.error('[TagCache] Failed to save batch to IndexedDB:', e);
         }
     }
 
@@ -46,7 +59,30 @@ class GelbooruTagCache {
      * @returns {number|null} - Category number (0=General, 1=Artist, 3=Copyright, 4=Character, 5=Meta) or null if not cached
      */
     getCategory(tag) {
-        return this.cache.get(tag) ?? null;
+        return this.memoryCache.get(tag) ?? null;
+    }
+
+    /**
+     * Get the category number for a tag (async version that checks DB if not in memory)
+     * @param {string} tag - Tag name
+     * @returns {Promise<number|null>} - Category number or null if not cached
+     */
+    async getCategoryAsync(tag) {
+        // Check memory first
+        if (this.memoryCache.has(tag)) {
+            return this.memoryCache.get(tag);
+        }
+        // Check IndexedDB
+        try {
+            const entry = await db.tagCache.get(tag);
+            if (entry) {
+                this.memoryCache.set(tag, entry.category);
+                return entry.category;
+            }
+        } catch (e) {
+            console.error('[TagCache] Failed to get tag from IndexedDB:', e);
+        }
+        return null;
     }
 
     /**
@@ -54,8 +90,13 @@ class GelbooruTagCache {
      * @param {string} tag - Tag name
      * @param {number} category - Category number
      */
-    setCategory(tag, category) {
-        this.cache.set(tag, category);
+    async setCategory(tag, category) {
+        this.memoryCache.set(tag, category);
+        try {
+            await db.tagCache.put({ tag, category });
+        } catch (e) {
+            console.error('[TagCache] Failed to save tag to IndexedDB:', e);
+        }
     }
 
     /**
@@ -64,7 +105,7 @@ class GelbooruTagCache {
      * @returns {string[]} - Tags that need to be fetched
      */
     getUncachedTags(tags) {
-        return tags.filter(tag => !this.cache.has(tag));
+        return tags.filter(tag => !this.memoryCache.has(tag));
     }
 
     /**
@@ -82,7 +123,7 @@ class GelbooruTagCache {
         };
 
         for (const tag of tags) {
-            const category = this.cache.get(tag);
+            const category = this.memoryCache.get(tag);
             switch (category) {
                 case 1:
                     result.artist.push(tag);
@@ -112,7 +153,7 @@ class GelbooruTagCache {
      */
     getStats() {
         let general = 0, artist = 0, copyright = 0, character = 0, meta = 0;
-        for (const category of this.cache.values()) {
+        for (const category of this.memoryCache.values()) {
             switch (category) {
                 case 0: general++; break;
                 case 1: artist++; break;
@@ -122,7 +163,7 @@ class GelbooruTagCache {
             }
         }
         return {
-            total: this.cache.size,
+            total: this.memoryCache.size,
             general,
             artist,
             copyright,
@@ -134,13 +175,21 @@ class GelbooruTagCache {
     /**
      * Clear the entire cache
      */
-    clear() {
-        this.cache.clear();
-        localStorage.removeItem(STORAGE_KEY);
-        console.log('[TagCache] Cache cleared');
+    async clear() {
+        this.memoryCache.clear();
+        try {
+            await db.tagCache.clear();
+            console.log('[TagCache] Cache cleared');
+        } catch (e) {
+            console.error('[TagCache] Failed to clear IndexedDB cache:', e);
+        }
     }
 }
 
 // Export a singleton instance
 export const gelbooruTagCache = new GelbooruTagCache();
+
+// Initialize on module load
+gelbooruTagCache.init();
+
 export default gelbooruTagCache;

@@ -427,6 +427,12 @@ export class GelbooruAdapter extends BooruAdapter {
      * @returns {Promise<void>}
      */
     async fetchTagCategories(tags) {
+        // Only fetch tag categories for Gelbooru.com (not Safebooru or other sites)
+        // Other Gelbooru-engine sites don't use the same tag API or require different auth
+        if (!this.baseUrl.includes('gelbooru.com')) {
+            return;
+        }
+
         // Filter to only tags we haven't cached yet
         const uncachedTags = gelbooruTagCache.getUncachedTags(tags);
         if (uncachedTags.length === 0) return;
@@ -504,10 +510,8 @@ export class GelbooruAdapter extends BooruAdapter {
                     gelbooruTagCache.setCategory(tag, 0);
                 }
             }
+            // Note: With IndexedDB, saves happen incrementally via setCategory
         }
-
-        // Save to localStorage after processing all batches
-        gelbooruTagCache.saveToStorage();
     }
 
     async getPosts({ tags, page, limit, sort, sortOrder, _isTest }) {

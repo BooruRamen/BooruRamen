@@ -2,48 +2,45 @@ import { defineStore } from 'pinia'
 import StorageService from '../services/StorageService'
 
 export const useSettingsStore = defineStore('settings', {
-    state: () => {
-        // Load initial settings from storage or use defaults
-        const saved = StorageService.loadAppSettings()
-        const defaults = {
-            autoScroll: false,
-            autoScrollSeconds: 5,
-            autoScrollSpeed: 'medium',
-            disableHistory: false,
-            autoplayVideos: true,
-            mediaType: { images: true, videos: true },
-            ratings: ['general'],
-            whitelistTags: [],
-            blacklistTags: [],
-            activeSource: { type: 'danbooru', url: 'https://danbooru.donmai.us', name: 'Danbooru' },
-            customSources: [],
-            // Explore mode was separate in App.vue but fits here
-            exploreMode: true,
-            debugMode: false,
-            avoidedTags: [] // Add avoidedTags for consistency if intended to be in store
-        }
-
-        // Merge saved settings with defaults
-        // Note: saved structure in App.vue was { settings: {...}, exploreMode: ... }
-        if (saved) {
-            return {
-                ...defaults,
-                ...saved.settings,
-                exploreMode: saved.exploreMode !== undefined ? saved.exploreMode : defaults.exploreMode,
-                // Ensure debugMode is picked up from storage (if it was from settings obj)
-                debugMode: saved.settings && saved.settings.debugMode !== undefined ? saved.settings.debugMode : defaults.debugMode,
-                // Ensure activeSource and customSources are merged correctly if they exist
-                activeSource: saved.settings && saved.settings.activeSource ? saved.settings.activeSource : defaults.activeSource,
-                customSources: saved.settings && saved.settings.customSources ? saved.settings.customSources : defaults.customSources,
-                // Ensure avoidedTags is picked up
-                avoidedTags: saved.settings && saved.settings.avoidedTags ? saved.settings.avoidedTags : defaults.avoidedTags
-            }
-        }
-
-        return defaults
-    },
+    state: () => ({
+        // Default values - will be overwritten by initialize()
+        autoScroll: false,
+        autoScrollSeconds: 5,
+        autoScrollSpeed: 'medium',
+        disableHistory: false,
+        autoplayVideos: true,
+        mediaType: { images: true, videos: true },
+        ratings: ['general'],
+        whitelistTags: [],
+        blacklistTags: [],
+        activeSource: { type: 'danbooru', url: 'https://danbooru.donmai.us', name: 'Danbooru' },
+        customSources: [],
+        exploreMode: true,
+        debugMode: false,
+        avoidedTags: [],
+        initialized: false
+    }),
 
     actions: {
+        async initialize() {
+            if (this.initialized) return
+
+            const saved = await StorageService.loadAppSettings()
+
+            if (saved) {
+                this.$patch({
+                    ...saved.settings,
+                    exploreMode: saved.exploreMode !== undefined ? saved.exploreMode : this.exploreMode,
+                    debugMode: saved.settings && saved.settings.debugMode !== undefined ? saved.settings.debugMode : this.debugMode,
+                    activeSource: saved.settings && saved.settings.activeSource ? saved.settings.activeSource : this.activeSource,
+                    customSources: saved.settings && saved.settings.customSources ? saved.settings.customSources : this.customSources,
+                    avoidedTags: saved.settings && saved.settings.avoidedTags ? saved.settings.avoidedTags : this.avoidedTags
+                })
+            }
+
+            this.initialized = true
+        },
+
         updateSettings(partialSettings) {
             this.$patch(partialSettings)
             this.saveSettings()
@@ -93,10 +90,10 @@ export const useSettingsStore = defineStore('settings', {
             this.saveSettings()
         },
 
-        saveSettings() {
+        async saveSettings() {
             // Debounce could be added here if needed, but for now direct save is okay 
             // as interactions aren't super high frequency (like scroll)
-            StorageService.saveAppSettings({
+            await StorageService.saveAppSettings({
                 settings: {
                     autoScroll: this.autoScroll,
                     autoScrollSeconds: this.autoScrollSeconds,

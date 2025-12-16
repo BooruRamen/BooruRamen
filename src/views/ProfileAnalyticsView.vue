@@ -415,8 +415,10 @@ export default {
         };
     }
   },
-  mounted() {
-    this.calculateAnalytics();
+  async mounted() {
+    // Ensure recommendation system is initialized (loads from IndexedDB)
+    await RecommendationSystem.initialize();
+    await this.calculateAnalytics();
   },
   methods: {
     capitalize(s) {
@@ -468,9 +470,9 @@ export default {
       
       // 1. Fetch Data
       // view history: { postId: { lastViewed, data: post } }
-      const history = StorageService.getViewedPosts(); 
+      const history = await StorageService.getViewedPosts(); 
       // interactions: [ { type, postId, value, metadata } ]
-      const interactions = StorageService.getInteractions();
+      const interactions = await StorageService.getInteractions();
 
       const tagCounts = {};
       const tagPairCounts = {};

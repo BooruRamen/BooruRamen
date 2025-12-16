@@ -13,10 +13,10 @@ class BooruService {
         this.initialize();
     }
 
-    initialize() {
+    async initialize() {
         // Prioritize Preferences (new location)
-        const preferences = StorageService.getPreferences();
-        const settings = StorageService.loadAppSettings();
+        const preferences = await StorageService.getPreferences();
+        const settings = await StorageService.loadAppSettings();
 
         let sources = preferences?.activeSources;
 
@@ -30,19 +30,19 @@ class BooruService {
                 sources = [{ type: 'danbooru', url: 'https://danbooru.donmai.us', name: 'Danbooru' }];
             }
             // Save to preferences to complete migration
-            this.setActiveSources(sources);
+            await this.setActiveSources(sources);
         } else {
-            this.setActiveSources(sources, false);
+            await this.setActiveSources(sources, false);
         }
     }
 
-    setActiveSources(sources, save = true) {
+    async setActiveSources(sources, save = true) {
         console.log(`Setting active Booru sources:`, sources);
         this.activeSources = sources;
         this.adapters = sources.map(source => this.createAdapter(source));
 
         if (save) {
-            StorageService.storePreferences({
+            await StorageService.storePreferences({
                 activeSources: sources
             });
         }
@@ -63,7 +63,7 @@ class BooruService {
     }
 
     async getPosts(params) {
-        if (this.adapters.length === 0) this.initialize();
+        if (this.adapters.length === 0) await this.initialize();
 
         // If only one adapter, behave simply
         if (this.adapters.length === 1) {

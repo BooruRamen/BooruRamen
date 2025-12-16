@@ -1,40 +1,24 @@
 /**
  * StorageService.js
- * Handles persistent storage of user data and interactions
+ * Handles persistent storage of user data and interactions using IndexedDB via Dexie.js
  */
 
-// Constants
-const INTERACTIONS_KEY = 'booruRamenInteractions';
-const PREFERENCES_KEY = 'booruRamenPreferences';
-const VIEW_HISTORY_KEY = 'booruRamenViewHistory';
-const APP_SETTINGS_KEY = 'booruRamenAppSettings';
+import { db, migrateFromLocalStorage } from './db.js';
 
-// Maximum number of interactions to store
-const MAX_INTERACTIONS = 1000;
+// Run migration on module load
+migrateFromLocalStorage();
 
 /**
- * Get data from local storage with fallback to default value
+ * Convert Vue Proxy objects to plain objects for IndexedDB storage.
+ * IndexedDB cannot clone Vue reactive Proxy objects directly.
  */
-const getStoredData = (key, defaultValue) => {
+const toPlainObject = (obj) => {
+  if (obj === null || obj === undefined) return obj;
   try {
-    const storedData = localStorage.getItem(key);
-    return storedData ? JSON.parse(storedData) : defaultValue;
-  } catch (error) {
-    console.error(`Error retrieving data for key ${key}:`, error);
-    return defaultValue;
-  }
-};
-
-/**
- * Save data to local storage
- */
-const saveData = (key, data) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-    return true;
-  } catch (error) {
-    console.error(`Error saving data for key ${key}:`, error);
-    return false;
+    return JSON.parse(JSON.stringify(obj));
+  } catch (e) {
+    console.warn('Failed to serialize object:', e);
+    return obj;
   }
 };
 
@@ -46,7 +30,7 @@ const saveData = (key, data) => {
  * @param {number} interaction.value - Value of the interaction (1 for boolean actions, milliseconds for timeSpent)
  * @param {Object} interaction.metadata - Additional metadata for the interaction
  */
-const storeInteraction = (interaction) => {
+const storeInteraction = async (interaction) => {
   if (!interaction.postId || !interaction.type) {
     console.error('Invalid interaction data:', interaction);
     return false;
@@ -54,68 +38,89 @@ const storeInteraction = (interaction) => {
 
   // Derive source from metadata if available, defaulting to null/undefined
   const source = interaction.metadata && interaction.metadata.post ? interaction.metadata.post.source : null;
-
   const timestamp = Date.now();
-  const interactions = getStoredData(INTERACTIONS_KEY, []);
 
-  const existingIndex = interactions.findIndex(
-    (i) => i.postId === interaction.postId && i.type === interaction.type && i.source === source
-  );
+  try {
+    // Check if interaction already exists
+    const existing = await db.interactions
+      .where('[postId+type+source]')
+      .equals([interaction.postId, interaction.type, source])
+      .first();
 
-  if (existingIndex > -1) {
-    // Update the existing interaction
-    interactions[existingIndex] = {
-      ...interactions[existingIndex],
-      ...interaction,
-      source, // Ensure source is saved
-      timestamp, // Always update the timestamp
-    };
-  } else {
-    // Add new interaction with timestamp
-    interactions.push({
-      ...interaction,
-      source,
-      timestamp,
-    });
+    if (existing) {
+      // Update existing interaction
+      await db.interactions.update(existing.id, toPlainObject({
+        ...interaction,
+        source,
+        timestamp,
+      }));
+    } else {
+      // Add new interaction
+      await db.interactions.add(toPlainObject({
+        ...interaction,
+        source,
+        timestamp,
+      }));
+    }
+    return true;
+  } catch (error) {
+    console.error('Error storing interaction:', error);
+    return false;
   }
-
-  // Keep only the most recent interactions if we exceed the max
-  if (interactions.length > MAX_INTERACTIONS) {
-    interactions.splice(0, interactions.length - MAX_INTERACTIONS);
-  }
-
-  return saveData(INTERACTIONS_KEY, interactions);
 };
 
 /**
  * Get user interactions, optionally filtered by type
  */
-const getInteractions = (type = null) => {
-  const interactions = getStoredData(INTERACTIONS_KEY, []);
-  return type ? interactions.filter(i => i.type === type) : interactions;
+const getInteractions = async (type = null) => {
+  try {
+    if (type) {
+      return await db.interactions.where('type').equals(type).toArray();
+    }
+    return await db.interactions.toArray();
+  } catch (error) {
+    console.error('Error getting interactions:', error);
+    return [];
+  }
 };
 
 /**
  * Get interactions by post ID
  */
-const getPostInteractions = (postId) => {
-  const interactions = getStoredData(INTERACTIONS_KEY, []);
-  return interactions.filter(i => i.postId === postId);
+const getPostInteractions = async (postId) => {
+  try {
+    return await db.interactions.where('postId').equals(postId).toArray();
+  } catch (error) {
+    console.error('Error getting post interactions:', error);
+    return [];
+  }
 };
 
 /**
  * Store user preferences
  */
-const storePreferences = (preferences) => {
-  const currentPreferences = getStoredData(PREFERENCES_KEY, {});
-  return saveData(PREFERENCES_KEY, { ...currentPreferences, ...preferences });
+const storePreferences = async (preferences) => {
+  try {
+    const current = await db.preferences.get('singleton') || { id: 'singleton' };
+    await db.preferences.put(toPlainObject({ ...current, ...preferences }));
+    return true;
+  } catch (error) {
+    console.error('Error storing preferences:', error);
+    return false;
+  }
 };
 
 /**
  * Get user preferences
  */
-const getPreferences = () => {
-  return getStoredData(PREFERENCES_KEY, {});
+const getPreferences = async () => {
+  try {
+    const prefs = await db.preferences.get('singleton');
+    return prefs ? { ...prefs, id: undefined } : {};
+  } catch (error) {
+    console.error('Error getting preferences:', error);
+    return {};
+  }
 };
 
 /**
@@ -124,24 +129,27 @@ const getPreferences = () => {
  * @param {Object} postData - The full post data object
  * @param {string} source - The source URL (e.g., 'https://danbooru.donmai.us')
  */
-const trackPostView = (postId, postData, source = null) => {
+const trackPostView = async (postId, postData, source = null) => {
   // Only track view if history is not disabled in settings
-  const settings = loadAppSettings();
+  const settings = await loadAppSettings();
   if (settings && settings.settings && settings.settings.disableHistory) {
     return;
   }
 
-  const history = getStoredData(VIEW_HISTORY_KEY, {});
-
   // Create composite key consistent with FeedView.getCompositeKey
   const key = source ? `${source}|${postId}` : String(postId);
 
-  history[key] = {
-    lastViewed: Date.now(),
-    data: postData
-  };
-
-  return saveData(VIEW_HISTORY_KEY, history);
+  try {
+    await db.viewHistory.put(toPlainObject({
+      key,
+      lastViewed: Date.now(),
+      data: postData
+    }));
+    return true;
+  } catch (error) {
+    console.error('Error tracking post view:', error);
+    return false;
+  }
 };
 
 /**
@@ -149,126 +157,185 @@ const trackPostView = (postId, postData, source = null) => {
  * @param {string|number} postId - The post ID
  * @param {string} source - The source URL (optional)
  */
-const hasViewedPost = (postId, source = null) => {
-  const history = getStoredData(VIEW_HISTORY_KEY, {});
+const hasViewedPost = async (postId, source = null) => {
   const key = source ? `${source}|${postId}` : String(postId);
-  return !!history[key];
+  try {
+    const entry = await db.viewHistory.get(key);
+    return !!entry;
+  } catch (error) {
+    console.error('Error checking viewed post:', error);
+    return false;
+  }
 };
 
 /**
  * Get viewed posts history
+ * Returns object keyed by composite key for compatibility
  */
-const getViewedPosts = () => {
-  return getStoredData(VIEW_HISTORY_KEY, {});
+const getViewedPosts = async () => {
+  try {
+    const entries = await db.viewHistory.toArray();
+    const result = {};
+    for (const entry of entries) {
+      result[entry.key] = {
+        lastViewed: entry.lastViewed,
+        data: entry.data
+      };
+    }
+    return result;
+  } catch (error) {
+    console.error('Error getting viewed posts:', error);
+    return {};
+  }
 };
 
 /**
  * Get user's most interacted tags
  */
-const getMostInteractedTags = (limit = 10) => {
-  const interactions = getStoredData(INTERACTIONS_KEY, []);
+const getMostInteractedTags = async (limit = 10) => {
+  try {
+    const interactions = await db.interactions.toArray();
 
-  // Initialize tag counters
-  const tagCounts = {};
+    // Initialize tag counters
+    const tagCounts = {};
 
-  // Count positive interactions with each tag
-  interactions.forEach(interaction => {
-    // Only count positive interactions
-    const isPositive = (
-      (interaction.type === 'like' && interaction.value > 0) ||
-      (interaction.type === 'favorite' && interaction.value > 0) ||
-      (interaction.type === 'timeSpent' && interaction.value > 5000) // 5 seconds
-    );
+    // Count positive interactions with each tag
+    interactions.forEach(interaction => {
+      // Only count positive interactions
+      const isPositive = (
+        (interaction.type === 'like' && interaction.value > 0) ||
+        (interaction.type === 'favorite' && interaction.value > 0) ||
+        (interaction.type === 'timeSpent' && interaction.value > 5000) // 5 seconds
+      );
 
-    if (isPositive && interaction.metadata && interaction.metadata.post) {
-      const post = interaction.metadata.post;
+      if (isPositive && interaction.metadata && interaction.metadata.post) {
+        const post = interaction.metadata.post;
 
-      // Process all tags
-      if (post.tag_string) {
-        post.tag_string.split(' ').forEach(tag => {
-          if (!tagCounts[tag]) {
-            tagCounts[tag] = 0;
-          }
-          tagCounts[tag]++;
-        });
+        // Process all tags
+        if (post.tag_string) {
+          post.tag_string.split(' ').forEach(tag => {
+            if (!tagCounts[tag]) {
+              tagCounts[tag] = 0;
+            }
+            tagCounts[tag]++;
+          });
+        }
       }
-    }
-  });
+    });
 
-  // Convert to array, sort by count, and take top 'limit'
-  return Object.entries(tagCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([tag]) => tag);
+    // Convert to array, sort by count, and take top 'limit'
+    return Object.entries(tagCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([tag]) => tag);
+  } catch (error) {
+    console.error('Error getting most interacted tags:', error);
+    return [];
+  }
 };
 
 /**
  * Clear all stored data
  */
-const clearAllData = () => {
-  localStorage.removeItem(INTERACTIONS_KEY);
-  localStorage.removeItem(PREFERENCES_KEY);
-  localStorage.removeItem(VIEW_HISTORY_KEY);
-  localStorage.removeItem(APP_SETTINGS_KEY);
-  return true;
+const clearAllData = async () => {
+  try {
+    await db.interactions.clear();
+    await db.preferences.clear();
+    await db.viewHistory.clear();
+    await db.appSettings.clear();
+    await db.tagCache.clear();
+    return true;
+  } catch (error) {
+    console.error('Error clearing all data:', error);
+    return false;
+  }
 };
 
 /**
  * Clear only the post history
  */
-const clearHistory = () => {
-  localStorage.removeItem(VIEW_HISTORY_KEY);
-  return true;
+const clearHistory = async () => {
+  try {
+    await db.viewHistory.clear();
+    return true;
+  } catch (error) {
+    console.error('Error clearing history:', error);
+    return false;
+  }
 };
 
 /**
  * Clear only the 'like' interactions
  */
-const clearLikes = () => {
-  const interactions = getStoredData(INTERACTIONS_KEY, []);
-  const filteredInteractions = interactions.filter(i => i.type !== 'like');
-  return saveData(INTERACTIONS_KEY, filteredInteractions);
+const clearLikes = async () => {
+  try {
+    await db.interactions.where('type').equals('like').delete();
+    return true;
+  } catch (error) {
+    console.error('Error clearing likes:', error);
+    return false;
+  }
 };
 
 /**
  * Clear only the 'favorite' interactions
  */
-const clearFavorites = () => {
-  const interactions = getStoredData(INTERACTIONS_KEY, []);
-  const filtered = interactions.filter(i => i.type !== 'favorite');
-  return saveData(INTERACTIONS_KEY, filtered);
+const clearFavorites = async () => {
+  try {
+    await db.interactions.where('type').equals('favorite').delete();
+    return true;
+  } catch (error) {
+    console.error('Error clearing favorites:', error);
+    return false;
+  }
 };
 
 /**
  * Export analytics data for recommendations
  */
-const exportAnalytics = () => {
-  const interactions = getStoredData(INTERACTIONS_KEY, []);
-  const preferences = getStoredData(PREFERENCES_KEY, {});
-  const history = getStoredData(VIEW_HISTORY_KEY, {});
-
-  return {
-    interactionCount: interactions.length,
-    uniquePostsViewed: Object.keys(history).length,
-    topTags: getMostInteractedTags(5),
-    preferences
-  };
-};
-
-const saveAppSettings = (settings) => {
+const exportAnalytics = async () => {
   try {
-    localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(settings));
-  } catch (e) {
-    console.error("Failed to save app settings:", e);
+    const interactions = await db.interactions.toArray();
+    const preferences = await getPreferences();
+    const historyCount = await db.viewHistory.count();
+
+    return {
+      interactionCount: interactions.length,
+      uniquePostsViewed: historyCount,
+      topTags: await getMostInteractedTags(5),
+      preferences
+    };
+  } catch (error) {
+    console.error('Error exporting analytics:', error);
+    return {
+      interactionCount: 0,
+      uniquePostsViewed: 0,
+      topTags: [],
+      preferences: {}
+    };
   }
 };
 
-const loadAppSettings = () => {
+const saveAppSettings = async (settings) => {
   try {
-    const settings = localStorage.getItem(APP_SETTINGS_KEY);
-    return settings ? JSON.parse(settings) : null;
-  } catch (e) {
-    console.error("Failed to load app settings:", e);
+    await db.appSettings.put(toPlainObject({ id: 'singleton', ...settings }));
+    return true;
+  } catch (error) {
+    console.error('Failed to save app settings:', error);
+    return false;
+  }
+};
+
+const loadAppSettings = async () => {
+  try {
+    const settings = await db.appSettings.get('singleton');
+    if (settings) {
+      const { id, ...rest } = settings;
+      return rest;
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to load app settings:', error);
     return null;
   }
 };
