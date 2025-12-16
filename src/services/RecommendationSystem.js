@@ -876,7 +876,7 @@ class RecommendationSystem {
   async getCuratedExploreFeed(fetchFunction, options = {}) {
     const {
       postsPerFetch = 20,   // Number of posts to fetch per query
-      maxTotal = 50,        // Maximum total posts to return
+      maxTotal = 10,        // Maximum total posts to return (curated subset)
       selectedRatings = ['general'], // Rating filters to apply
       whitelist = [],
       blacklist = [],
@@ -1239,14 +1239,16 @@ class RecommendationSystem {
       const limitedFeed = finalFeed.slice(0, maxTotal);
 
       // Cache scores for these posts to ensure consistency
-      finalFeed.forEach(post => {
+      limitedFeed.forEach(post => {
         if (!this.postScoreCache.has(post.id)) {
           this.scorePost(post); // Ensure score is cached
         }
       });
 
-      // Return processed results
-      return finalFeed;
+      console.log(`Returning ${limitedFeed.length} curated posts (from ${finalFeed.length} ranked candidates)`);
+
+      // Return processed results (limited to maxTotal)
+      return limitedFeed;
     } catch (error) {
       console.error("Error fetching curated explore feed:", error);
       return [];
