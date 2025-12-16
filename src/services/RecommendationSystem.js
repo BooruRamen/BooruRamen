@@ -31,7 +31,8 @@ export const COMMON_TAGS = [
   'long_hair', 'breasts', 'large_breasts', 'looking_at_user', 'short_hair',
   'animated', 'tagme', 'copyright_request', 'spoiler', 'source_request',
   'artist_request', 'character_request', 'cosplay_request', 'check_character',
-  'duplicate', 'sound', 'looking_at_viewer', 'looking_at_another'
+  'duplicate', 'sound', 'looking_at_viewer', 'looking_at_another',
+  'simple_background'
 ];
 
 class RecommendationSystem {
@@ -370,11 +371,38 @@ class RecommendationSystem {
     let tagScore = 0;
     let tagCount = 0;
 
-    // Discovery Bonus tracking: count familiar vs novel tags
-    // Uses ENGAGEMENT (not score) to determine if a tag is familiar
-    // This prevents "controversial" tags (liked then disliked = net 0) from being classified as novel
-    let familiarTagCount = 0;  // Tags with any engagement history
-    let novelTagCount = 0;      // Tags with zero engagement (truly new)
+    // ---------------------------------------------------------
+    // REFINED: Discovery Bonus Logic
+    // ---------------------------------------------------------
+    // Uses ENGAGEMENT (not just score) to determine if a tag is familiar
+    // Filters out common/noise tags to prevent trivially satisfying the condition
+    let familiarTagCount = 0;  // Tags you've LIKED (score > 0.5), excluding noise
+    let novelTagCount = 0;      // Truly new tags (zero engagement), excluding noise
+
+    // Use avoidedTags (COMMON_TAGS) to filter noise - these shouldn't count for discovery
+    const noiseTags = new Set(this.avoidedTags || []);
+
+    // Helper to process a tag for discovery bonus (excludes noise)
+    const processTagForDiscovery = (tag) => {
+      if (!tag) return;
+
+      // SKIP NOISE: Common tags don't count for novelty or familiarity
+      if (noiseTags.has(tag)) return;
+
+      const engagement = this.tagEngagement?.[tag] || 0;
+      const tagScoreVal = this.tagScores?.[tag] || 0;
+
+      if (engagement > 0) {
+        // TIGHTER ANCHOR: Only count as "Familiar" if you actually LIKE it
+        // A score > 0.5 usually implies a Like/Favorite, not just a View (0.2)
+        if (tagScoreVal > 0.5) {
+          familiarTagCount++;
+        }
+      } else {
+        // Truly novel (zero engagement)
+        novelTagCount++;
+      }
+    };
 
     // Process all tag categories
     TAG_CATEGORIES.forEach(category => {
@@ -384,23 +412,14 @@ class RecommendationSystem {
           if (!tag) return;
           tagCount++;
           const tagScoreValue = this.tagScores[tag] || 0;
-          const tagEngagementValue = this.tagEngagement?.[tag] || 0;
 
-          // Add to tag score calculation
+          // Add to tag score calculation (still includes all tags for scoring)
           if (this.tagScores[tag] !== undefined) {
             tagScore += tagScoreValue;
           }
 
-          // Use engagement to determine familiarity (not score)
-          if (tagEngagementValue > 0) {
-            // Tag has been interacted with - only count as "good familiar" if positively scored
-            if (tagScoreValue > 0.5) {
-              familiarTagCount++;
-            }
-          } else {
-            // Truly novel (zero engagement)
-            novelTagCount++;
-          }
+          // Process for discovery (filters noise)
+          processTagForDiscovery(tag);
         });
       }
     });
@@ -413,23 +432,14 @@ class RecommendationSystem {
         if (!TAG_CATEGORIES.some(cat => post[`tag_string_${cat}`]?.includes(tag))) {
           tagCount++;
           const tagScoreValue = this.tagScores[tag] || 0;
-          const tagEngagementValue = this.tagEngagement?.[tag] || 0;
 
-          // Add to tag score calculation
+          // Add to tag score calculation (still includes all tags for scoring)
           if (this.tagScores[tag] !== undefined) {
             tagScore += tagScoreValue;
           }
 
-          // Use engagement to determine familiarity (not score)
-          if (tagEngagementValue > 0) {
-            // Tag has been interacted with - only count as "good familiar" if positively scored
-            if (tagScoreValue > 0.5) {
-              familiarTagCount++;
-            }
-          } else {
-            // Truly novel (zero engagement)
-            novelTagCount++;
-          }
+          // Process for discovery (filters noise)
+          processTagForDiscovery(tag);
         }
       });
     }
@@ -440,10 +450,11 @@ class RecommendationSystem {
     }
 
     // Discovery Bonus: Reward "Novelty in a Familiar Context"
-    // Posts with at least 1 familiar tag AND 3+ novel tags get a bonus
-    // This helps break the echo chamber by promoting content that introduces
-    // new tags while still having some connection to user preferences
-    if (familiarTagCount >= 1 && novelTagCount >= 3) {
+    // TIGHTER THRESHOLDS:
+    // - Need 2 strong anchors (things you definitely like, not just viewed)
+    // - Need 5 new elements (to ensure it's actually different, not just 1-2 new tags)
+    // Common tags like 1girl, long_hair are filtered out so they don't trigger this trivially
+    if (familiarTagCount >= 2 && novelTagCount >= 5) {
       score += 0.25;
     }
 
@@ -494,13 +505,17 @@ class RecommendationSystem {
     let tagCount = 0;
     const contributors = [];
 
+    // Use avoidedTags (COMMON_TAGS) to filter noise - these shouldn't count for discovery
+    const noiseTags = new Set(this.avoidedTags || []);
+
     // Helper to process tags - uses ENGAGEMENT to track familiar/novel for discovery bonus
+    // Filters out noise tags for discovery calculations
     const processTag = (tag, category) => {
       if (!tag) return;
       const tagScoreValue = this.tagScores[tag] || 0;
       const tagEngagementValue = this.tagEngagement?.[tag] || 0;
 
-      // Track score contributors if tag has any score history
+      // Track score contributors if tag has any score history (includes all tags)
       if (this.tagScores[tag] !== undefined) {
         tagCount++;
         tagScoreSum += tagScoreValue;
@@ -511,9 +526,12 @@ class RecommendationSystem {
         });
       }
 
+      // SKIP NOISE: Common tags don't count for novelty or familiarity
+      if (noiseTags.has(tag)) return;
+
       // Use engagement (not score) to determine familiarity
       if (tagEngagementValue > 0) {
-        // Tag has been interacted with - only count as "good familiar" if positively scored
+        // TIGHTER ANCHOR: Only count as "Familiar" if you actually LIKE it
         if (tagScoreValue > 0.5) {
           details.familiarTagCount++;
         }
@@ -550,7 +568,10 @@ class RecommendationSystem {
     details.contributingTags = contributors.sort((a, b) => b.score - a.score).slice(0, 10);
 
     // Discovery Bonus: Reward "Novelty in a Familiar Context"
-    if (details.familiarTagCount >= 1 && details.novelTagCount >= 3) {
+    // TIGHTER THRESHOLDS (matching scorePost):
+    // - Need 2 strong anchors (things you definitely like)
+    // - Need 5 new elements (to ensure it's actually different)
+    if (details.familiarTagCount >= 2 && details.novelTagCount >= 5) {
       details.discoveryBonus = 0.25;
       details.totalScore += details.discoveryBonus;
     }
