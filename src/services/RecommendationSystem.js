@@ -883,8 +883,10 @@ class RecommendationSystem {
       existingPostIds = new Set()
     } = options;
 
+    // Update user profile before fetching to incorporate recent interactions
+    await this.updateUserProfile();
 
-    // Generate multi-strategy query sets (3 single, 3 duo)
+    // Generate multi-strategy query sets (2 single, 2 duo)
     const queries = this.generateMultiStrategyQueries(selectedRatings, whitelist);
     console.log("Explore queries:", queries);
 
