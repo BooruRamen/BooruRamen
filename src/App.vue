@@ -159,7 +159,7 @@
         ></router-view>
         
         <!-- Debug Overlay -->
-        <div v-if="debugMode && currentPost" class="absolute top-0 left-1/2 transform -translate-x-1/2 mt-4 p-0 bg-black bg-opacity-75 text-xs text-white z-40 max-w-xs pointer-events-none font-mono rounded shadow-lg">
+        <div v-if="debugMode && currentPost" class="absolute top-0 left-1/2 transform -translate-x-1/2 mt-4 p-4 bg-black bg-opacity-75 text-xs text-white z-40 max-w-xs pointer-events-none font-mono rounded shadow-lg">
           <h3 class="font-bold mb-1 text-pink-400">Recommendation Debug</h3>
           
           <div class="mb-2 border-b border-gray-700 pb-2">
