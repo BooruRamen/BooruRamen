@@ -723,7 +723,8 @@ export default {
         addBlacklistTagAction: 'addBlacklistTag',
         removeBlacklistTag: 'removeBlacklistTag', 
         toggleExploreMode: 'toggleExploreMode',
-        saveSettings: 'saveSettings'
+        saveSettings: 'saveSettings',
+        initializeSettings: 'initialize'
     }),
     ...mapActions(usePlayerStore, {
         setPlayerVolume: 'setVolume',
@@ -1055,7 +1056,8 @@ export default {
       }
     }
   },
-  created() {
+  async created() {
+      await this.initializeSettings();
       this.initializePlayer();
       this.initializeInteractions();
       
