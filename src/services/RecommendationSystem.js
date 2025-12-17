@@ -1315,31 +1315,34 @@ class RecommendationSystem {
         score: this.scorePost(post)
       }));
 
-      // Bucket 1: RANKED (Score > 0.8) - High-confidence content
+      // Sort by score descending to determine percentiles
+      scoredPosts.sort((a, b) => b.score - a.score);
+
+      // Use PERCENTILE-BASED SPLITTING instead of absolute thresholds
+      // This works regardless of the actual score scale (which can vary from 0.5 to 6+)
+      const totalPosts = scoredPosts.length;
+      const rankedCutoff = Math.floor(totalPosts * 0.6);  // Top 60% = Ranked
+      // Bottom 40% = Discovery (lower-scored but not rejected)
+
+      // Bucket 1: RANKED (Top 60%) - High-confidence content you'll probably like
       const rankedBucket = scoredPosts
-        .filter(sp => sp.score > 0.8)
-        .sort((a, b) => b.score - a.score)
+        .slice(0, rankedCutoff)
         .map(sp => sp.post);
 
-      // Bucket 2: DISCOVERY (Score 0.4–0.7) - Exploratory content
+      // Bucket 2: DISCOVERY (Bottom 40%) - Lower-scored exploratory content
       const discoveryBucket = scoredPosts
-        .filter(sp => sp.score >= 0.4 && sp.score <= 0.7)
-        .sort((a, b) => b.score - a.score)
+        .slice(rankedCutoff)
         .map(sp => sp.post);
 
-      // Bucket 3: REMAINDER (0.7 < score <= 0.8 OR score < 0.4) - Fallback
-      const remainderBucket = scoredPosts
-        .filter(sp => (sp.score > 0.7 && sp.score <= 0.8) || sp.score < 0.4)
-        .sort((a, b) => b.score - a.score)
-        .map(sp => sp.post);
-
-      console.log(`Feed Interleaving: ${rankedBucket.length} ranked, ${discoveryBucket.length} discovery, ${remainderBucket.length} remainder`);
+      console.log(`Feed buckets: ${rankedBucket.length} ranked (top 60%), ${discoveryBucket.length} discovery (bottom 40%)`);
+      if (scoredPosts.length > 0) {
+        console.log(`Score range: ${scoredPosts[scoredPosts.length - 1].score.toFixed(2)} - ${scoredPosts[0].score.toFixed(2)}`);
+      }
 
       // Build interleaved feed
       const finalFeed = [];
       let rankedIndex = 0;
       let discoveryIndex = 0;
-      let remainderIndex = 0;
 
       for (let position = 0; finalFeed.length < Math.min(maxTotal, uniquePosts.length); position++) {
         // Every Nth position (e.g., 4th, 8th, 12th...), slot a discovery post
@@ -1353,10 +1356,6 @@ class RecommendationSystem {
         // Fallback to discovery if ranked is exhausted
         else if (discoveryIndex < discoveryBucket.length) {
           finalFeed.push(discoveryBucket[discoveryIndex++]);
-        }
-        // Fallback to remainder if both are exhausted
-        else if (remainderIndex < remainderBucket.length) {
-          finalFeed.push(remainderBucket[remainderIndex++]);
         }
         // All buckets exhausted
         else {
