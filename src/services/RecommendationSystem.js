@@ -736,6 +736,14 @@ class RecommendationSystem {
    * (Excludes common tags and meta tags)
    */
   getQueryableTags() {
+    return this.getQueryableTagsWithScores().map(item => item.tag);
+  }
+
+  /**
+   * Get tags with their weighted scores for probabilistic selection
+   * Returns array of { tag, score } sorted by score descending
+   */
+  getQueryableTagsWithScores() {
     if (!this.tagScores) return [];
 
     // ANTI-CONVERGENCE QUERYING with RELAXED GENERAL PENALTY
@@ -762,12 +770,42 @@ class RecommendationSystem {
       .map(([tag, score]) => {
         const category = this.tagCategories?.[tag] || 'general';
         const weight = QUERY_CATEGORY_WEIGHTS[category] ?? 0.15;
-        return [tag, score * weight];
+        return { tag, score: score * weight };
       })
       // Sort by weighted score descending
-      .sort((a, b) => b[1] - a[1])
-      // Return just the tag strings
-      .map(([tag]) => tag);
+      .sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Select a tag using weighted random selection (roulette wheel)
+   * @param {Array} candidates - Array of { tag, score } objects
+   * @param {Set} exclude - Set of tags to exclude from selection
+   * @returns {Object|null} - Selected { tag, score } or null if none available
+   */
+  weightedRandomSelect(candidates, exclude = new Set()) {
+    // Filter out excluded and exhausted tags
+    const available = candidates.filter(c =>
+      !exclude.has(c.tag) && !this.exhaustedStrategies.has(c.tag)
+    );
+
+    if (available.length === 0) return null;
+
+    // Calculate total weight
+    const totalWeight = available.reduce((sum, c) => sum + Math.max(0.01, c.score), 0);
+
+    // Roll random number
+    let random = Math.random() * totalWeight;
+
+    // Find the selected tag
+    for (const candidate of available) {
+      random -= Math.max(0.01, candidate.score);
+      if (random <= 0) {
+        return candidate;
+      }
+    }
+
+    // Fallback to last available (shouldn't happen, but safety)
+    return available[available.length - 1];
   }
 
   /**
@@ -778,7 +816,8 @@ class RecommendationSystem {
    */
   generateMultiStrategyQueries(selectedRatings = ['general'], whitelist = []) {
     const queries = [];
-    let topTags = this.getQueryableTags();
+    const topTagsWithScores = this.getQueryableTagsWithScores();
+    let topTags = topTagsWithScores.map(t => t.tag);
 
     // If no user history (fresh profile), use whitelist tags as the "top terms"
     if (topTags.length === 0 && whitelist && whitelist.length > 0) {
@@ -790,32 +829,24 @@ class RecommendationSystem {
     topTags = topTags.filter(t => t !== 'video');
 
     // ---------------------------------------------------------
-    // PROBABILISTIC SAMPLING: Shuffle top 20 candidates
+    // WEIGHTED RANDOM SELECTION (Roulette Wheel)
     // ---------------------------------------------------------
-    // Instead of always picking #1 and #2 tags, take the top 20 and shuffle.
-    // This ensures variety - even if "Black Survival" is top, other interests
-    // (like the 5th or 10th best tag) will frequently get a turn.
+    // A tag with score 10 has 10x higher chance than a score of 1.
+    // This ensures top preferences dominate but lower ones still get a chance.
     const CANDIDATE_POOL_SIZE = 20;
-    const candidatePool = topTags.slice(0, CANDIDATE_POOL_SIZE);
-
-    // Fisher-Yates shuffle for true randomization
-    for (let i = candidatePool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [candidatePool[i], candidatePool[j]] = [candidatePool[j], candidatePool[i]];
-    }
-
-    console.log('Shuffled candidate pool:', candidatePool.slice(0, 6));
+    const candidatePool = topTagsWithScores.slice(0, CANDIDATE_POOL_SIZE);
 
     // Track used anchors to ensure UNIQUE ANCHORS across strategies
     const usedAnchors = new Set();
 
-    // --- Strategy 1: Single Tag Queries ---
+    // --- Strategy 1: Single Tag Queries (2 tags via weighted random) ---
     const singleQueries = [];
-    for (const tag of candidatePool) {
-      if (singleQueries.length >= 2) break;
-      if (!this.exhaustedStrategies.has(tag) && !usedAnchors.has(tag)) {
-        singleQueries.push({ tags: tag, type: 'single' });
-        usedAnchors.add(tag); // Mark as used
+    for (let i = 0; i < 2; i++) {
+      const selected = this.weightedRandomSelect(candidatePool, usedAnchors);
+      if (selected) {
+        singleQueries.push({ tags: selected.tag, type: 'single' });
+        usedAnchors.add(selected.tag);
+        console.log(`Single query ${i + 1}: "${selected.tag}" (score: ${selected.score.toFixed(2)})`);
       }
     }
 
@@ -830,45 +861,23 @@ class RecommendationSystem {
       }
     }
 
-    // --- Strategy 2: Duo Tag Combinations ---
-    // Use DIFFERENT tags than Single queries for unique anchors
+    // --- Strategy 2: Duo Tag Combinations (2 pairs via weighted random) ---
     const duoCombinations = [];
-    const availableForDuo = candidatePool.filter(t =>
-      !this.exhaustedStrategies.has(t) && !usedAnchors.has(t)
-    );
 
-    if (availableForDuo.length >= 2) {
-      // Duo 1: First two available (not used in singles)
-      const duoTag1 = `${availableForDuo[0]} ${availableForDuo[1]}`;
-      if (!this.exhaustedStrategies.has(duoTag1)) {
-        duoCombinations.push(duoTag1);
-        usedAnchors.add(availableForDuo[0]);
-        usedAnchors.add(availableForDuo[1]);
-      }
+    // Select 4 more tags for duo combinations (2 pairs)
+    for (let pair = 0; pair < 2; pair++) {
+      const tag1 = this.weightedRandomSelect(candidatePool, usedAnchors);
+      if (!tag1) break;
+      usedAnchors.add(tag1.tag);
 
-      // Duo 2: Try next pair if available
-      if (availableForDuo.length >= 4) {
-        const duoTag2 = `${availableForDuo[2]} ${availableForDuo[3]}`;
-        if (!this.exhaustedStrategies.has(duoTag2)) {
-          duoCombinations.push(duoTag2);
-        }
-      } else if (availableForDuo.length >= 3) {
-        // Mix: First unused + third
-        const duoTag2 = `${availableForDuo[0]} ${availableForDuo[2]}`;
-        if (!this.exhaustedStrategies.has(duoTag2)) {
-          duoCombinations.push(duoTag2);
-        }
-      }
-    } else if (availableForDuo.length === 1 && candidatePool.length > 1) {
-      // Pair the single available tag with others from the shuffled pool
-      for (let k = 0; k < Math.min(3, candidatePool.length); k++) {
-        if (candidatePool[k] !== availableForDuo[0] && !this.avoidedTags.includes(candidatePool[k])) {
-          const duoTag = `${availableForDuo[0]} ${candidatePool[k]}`;
-          if (!this.exhaustedStrategies.has(duoTag)) {
-            duoCombinations.push(duoTag);
-            break;
-          }
-        }
+      const tag2 = this.weightedRandomSelect(candidatePool, usedAnchors);
+      if (!tag2) break;
+      usedAnchors.add(tag2.tag);
+
+      const duoTag = `${tag1.tag} ${tag2.tag}`;
+      if (!this.exhaustedStrategies.has(duoTag)) {
+        duoCombinations.push(duoTag);
+        console.log(`Duo query ${pair + 1}: "${duoTag}" (scores: ${tag1.score.toFixed(2)}, ${tag2.score.toFixed(2)})`);
       }
     }
 
