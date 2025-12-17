@@ -357,6 +357,24 @@
             </div>
           </div>
           
+          <!-- Default muted toggle -->
+          <div class="mb-4">
+            <div class="flex items-center justify-between">
+              <label class="text-sm font-medium">Start Videos Muted</label>
+              <button 
+                @click="defaultMuted = !defaultMuted; savePlayerPreferences()" 
+                class="relative inline-flex h-6 w-11 items-center rounded-full"
+                :class="defaultMuted ? 'bg-pink-600' : 'bg-gray-600'"
+              >
+                <span 
+                  class="inline-block h-4 w-4 transform rounded-full bg-white transition"
+                  :class="defaultMuted ? 'translate-x-6' : 'translate-x-1'"
+                ></span>
+              </button>
+            </div>
+            <p class="text-xs text-gray-400 mt-1">Videos will start muted when scrolling through feed</p>
+          </div>
+          
           <!-- Media type selection -->
           <div class="mb-4">
             <label class="text-sm font-medium block mb-2">Media Type</label>
@@ -695,7 +713,8 @@ export default {
     ...mapWritableState(usePlayerStore, [
       'volume',
       'muted',
-      'isPlaying'
+      'isPlaying',
+      'defaultMuted'
     ]),
     
     // Alias to match template usage
@@ -1010,7 +1029,10 @@ export default {
         
         if (this.currentVideoElement) {
             this.currentVideoElement.volume = newVol;
-            if (newVol > 0) this.currentVideoElement.muted = false;
+            if (newVol > 0 && this.muted) {
+                this.currentVideoElement.muted = false;
+                this.muted = false; // Sync store state with video
+            }
         }
     },
     stopVolumeDrag() {
@@ -1020,7 +1042,8 @@ export default {
          this.savePlayerPreferences(); // Save volume to player store
     },
     changeVolumeVertical(e) {
-        const rect = e.target.getBoundingClientRect();
+        // Use ref instead of e.target to avoid getting wrong bounds when clicking on the fill div
+        const rect = this.$refs.volumeSlider.getBoundingClientRect();
         const bottom = rect.bottom;
         const height = rect.height;
         let y = bottom - e.clientY;
@@ -1029,7 +1052,10 @@ export default {
         
         if (this.currentVideoElement) {
             this.currentVideoElement.volume = this.volume;
-            if (this.volume > 0) this.currentVideoElement.muted = false;
+            if (this.volume > 0 && this.muted) {
+                this.currentVideoElement.muted = false;
+                this.muted = false; // Sync store state with video
+            }
         }
         this.savePlayerPreferences(); // Save volume to player store
     },
