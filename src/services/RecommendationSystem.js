@@ -738,15 +738,14 @@ class RecommendationSystem {
   getQueryableTags() {
     if (!this.tagScores) return [];
 
-    // ANTI-CONVERGENCE QUERYING
-    // Heavily penalize "general" category tags when generating search queries.
-    // This prevents the Explorer from fixating on generic terms like 'black_hair'
-    // or 'smile' just because they have high volume.
+    // ANTI-CONVERGENCE QUERYING with RELAXED GENERAL PENALTY
+    // Penalize "general" category tags when generating search queries,
+    // but not too harshly - broad interests like 'cyberpunk' should still surface.
     const QUERY_CATEGORY_WEIGHTS = {
       character: 1.0,   // Full weight - specific characters are great search terms
       copyright: 1.0,   // Full weight - specific series are great search terms
       artist: 1.0,      // Full weight - specific artists are great search terms
-      general: 0.15,    // Heavy penalty - generic descriptors make poor search terms
+      general: 0.5,     // Relaxed penalty - allows broad interests to compete
       meta: 0.0         // Exclude - technical tags are useless for discovery
     };
 
@@ -783,34 +782,44 @@ class RecommendationSystem {
 
     // If no user history (fresh profile), use whitelist tags as the "top terms"
     if (topTags.length === 0 && whitelist && whitelist.length > 0) {
-      // Use up to 3 whitelist tags as seeds.
-      // We do NOT filter out common tags here because if a user explicitly whitelists "1girl", they WANT "1girl".
       topTags = whitelist.slice(0, 5);
       console.log("Using whitelist as seed for fresh profile queries:", topTags);
     }
 
-    // Explicitly filter out 'video' tag from all strategies as per user request
+    // Explicitly filter out 'video' tag
     topTags = topTags.filter(t => t !== 'video');
 
-    // We need at least some tags to work with different strategies
-    // If not enough tags, we'll fill with fallbacks
+    // ---------------------------------------------------------
+    // PROBABILISTIC SAMPLING: Shuffle top 20 candidates
+    // ---------------------------------------------------------
+    // Instead of always picking #1 and #2 tags, take the top 20 and shuffle.
+    // This ensures variety - even if "Black Survival" is top, other interests
+    // (like the 5th or 10th best tag) will frequently get a turn.
+    const CANDIDATE_POOL_SIZE = 20;
+    const candidatePool = topTags.slice(0, CANDIDATE_POOL_SIZE);
 
-    // --- Filter out exhausted strategies ---
-    // If a specific query string has returned 0 posts previously in this session, skip it.
-
-    // --- Strategy 1: Top Single Tags ---
-    const singleQueries = [];
-    let tagIndex = 0;
-    while (singleQueries.length < 2 && tagIndex < topTags.length) {
-      const tag = topTags[tagIndex];
-      // Check if exhausted
-      if (!this.exhaustedStrategies.has(tag)) {
-        singleQueries.push({ tags: tag, type: 'single' });
-      }
-      tagIndex++;
+    // Fisher-Yates shuffle for true randomization
+    for (let i = candidatePool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidatePool[i], candidatePool[j]] = [candidatePool[j], candidatePool[i]];
     }
 
-    // Fill with fallbacks if needed (checking exhaustion too)
+    console.log('Shuffled candidate pool:', candidatePool.slice(0, 6));
+
+    // Track used anchors to ensure UNIQUE ANCHORS across strategies
+    const usedAnchors = new Set();
+
+    // --- Strategy 1: Single Tag Queries ---
+    const singleQueries = [];
+    for (const tag of candidatePool) {
+      if (singleQueries.length >= 2) break;
+      if (!this.exhaustedStrategies.has(tag) && !usedAnchors.has(tag)) {
+        singleQueries.push({ tags: tag, type: 'single' });
+        usedAnchors.add(tag); // Mark as used
+      }
+    }
+
+    // Fill with fallbacks if needed
     if (singleQueries.length < 2) {
       const fallbacks = ['order:score', 'order:popular', 'date:>1w', 'date:>1d', 'order:rank'];
       for (const fb of fallbacks) {
@@ -821,42 +830,58 @@ class RecommendationSystem {
       }
     }
 
-    // --- Strategy 2: Top Duo Tag Combinations ---
-    // Note: Duo combinations often return no results on Gelbooru with rating:safe
-    // So we prioritize single queries which include sort:score fallbacks
+    // --- Strategy 2: Duo Tag Combinations ---
+    // Use DIFFERENT tags than Single queries for unique anchors
     const duoCombinations = [];
+    const availableForDuo = candidatePool.filter(t =>
+      !this.exhaustedStrategies.has(t) && !usedAnchors.has(t)
+    );
 
-    // Use available non-exhausted tags for pairing
-    const availableTags = topTags.filter(t => !this.exhaustedStrategies.has(t));
-
-    if (availableTags.length >= 2) {
-      // Duo 1: Best two available
-      duoCombinations.push(`${availableTags[0]} ${availableTags[1]}`);
-      // Duo 2: Best + third best (if available)
-      if (availableTags.length >= 3) {
-        duoCombinations.push(`${availableTags[0]} ${availableTags[2]}`);
+    if (availableForDuo.length >= 2) {
+      // Duo 1: First two available (not used in singles)
+      const duoTag1 = `${availableForDuo[0]} ${availableForDuo[1]}`;
+      if (!this.exhaustedStrategies.has(duoTag1)) {
+        duoCombinations.push(duoTag1);
+        usedAnchors.add(availableForDuo[0]);
+        usedAnchors.add(availableForDuo[1]);
       }
-    } else if (availableTags.length === 1 && topTags.length > 1) {
-      // Pair the single available tag with other user tags
-      for (let k = 1; k < Math.min(4, topTags.length); k++) {
-        if (!this.avoidedTags.includes(topTags[k])) {
-          duoCombinations.push(`${availableTags[0]} ${topTags[k]}`);
+
+      // Duo 2: Try next pair if available
+      if (availableForDuo.length >= 4) {
+        const duoTag2 = `${availableForDuo[2]} ${availableForDuo[3]}`;
+        if (!this.exhaustedStrategies.has(duoTag2)) {
+          duoCombinations.push(duoTag2);
+        }
+      } else if (availableForDuo.length >= 3) {
+        // Mix: First unused + third
+        const duoTag2 = `${availableForDuo[0]} ${availableForDuo[2]}`;
+        if (!this.exhaustedStrategies.has(duoTag2)) {
+          duoCombinations.push(duoTag2);
+        }
+      }
+    } else if (availableForDuo.length === 1 && candidatePool.length > 1) {
+      // Pair the single available tag with others from the shuffled pool
+      for (let k = 0; k < Math.min(3, candidatePool.length); k++) {
+        if (candidatePool[k] !== availableForDuo[0] && !this.avoidedTags.includes(candidatePool[k])) {
+          const duoTag = `${availableForDuo[0]} ${candidatePool[k]}`;
+          if (!this.exhaustedStrategies.has(duoTag)) {
+            duoCombinations.push(duoTag);
+            break;
+          }
         }
       }
     }
-    // For fresh profiles with no user tags, we rely on single queries with order filters
-    // (added in singleQueries fallbacks above) instead of duo combinations
 
-    // Add Single queries FIRST (they work more reliably on Gelbooru)
+    // Add Single queries FIRST (more reliable)
     for (const q of singleQueries) {
       if (queries.length < 2) {
         queries.push(q);
       }
     }
 
-    // Then add Duo queries (less reliable but more diverse)
+    // Then add Duo queries
     for (const duoTag of duoCombinations) {
-      if (queries.length < 4 && !this.exhaustedStrategies.has(duoTag)) {
+      if (queries.length < 4) {
         queries.push({ tags: duoTag, type: 'duo' });
       }
     }
