@@ -378,104 +378,108 @@ class RecommendationSystem {
     // Base score for all posts
     score += 0.1;
 
-    // Score based on tags
-    let tagScore = 0;
-    let tagCount = 0;
+    // ---------------------------------------------------------
+    // CATEGORY-BASED SCORING
+    // ---------------------------------------------------------
+    // Aggregate scores by category with different multipliers:
+    // - Character: 2.5x (strongest signal - user likes specific characters)
+    // - Copyright: 2.0x (strong signal - user likes specific series)
+    // - Artist: 2.0x (strong signal - user likes specific art styles)
+    // - General: 0.4x (weak signal - generic descriptors shouldn't dominate)
+    // - Meta: 0.0x (ignored - technical tags like 'highres')
+    const CATEGORY_MULTIPLIERS = {
+      character: 2.5,
+      copyright: 2.0,
+      artist: 2.0,
+      general: 0.4,
+      meta: 0.0
+    };
+
+    // Accumulators for category-based scoring
+    const categoryScores = {
+      character: { sum: 0, count: 0 },
+      copyright: { sum: 0, count: 0 },
+      artist: { sum: 0, count: 0 },
+      general: { sum: 0, count: 0 },
+      meta: { sum: 0, count: 0 }
+    };
 
     // ---------------------------------------------------------
     // REFINED: Category-Weighted Discovery Logic
     // ---------------------------------------------------------
-    // Uses ENGAGEMENT + CATEGORY WEIGHTING to determine anchor quality
-    // Character/Copyright/Artist = Strong Anchor (1.0)
-    // General/Meta = Weak Anchor (0.2) - need 5 to equal one strong anchor
     let familiarWeight = 0;  // Weighted sum of familiar anchors
     let novelCount = 0;      // Truly new tags (zero engagement), excluding noise
 
-    // Use avoidedTags (COMMON_TAGS) to filter noise - these shouldn't count for discovery
+    // Use avoidedTags (COMMON_TAGS) to filter noise
     const noiseTags = new Set(this.avoidedTags || []);
 
-    // Helper to process a tag for discovery bonus (excludes noise, weights by category)
-    const processTagForDiscovery = (tag) => {
+    // Helper to process a tag for both scoring and discovery
+    const processTag = (tag, category) => {
       if (!tag) return;
 
-      // SKIP NOISE: Common tags don't count for novelty or familiarity
+      // SKIP NOISE: Common tags don't count
       if (noiseTags.has(tag)) return;
 
-      const engagement = this.tagEngagement?.[tag] || 0;
       const tagScoreVal = this.tagScores?.[tag] || 0;
+      const engagement = this.tagEngagement?.[tag] || 0;
 
-      // Retrieve category. Fallback to 'general' if unknown.
-      const category = this.tagCategories?.[tag] || 'general';
+      // Resolve category (use stored if available, else passed, else 'general')
+      const resolvedCategory = this.tagCategories?.[tag] || category || 'general';
 
+      // Add to category-specific accumulator
+      if (categoryScores[resolvedCategory]) {
+        categoryScores[resolvedCategory].sum += tagScoreVal;
+        categoryScores[resolvedCategory].count++;
+      }
+
+      // Discovery logic: track familiar anchors and novel tags
       if (engagement > 0) {
-        // Only consider positive sentiments as anchors (lowered to 0.3 for weighted system)
         if (tagScoreVal > 0.3) {
-          // WEIGHTING LOGIC:
-          // Specific Identifiers (Character, Copyright, Artist) = 1.0 (Strong Anchor)
-          // Broad Descriptors (General, Meta) = 0.2 (Weak Anchor)
-          if (['character', 'copyright', 'artist'].includes(category)) {
+          if (['character', 'copyright', 'artist'].includes(resolvedCategory)) {
             familiarWeight += 1.0;
           } else {
-            familiarWeight += 0.2; // It takes 5 generic tags to equal 1 character
+            familiarWeight += 0.2;
           }
         }
       } else {
-        // Truly novel (zero engagement)
         novelCount++;
       }
     };
 
-    // Process all tag categories
+    // Process categorized tag strings
     TAG_CATEGORIES.forEach(category => {
       const tagString = post[`tag_string_${category}`] || '';
       if (tagString) {
-        tagString.split(' ').forEach(tag => {
-          if (!tag) return;
-
-          // SKIP NOISE in score calculation too - don't let common tags influence ranking
-          if (noiseTags.has(tag)) return;
-
-          tagCount++;
-          const tagScoreValue = this.tagScores[tag] || 0;
-
-          // Add to tag score calculation
-          if (this.tagScores[tag] !== undefined) {
-            tagScore += tagScoreValue;
-          }
-
-          // Process for discovery (filters noise, weights by category)
-          processTagForDiscovery(tag);
-        });
+        tagString.split(' ').forEach(tag => processTag(tag, category));
       }
     });
 
-    // Process general tags
+    // Process general tag_string (for uncategorized tags)
     const generalTags = post.tag_string || '';
     if (generalTags) {
       generalTags.split(' ').forEach(tag => {
-        if (!tag) return;
-
-        // SKIP NOISE in score calculation - don't let common tags influence ranking
-        if (noiseTags.has(tag)) return;
-
+        // Skip if already processed in a specific category
         if (!TAG_CATEGORIES.some(cat => post[`tag_string_${cat}`]?.includes(tag))) {
-          tagCount++;
-          const tagScoreValue = this.tagScores[tag] || 0;
-
-          // Add to tag score calculation
-          if (this.tagScores[tag] !== undefined) {
-            tagScore += tagScoreValue;
-          }
-
-          // Process for discovery (filters noise, weights by category)
-          processTagForDiscovery(tag);
+          processTag(tag, 'general');
         }
       });
     }
 
-    // Average tag score and add to total
-    if (tagCount > 0) {
-      score += (tagScore / tagCount) * 3.0; // Weight tag matching heavily
+    // Calculate weighted tag score from category aggregates
+    let weightedTagScore = 0;
+    let totalTagCount = 0;
+    for (const [category, data] of Object.entries(categoryScores)) {
+      if (data.count > 0) {
+        const multiplier = CATEGORY_MULTIPLIERS[category] || 0;
+        const avgCategoryScore = data.sum / data.count;
+        weightedTagScore += avgCategoryScore * multiplier * data.count;
+        totalTagCount += data.count;
+      }
+    }
+
+    // Normalize and add to total score
+    if (totalTagCount > 0) {
+      score += (weightedTagScore / totalTagCount) * 3.0;
     }
 
     // Discovery Bonus: Reward "Novelty in a Familiar Context"
@@ -734,16 +738,34 @@ class RecommendationSystem {
   getQueryableTags() {
     if (!this.tagScores) return [];
 
+    // ANTI-CONVERGENCE QUERYING
+    // Heavily penalize "general" category tags when generating search queries.
+    // This prevents the Explorer from fixating on generic terms like 'black_hair'
+    // or 'smile' just because they have high volume.
+    const QUERY_CATEGORY_WEIGHTS = {
+      character: 1.0,   // Full weight - specific characters are great search terms
+      copyright: 1.0,   // Full weight - specific series are great search terms
+      artist: 1.0,      // Full weight - specific artists are great search terms
+      general: 0.15,    // Heavy penalty - generic descriptors make poor search terms
+      meta: 0.0         // Exclude - technical tags are useless for discovery
+    };
+
     return Object.entries(this.tagScores)
       // Filter out tags with no score
       .filter(([tag, score]) => score > 0)
-      // Filter out meta tags
+      // Filter out meta tags entirely
       .filter(([tag]) => this.tagCategories[tag] !== 'meta')
       // Filter out avoided tags
       .filter(([tag]) => !this.avoidedTags.includes(tag))
       // Filter out explicit 'video' tag as it is handled by filetype filters
       .filter(([tag]) => tag !== 'video')
-      // Sort by score descending
+      // Apply category-based weighting for query prioritization
+      .map(([tag, score]) => {
+        const category = this.tagCategories?.[tag] || 'general';
+        const weight = QUERY_CATEGORY_WEIGHTS[category] ?? 0.15;
+        return [tag, score * weight];
+      })
+      // Sort by weighted score descending
       .sort((a, b) => b[1] - a[1])
       // Return just the tag strings
       .map(([tag]) => tag);
