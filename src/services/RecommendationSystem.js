@@ -808,93 +808,146 @@ class RecommendationSystem {
   }
 
   /**
-   * Generate 6 diverse search queries: 3 single tag, 3 duo tag
+   * Generate 5 diverse search queries using APRW (Anchor/Pivot/Reach/Wildcard) architecture.
+   * Each strategy uses weighted random selection within tier-based pools.
+   * 
+   * Structure:
+   * - Anchor (1 query):   Top tag from Tier 1 pool (ranks 1-10)
+   * - Pivot  (2 queries): Top tag + temporal modifier from Tier 1 pool (unique from Anchor)
+   * - Reach  (1 query):   Tag from Tier 2 pool (ranks 11-25)
+   * - Wildcard (1 query): Global trend query (order:rank or order:popular)
+   * 
    * @param {Array} selectedRatings - Array of rating values to include
    * @param {Array} whitelist - Optional whitelist to use as seed for fresh profiles
    * @returns {Array} - Array of query parameter objects
    */
   generateMultiStrategyQueries(selectedRatings = ['general'], whitelist = []) {
     const queries = [];
-    const topTagsWithScores = this.getQueryableTagsWithScores();
-    let topTags = topTagsWithScores.map(t => t.tag);
+    let topTagsWithScores = this.getQueryableTagsWithScores();
 
-    // If no user history (fresh profile), use whitelist tags as the "top terms"
-    if (topTags.length === 0 && whitelist && whitelist.length > 0) {
-      topTags = whitelist.slice(0, 5);
-      console.log("Using whitelist as seed for fresh profile queries:", topTags);
+    // If no user history (fresh profile), use whitelist tags as seed
+    if (topTagsWithScores.length === 0 && whitelist && whitelist.length > 0) {
+      // Convert whitelist to the expected format with synthetic scores
+      topTagsWithScores = whitelist.slice(0, 10).map((tag, index) => ({
+        tag,
+        score: 1.0 - (index * 0.05) // Descending scores for whitelist priority
+      }));
+      console.log("Using whitelist as seed for fresh profile queries:", whitelist.slice(0, 10));
     }
 
-    // Explicitly filter out 'video' tag
-    topTags = topTags.filter(t => t !== 'video');
+    // Filter out 'video' tag from all pools
+    topTagsWithScores = topTagsWithScores.filter(t => t.tag !== 'video');
 
     // ---------------------------------------------------------
-    // WEIGHTED RANDOM SELECTION (Roulette Wheel)
+    // DEFINE TIER-BASED POOLS
     // ---------------------------------------------------------
-    // A tag with score 10 has 10x higher chance than a score of 1.
-    // This ensures top preferences dominate but lower ones still get a chance.
-    const CANDIDATE_POOL_SIZE = 20;
-    const candidatePool = topTagsWithScores.slice(0, CANDIDATE_POOL_SIZE);
+    const TIER_1_END = 10;   // Anchor + Pivot pool: ranks 1-10
+    const TIER_2_START = 10; // Reach pool: ranks 11-25
+    const TIER_2_END = 25;
 
-    // Track used anchors to ensure UNIQUE ANCHORS across strategies
-    const usedAnchors = new Set();
+    const tier1Pool = topTagsWithScores.slice(0, TIER_1_END);
+    const tier2Pool = topTagsWithScores.slice(TIER_2_START, TIER_2_END);
 
-    // --- Strategy 1: Single Tag Queries (2 tags via weighted random) ---
-    const singleQueries = [];
+    // Track used tags to ensure uniqueness across all strategies
+    const usedTags = new Set();
+
+    console.log("=== APRW Query Generation ===");
+    console.log(`Tier 1 pool (${tier1Pool.length} tags):`, tier1Pool.map(t => t.tag).join(', '));
+    console.log(`Tier 2 pool (${tier2Pool.length} tags):`, tier2Pool.map(t => t.tag).join(', '));
+
+    // ---------------------------------------------------------
+    // ANCHOR (1 Query): Top tag from Tier 1 pool
+    // ---------------------------------------------------------
+    const anchorTag = this.weightedRandomSelect(tier1Pool, usedTags);
+    if (anchorTag && !this.exhaustedStrategies.has(anchorTag.tag)) {
+      queries.push({
+        tags: anchorTag.tag,
+        type: 'anchor',
+        intent: 'Core interest - highest affinity content'
+      });
+      usedTags.add(anchorTag.tag);
+      console.log(`[ANCHOR] "${anchorTag.tag}" (score: ${anchorTag.score.toFixed(2)})`);
+    }
+
+    // ---------------------------------------------------------
+    // PIVOT (2 Queries): Top tag + temporal modifier from Tier 1 pool
+    // ---------------------------------------------------------
+    // Pivot queries resurface old or random content from favorite interests
+    const pivotModifiers = [
+      { suffix: ' date:>1y', label: 'classic content (>1 year old)' },
+      { suffix: ' order:score', label: 'highest scored content' }
+    ];
+
     for (let i = 0; i < 2; i++) {
-      const selected = this.weightedRandomSelect(candidatePool, usedAnchors);
-      if (selected) {
-        singleQueries.push({ tags: selected.tag, type: 'single' });
-        usedAnchors.add(selected.tag);
-        console.log(`Single query ${i + 1}: "${selected.tag}" (score: ${selected.score.toFixed(2)})`);
-      }
-    }
+      const pivotTag = this.weightedRandomSelect(tier1Pool, usedTags);
+      if (pivotTag) {
+        const modifier = pivotModifiers[i % pivotModifiers.length];
+        const pivotQuery = pivotTag.tag + modifier.suffix;
 
-    // Fill with fallbacks if needed
-    if (singleQueries.length < 2) {
-      const fallbacks = ['order:score', 'order:popular', 'date:>1w', 'date:>1d', 'order:rank'];
-      for (const fb of fallbacks) {
-        if (singleQueries.length >= 2) break;
-        if (!this.exhaustedStrategies.has(fb) && !singleQueries.some(q => q.tags === fb)) {
-          singleQueries.push({ tags: fb, type: 'single' });
+        if (!this.exhaustedStrategies.has(pivotQuery)) {
+          queries.push({
+            tags: pivotQuery,
+            type: 'pivot',
+            intent: `Temporal exploration - ${modifier.label}`
+          });
+          usedTags.add(pivotTag.tag);
+          console.log(`[PIVOT ${i + 1}] "${pivotQuery}" (score: ${pivotTag.score.toFixed(2)}) - ${modifier.label}`);
         }
       }
     }
 
-    // --- Strategy 2: Duo Tag Combinations (2 pairs via weighted random) ---
-    const duoCombinations = [];
+    // ---------------------------------------------------------
+    // REACH (1 Query): Tag from Tier 2 pool (ranks 11-25)
+    // ---------------------------------------------------------
+    // Reach queries explore secondary interests to break filter bubbles
+    if (tier2Pool.length > 0) {
+      const reachTag = this.weightedRandomSelect(tier2Pool, usedTags);
+      if (reachTag && !this.exhaustedStrategies.has(reachTag.tag)) {
+        queries.push({
+          tags: reachTag.tag,
+          type: 'reach',
+          intent: 'Secondary interest - expanding horizons'
+        });
+        usedTags.add(reachTag.tag);
+        console.log(`[REACH] "${reachTag.tag}" (score: ${reachTag.score.toFixed(2)}) - from Tier 2`);
+      }
+    } else {
+      console.log("[REACH] Skipped - insufficient Tier 2 tags");
+    }
 
-    // Select 4 more tags for duo combinations (2 pairs)
-    for (let pair = 0; pair < 2; pair++) {
-      const tag1 = this.weightedRandomSelect(candidatePool, usedAnchors);
-      if (!tag1) break;
-      usedAnchors.add(tag1.tag);
+    // ---------------------------------------------------------
+    // WILDCARD (1 Query): Global trends
+    // ---------------------------------------------------------
+    // Wildcard queries expose users to globally popular content
+    const wildcardOptions = ['order:rank', 'order:popular', 'order:score'];
+    const wildcardQuery = wildcardOptions[Math.floor(Math.random() * wildcardOptions.length)];
 
-      const tag2 = this.weightedRandomSelect(candidatePool, usedAnchors);
-      if (!tag2) break;
-      usedAnchors.add(tag2.tag);
+    if (!this.exhaustedStrategies.has(wildcardQuery)) {
+      queries.push({
+        tags: wildcardQuery,
+        type: 'wildcard',
+        intent: 'Global discovery - trending content'
+      });
+      console.log(`[WILDCARD] "${wildcardQuery}" - global trends`);
+    }
 
-      const duoTag = `${tag1.tag} ${tag2.tag}`;
-      if (!this.exhaustedStrategies.has(duoTag)) {
-        duoCombinations.push(duoTag);
-        console.log(`Duo query ${pair + 1}: "${duoTag}" (scores: ${tag1.score.toFixed(2)}, ${tag2.score.toFixed(2)})`);
+    // ---------------------------------------------------------
+    // FALLBACK: Ensure we have at least some queries
+    // ---------------------------------------------------------
+    if (queries.length === 0) {
+      console.warn("[APRW] No queries generated, using fallback");
+      const fallbacks = ['order:score', 'order:popular', 'date:>1w'];
+      for (const fb of fallbacks) {
+        if (!this.exhaustedStrategies.has(fb)) {
+          queries.push({ tags: fb, type: 'fallback', intent: 'Emergency fallback' });
+          break;
+        }
       }
     }
 
-    // Add Single queries FIRST (more reliable)
-    for (const q of singleQueries) {
-      if (queries.length < 2) {
-        queries.push(q);
-      }
-    }
+    console.log(`=== APRW Generated ${queries.length} queries ===`);
 
-    // Then add Duo queries
-    for (const duoTag of duoCombinations) {
-      if (queries.length < 4) {
-        queries.push({ tags: duoTag, type: 'duo' });
-      }
-    }
-
-    // Ensure uniqueness
+    // Ensure uniqueness by query tags
     return queries.filter((query, index, self) =>
       self.findIndex(q => q.tags === query.tags) === index
     );
@@ -941,11 +994,28 @@ class RecommendationSystem {
     const scoredPosts = posts.map(post => {
       let score = this.scorePost(post);
 
-      // BONUS: Prioritize posts found via specific Duo queries.
-      // This helps break ties when "Common Tag" weighting relies on a generic tag that has 0 score.
-      // It ensures "discovery" pairs (e.g. "1girl scenery") win over just "1girl".
-      if (post._strategy === 'duo') {
-        score += 0.5; // Significant bump to surface diversity, but not overwhelming
+      // APRW STRATEGY BONUSES:
+      // Give slight bonuses to ensure diversity strategies surface in the feed
+      switch (post._strategy) {
+        case 'anchor':
+          // Anchor posts are core interests - no bonus needed, they score high naturally
+          break;
+        case 'pivot':
+          // Pivot posts explore temporal variations - slight bonus for nostalgia/classics
+          score += 0.3;
+          break;
+        case 'reach':
+          // Reach posts are secondary interests - bonus to ensure they appear
+          score += 0.5;
+          break;
+        case 'wildcard':
+          // Wildcard posts are global trends - bonus to guarantee serendipity
+          score += 0.4;
+          break;
+        case 'duo':
+          // Legacy duo support (deprecated but kept for backwards compatibility)
+          score += 0.5;
+          break;
       }
 
       return {
@@ -1164,14 +1234,12 @@ class RecommendationSystem {
                 clientFilters: clientFilterString, // The strict filters applied locally
                 order: sortOrder,
                 rating: ratingDebug,
-                filetype: filetypeDebug
+                filetype: filetypeDebug,
+                strategy: query.type || 'unknown',
+                intent: query.intent || 'N/A'
               };
 
-              post._strategy = query.type || 'single'; // Attach strategy type
-
-              if (post._debugMetadata) {
-                post._debugMetadata.strategy = query.type || 'single';
-              }
+              post._strategy = query.type || 'unknown'; // Attach strategy type (anchor/pivot/reach/wildcard)
 
               // Legacy support
               post._searchCriteria = apiTagsSent;
