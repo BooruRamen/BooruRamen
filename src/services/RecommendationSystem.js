@@ -4,7 +4,6 @@
  * based on interaction history and preferences.
  */
 
-import * as tf from '@tensorflow/tfjs';
 import StorageService from './StorageService';
 import BooruService from './BooruService';
 
