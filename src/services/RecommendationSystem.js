@@ -378,104 +378,108 @@ class RecommendationSystem {
     // Base score for all posts
     score += 0.1;
 
-    // Score based on tags
-    let tagScore = 0;
-    let tagCount = 0;
+    // ---------------------------------------------------------
+    // CATEGORY-BASED SCORING
+    // ---------------------------------------------------------
+    // Aggregate scores by category with different multipliers:
+    // - Character: 2.5x (strongest signal - user likes specific characters)
+    // - Copyright: 2.0x (strong signal - user likes specific series)
+    // - Artist: 2.0x (strong signal - user likes specific art styles)
+    // - General: 0.4x (weak signal - generic descriptors shouldn't dominate)
+    // - Meta: 0.0x (ignored - technical tags like 'highres')
+    const CATEGORY_MULTIPLIERS = {
+      character: 2.5,
+      copyright: 2.0,
+      artist: 2.0,
+      general: 0.4,
+      meta: 0.0
+    };
+
+    // Accumulators for category-based scoring
+    const categoryScores = {
+      character: { sum: 0, count: 0 },
+      copyright: { sum: 0, count: 0 },
+      artist: { sum: 0, count: 0 },
+      general: { sum: 0, count: 0 },
+      meta: { sum: 0, count: 0 }
+    };
 
     // ---------------------------------------------------------
     // REFINED: Category-Weighted Discovery Logic
     // ---------------------------------------------------------
-    // Uses ENGAGEMENT + CATEGORY WEIGHTING to determine anchor quality
-    // Character/Copyright/Artist = Strong Anchor (1.0)
-    // General/Meta = Weak Anchor (0.2) - need 5 to equal one strong anchor
     let familiarWeight = 0;  // Weighted sum of familiar anchors
     let novelCount = 0;      // Truly new tags (zero engagement), excluding noise
 
-    // Use avoidedTags (COMMON_TAGS) to filter noise - these shouldn't count for discovery
+    // Use avoidedTags (COMMON_TAGS) to filter noise
     const noiseTags = new Set(this.avoidedTags || []);
 
-    // Helper to process a tag for discovery bonus (excludes noise, weights by category)
-    const processTagForDiscovery = (tag) => {
+    // Helper to process a tag for both scoring and discovery
+    const processTag = (tag, category) => {
       if (!tag) return;
 
-      // SKIP NOISE: Common tags don't count for novelty or familiarity
+      // SKIP NOISE: Common tags don't count
       if (noiseTags.has(tag)) return;
 
-      const engagement = this.tagEngagement?.[tag] || 0;
       const tagScoreVal = this.tagScores?.[tag] || 0;
+      const engagement = this.tagEngagement?.[tag] || 0;
 
-      // Retrieve category. Fallback to 'general' if unknown.
-      const category = this.tagCategories?.[tag] || 'general';
+      // Resolve category (use stored if available, else passed, else 'general')
+      const resolvedCategory = this.tagCategories?.[tag] || category || 'general';
 
+      // Add to category-specific accumulator
+      if (categoryScores[resolvedCategory]) {
+        categoryScores[resolvedCategory].sum += tagScoreVal;
+        categoryScores[resolvedCategory].count++;
+      }
+
+      // Discovery logic: track familiar anchors and novel tags
       if (engagement > 0) {
-        // Only consider positive sentiments as anchors (lowered to 0.3 for weighted system)
         if (tagScoreVal > 0.3) {
-          // WEIGHTING LOGIC:
-          // Specific Identifiers (Character, Copyright, Artist) = 1.0 (Strong Anchor)
-          // Broad Descriptors (General, Meta) = 0.2 (Weak Anchor)
-          if (['character', 'copyright', 'artist'].includes(category)) {
+          if (['character', 'copyright', 'artist'].includes(resolvedCategory)) {
             familiarWeight += 1.0;
           } else {
-            familiarWeight += 0.2; // It takes 5 generic tags to equal 1 character
+            familiarWeight += 0.2;
           }
         }
       } else {
-        // Truly novel (zero engagement)
         novelCount++;
       }
     };
 
-    // Process all tag categories
+    // Process categorized tag strings
     TAG_CATEGORIES.forEach(category => {
       const tagString = post[`tag_string_${category}`] || '';
       if (tagString) {
-        tagString.split(' ').forEach(tag => {
-          if (!tag) return;
-
-          // SKIP NOISE in score calculation too - don't let common tags influence ranking
-          if (noiseTags.has(tag)) return;
-
-          tagCount++;
-          const tagScoreValue = this.tagScores[tag] || 0;
-
-          // Add to tag score calculation
-          if (this.tagScores[tag] !== undefined) {
-            tagScore += tagScoreValue;
-          }
-
-          // Process for discovery (filters noise, weights by category)
-          processTagForDiscovery(tag);
-        });
+        tagString.split(' ').forEach(tag => processTag(tag, category));
       }
     });
 
-    // Process general tags
+    // Process general tag_string (for uncategorized tags)
     const generalTags = post.tag_string || '';
     if (generalTags) {
       generalTags.split(' ').forEach(tag => {
-        if (!tag) return;
-
-        // SKIP NOISE in score calculation - don't let common tags influence ranking
-        if (noiseTags.has(tag)) return;
-
+        // Skip if already processed in a specific category
         if (!TAG_CATEGORIES.some(cat => post[`tag_string_${cat}`]?.includes(tag))) {
-          tagCount++;
-          const tagScoreValue = this.tagScores[tag] || 0;
-
-          // Add to tag score calculation
-          if (this.tagScores[tag] !== undefined) {
-            tagScore += tagScoreValue;
-          }
-
-          // Process for discovery (filters noise, weights by category)
-          processTagForDiscovery(tag);
+          processTag(tag, 'general');
         }
       });
     }
 
-    // Average tag score and add to total
-    if (tagCount > 0) {
-      score += (tagScore / tagCount) * 3.0; // Weight tag matching heavily
+    // Calculate weighted tag score from category aggregates
+    let weightedTagScore = 0;
+    let totalTagCount = 0;
+    for (const [category, data] of Object.entries(categoryScores)) {
+      if (data.count > 0) {
+        const multiplier = CATEGORY_MULTIPLIERS[category] || 0;
+        const avgCategoryScore = data.sum / data.count;
+        weightedTagScore += avgCategoryScore * multiplier * data.count;
+        totalTagCount += data.count;
+      }
+    }
+
+    // Normalize and add to total score
+    if (totalTagCount > 0) {
+      score += (weightedTagScore / totalTagCount) * 3.0;
     }
 
     // Discovery Bonus: Reward "Novelty in a Familiar Context"
@@ -732,21 +736,76 @@ class RecommendationSystem {
    * (Excludes common tags and meta tags)
    */
   getQueryableTags() {
+    return this.getQueryableTagsWithScores().map(item => item.tag);
+  }
+
+  /**
+   * Get tags with their weighted scores for probabilistic selection
+   * Returns array of { tag, score } sorted by score descending
+   */
+  getQueryableTagsWithScores() {
     if (!this.tagScores) return [];
+
+    // ANTI-CONVERGENCE QUERYING with RELAXED GENERAL PENALTY
+    // Penalize "general" category tags when generating search queries,
+    // but not too harshly - broad interests like 'cyberpunk' should still surface.
+    const QUERY_CATEGORY_WEIGHTS = {
+      character: 1.0,   // Full weight - specific characters are great search terms
+      copyright: 1.0,   // Full weight - specific series are great search terms
+      artist: 1.0,      // Full weight - specific artists are great search terms
+      general: 0.5,     // Relaxed penalty - allows broad interests to compete
+      meta: 0.0         // Exclude - technical tags are useless for discovery
+    };
 
     return Object.entries(this.tagScores)
       // Filter out tags with no score
       .filter(([tag, score]) => score > 0)
-      // Filter out meta tags
+      // Filter out meta tags entirely
       .filter(([tag]) => this.tagCategories[tag] !== 'meta')
       // Filter out avoided tags
       .filter(([tag]) => !this.avoidedTags.includes(tag))
       // Filter out explicit 'video' tag as it is handled by filetype filters
       .filter(([tag]) => tag !== 'video')
-      // Sort by score descending
-      .sort((a, b) => b[1] - a[1])
-      // Return just the tag strings
-      .map(([tag]) => tag);
+      // Apply category-based weighting for query prioritization
+      .map(([tag, score]) => {
+        const category = this.tagCategories?.[tag] || 'general';
+        const weight = QUERY_CATEGORY_WEIGHTS[category] ?? 0.15;
+        return { tag, score: score * weight };
+      })
+      // Sort by weighted score descending
+      .sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Select a tag using weighted random selection (roulette wheel)
+   * @param {Array} candidates - Array of { tag, score } objects
+   * @param {Set} exclude - Set of tags to exclude from selection
+   * @returns {Object|null} - Selected { tag, score } or null if none available
+   */
+  weightedRandomSelect(candidates, exclude = new Set()) {
+    // Filter out excluded and exhausted tags
+    const available = candidates.filter(c =>
+      !exclude.has(c.tag) && !this.exhaustedStrategies.has(c.tag)
+    );
+
+    if (available.length === 0) return null;
+
+    // Calculate total weight
+    const totalWeight = available.reduce((sum, c) => sum + Math.max(0.01, c.score), 0);
+
+    // Roll random number
+    let random = Math.random() * totalWeight;
+
+    // Find the selected tag
+    for (const candidate of available) {
+      random -= Math.max(0.01, candidate.score);
+      if (random <= 0) {
+        return candidate;
+      }
+    }
+
+    // Fallback to last available (shouldn't happen, but safety)
+    return available[available.length - 1];
   }
 
   /**
@@ -757,38 +816,41 @@ class RecommendationSystem {
    */
   generateMultiStrategyQueries(selectedRatings = ['general'], whitelist = []) {
     const queries = [];
-    let topTags = this.getQueryableTags();
+    const topTagsWithScores = this.getQueryableTagsWithScores();
+    let topTags = topTagsWithScores.map(t => t.tag);
 
     // If no user history (fresh profile), use whitelist tags as the "top terms"
     if (topTags.length === 0 && whitelist && whitelist.length > 0) {
-      // Use up to 3 whitelist tags as seeds.
-      // We do NOT filter out common tags here because if a user explicitly whitelists "1girl", they WANT "1girl".
       topTags = whitelist.slice(0, 5);
       console.log("Using whitelist as seed for fresh profile queries:", topTags);
     }
 
-    // Explicitly filter out 'video' tag from all strategies as per user request
+    // Explicitly filter out 'video' tag
     topTags = topTags.filter(t => t !== 'video');
 
-    // We need at least some tags to work with different strategies
-    // If not enough tags, we'll fill with fallbacks
+    // ---------------------------------------------------------
+    // WEIGHTED RANDOM SELECTION (Roulette Wheel)
+    // ---------------------------------------------------------
+    // A tag with score 10 has 10x higher chance than a score of 1.
+    // This ensures top preferences dominate but lower ones still get a chance.
+    const CANDIDATE_POOL_SIZE = 20;
+    const candidatePool = topTagsWithScores.slice(0, CANDIDATE_POOL_SIZE);
 
-    // --- Filter out exhausted strategies ---
-    // If a specific query string has returned 0 posts previously in this session, skip it.
+    // Track used anchors to ensure UNIQUE ANCHORS across strategies
+    const usedAnchors = new Set();
 
-    // --- Strategy 1: Top Single Tags ---
+    // --- Strategy 1: Single Tag Queries (2 tags via weighted random) ---
     const singleQueries = [];
-    let tagIndex = 0;
-    while (singleQueries.length < 2 && tagIndex < topTags.length) {
-      const tag = topTags[tagIndex];
-      // Check if exhausted
-      if (!this.exhaustedStrategies.has(tag)) {
-        singleQueries.push({ tags: tag, type: 'single' });
+    for (let i = 0; i < 2; i++) {
+      const selected = this.weightedRandomSelect(candidatePool, usedAnchors);
+      if (selected) {
+        singleQueries.push({ tags: selected.tag, type: 'single' });
+        usedAnchors.add(selected.tag);
+        console.log(`Single query ${i + 1}: "${selected.tag}" (score: ${selected.score.toFixed(2)})`);
       }
-      tagIndex++;
     }
 
-    // Fill with fallbacks if needed (checking exhaustion too)
+    // Fill with fallbacks if needed
     if (singleQueries.length < 2) {
       const fallbacks = ['order:score', 'order:popular', 'date:>1w', 'date:>1d', 'order:rank'];
       for (const fb of fallbacks) {
@@ -799,42 +861,36 @@ class RecommendationSystem {
       }
     }
 
-    // --- Strategy 2: Top Duo Tag Combinations ---
-    // Note: Duo combinations often return no results on Gelbooru with rating:safe
-    // So we prioritize single queries which include sort:score fallbacks
+    // --- Strategy 2: Duo Tag Combinations (2 pairs via weighted random) ---
     const duoCombinations = [];
 
-    // Use available non-exhausted tags for pairing
-    const availableTags = topTags.filter(t => !this.exhaustedStrategies.has(t));
+    // Select 4 more tags for duo combinations (2 pairs)
+    for (let pair = 0; pair < 2; pair++) {
+      const tag1 = this.weightedRandomSelect(candidatePool, usedAnchors);
+      if (!tag1) break;
+      usedAnchors.add(tag1.tag);
 
-    if (availableTags.length >= 2) {
-      // Duo 1: Best two available
-      duoCombinations.push(`${availableTags[0]} ${availableTags[1]}`);
-      // Duo 2: Best + third best (if available)
-      if (availableTags.length >= 3) {
-        duoCombinations.push(`${availableTags[0]} ${availableTags[2]}`);
-      }
-    } else if (availableTags.length === 1 && topTags.length > 1) {
-      // Pair the single available tag with other user tags
-      for (let k = 1; k < Math.min(4, topTags.length); k++) {
-        if (!this.avoidedTags.includes(topTags[k])) {
-          duoCombinations.push(`${availableTags[0]} ${topTags[k]}`);
-        }
+      const tag2 = this.weightedRandomSelect(candidatePool, usedAnchors);
+      if (!tag2) break;
+      usedAnchors.add(tag2.tag);
+
+      const duoTag = `${tag1.tag} ${tag2.tag}`;
+      if (!this.exhaustedStrategies.has(duoTag)) {
+        duoCombinations.push(duoTag);
+        console.log(`Duo query ${pair + 1}: "${duoTag}" (scores: ${tag1.score.toFixed(2)}, ${tag2.score.toFixed(2)})`);
       }
     }
-    // For fresh profiles with no user tags, we rely on single queries with order filters
-    // (added in singleQueries fallbacks above) instead of duo combinations
 
-    // Add Single queries FIRST (they work more reliably on Gelbooru)
+    // Add Single queries FIRST (more reliable)
     for (const q of singleQueries) {
       if (queries.length < 2) {
         queries.push(q);
       }
     }
 
-    // Then add Duo queries (less reliable but more diverse)
+    // Then add Duo queries
     for (const duoTag of duoCombinations) {
-      if (queries.length < 4 && !this.exhaustedStrategies.has(duoTag)) {
+      if (queries.length < 4) {
         queries.push({ tags: duoTag, type: 'duo' });
       }
     }
@@ -1247,53 +1303,63 @@ class RecommendationSystem {
         });
       }
 
-      // Rank the combined posts using our recommendation system
-      const rankedPosts = this.rankPosts(uniquePosts);
+      // PROBABILISTIC FEED INTERLEAVING
+      // Separates posts into Ranked (safe) and Discovery (exploratory) buckets
+      // then interleaves them to ensure content diversity.
 
-      // ANTI-CLUMPING DISTRIBUTOR
-      // Preserves score ranking but prevents long chains (streaks) of the same strategy.
+      const DISCOVERY_INTERVAL = 4; // Slot a discovery post every Nth position
+
+      // Score each post
+      const scoredPosts = uniquePosts.map(post => ({
+        post,
+        score: this.scorePost(post)
+      }));
+
+      // Sort by score descending to determine percentiles
+      scoredPosts.sort((a, b) => b.score - a.score);
+
+      // Use PERCENTILE-BASED SPLITTING instead of absolute thresholds
+      // This works regardless of the actual score scale (which can vary from 0.5 to 6+)
+      const totalPosts = scoredPosts.length;
+      const rankedCutoff = Math.floor(totalPosts * 0.6);  // Top 60% = Ranked
+      // Bottom 40% = Discovery (lower-scored but not rejected)
+
+      // Bucket 1: RANKED (Top 60%) - High-confidence content you'll probably like
+      const rankedBucket = scoredPosts
+        .slice(0, rankedCutoff)
+        .map(sp => sp.post);
+
+      // Bucket 2: DISCOVERY (Bottom 40%) - Lower-scored exploratory content
+      const discoveryBucket = scoredPosts
+        .slice(rankedCutoff)
+        .map(sp => sp.post);
+
+      console.log(`Feed buckets: ${rankedBucket.length} ranked (top 60%), ${discoveryBucket.length} discovery (bottom 40%)`);
+      if (scoredPosts.length > 0) {
+        console.log(`Score range: ${scoredPosts[scoredPosts.length - 1].score.toFixed(2)} - ${scoredPosts[0].score.toFixed(2)}`);
+      }
+
+      // Build interleaved feed
       const finalFeed = [];
-      let streakType = null;
-      let streakCount = 0;
-      const MAX_STREAK = 3;
+      let rankedIndex = 0;
+      let discoveryIndex = 0;
 
-      const candidatePool = [...rankedPosts];
-
-      while (candidatePool.length > 0) {
-        const bestPost = candidatePool[0];
-        const bestType = bestPost._strategy || 'single';
-
-        // Check if adding this would violate streak limit
-        if (streakType === bestType && streakCount >= MAX_STREAK) {
-          // Streak too long! Search for first post of DIFFERENT type
-          const rescueIndex = candidatePool.findIndex(p => (p._strategy || 'single') !== streakType);
-
-          if (rescueIndex !== -1) {
-            // Found one! Pull it up.
-            const rescuePost = candidatePool[rescueIndex];
-            finalFeed.push(rescuePost);
-            candidatePool.splice(rescueIndex, 1);
-
-            // Reset streak
-            streakType = rescuePost._strategy || 'single';
-            streakCount = 1;
-          } else {
-            // No alternative found. Must accept the clump.
-            finalFeed.push(bestPost);
-            candidatePool.shift();
-            streakCount++;
-          }
-        } else {
-          // No streak violation, take the best post (score priority)
-          finalFeed.push(bestPost);
-          candidatePool.shift();
-
-          if (streakType === bestType) {
-            streakCount++;
-          } else {
-            streakType = bestType;
-            streakCount = 1;
-          }
+      for (let position = 0; finalFeed.length < Math.min(maxTotal, uniquePosts.length); position++) {
+        // Every Nth position (e.g., 4th, 8th, 12th...), slot a discovery post
+        if ((position + 1) % DISCOVERY_INTERVAL === 0 && discoveryIndex < discoveryBucket.length) {
+          finalFeed.push(discoveryBucket[discoveryIndex++]);
+        }
+        // Otherwise, try ranked posts first
+        else if (rankedIndex < rankedBucket.length) {
+          finalFeed.push(rankedBucket[rankedIndex++]);
+        }
+        // Fallback to discovery if ranked is exhausted
+        else if (discoveryIndex < discoveryBucket.length) {
+          finalFeed.push(discoveryBucket[discoveryIndex++]);
+        }
+        // All buckets exhausted
+        else {
+          break;
         }
       }
 

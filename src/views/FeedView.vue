@@ -66,55 +66,6 @@
          <button @click="fetchPosts(false)" class="mt-4 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm text-white">Try Again</button>
       </div>
     </div>
-    
-    <!-- Debug Overlay -->
-    <div 
-      v-if="debugMode && posts[currentPostIndex]" 
-      class="absolute top-0 left-1/2 transform -translate-x-1/2 mt-4 p-3 bg-black bg-opacity-75 text-xs text-white z-40 max-w-xs pointer-events-none font-mono rounded shadow-lg"
-    >
-      <h3 class="font-bold mb-1 text-pink-400">Recommendation Debug</h3>
-      
-      <div class="mb-2 border-b border-gray-700 pb-2">
-        <!-- Show Actual Query (from adapter) if available, otherwise fallback -->
-        <div v-if="posts[currentPostIndex]._actualQuery" class="mt-1">
-          <p class="text-gray-400 text-xs tracking-wide">Query:</p>
-          <p class="text-xs break-words font-mono text-cyan-300 bg-gray-900 p-1 rounded mt-0.5">{{ posts[currentPostIndex]._actualQuery }}</p>
-        </div>
-        <div v-else-if="posts[currentPostIndex]._debugMetadata?.apiQuery || posts[currentPostIndex]._searchCriteria" class="mt-1">
-          <p class="text-gray-400 text-xs uppercase tracking-wide">Internal Query:</p>
-          <p class="text-xs break-all font-mono text-gray-300 bg-gray-900 p-1 rounded mt-0.5">{{ posts[currentPostIndex]._debugMetadata?.apiQuery || posts[currentPostIndex]._searchCriteria }}</p>
-        </div>
-        <p><span class="text-gray-400">Strategy:</span> {{ posts[currentPostIndex]._strategy || posts[currentPostIndex]._debugMetadata?.strategy || 'Default' }}</p>
-        <div v-if="posts[currentPostIndex]._debugMetadata?.clientFilters && posts[currentPostIndex]._debugMetadata?.clientFilters !== 'None'">
-          <p><span class="text-red-400">Filters:</span> {{ posts[currentPostIndex]._debugMetadata.clientFilters }}</p>
-        </div>
-      </div>
-
-      <div>
-        <p><span class="text-gray-400">Rec. Score:</span> {{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).totalScore?.toFixed(2) }}</p>
-        
-        <div v-if="recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).contributingTags?.length > 0" class="mt-2">
-          <p class="font-semibold text-gray-300">Top Influencing Tags:</p>
-          <ul class="list-none pl-0 mt-1 space-y-0.5">
-            <li v-for="tag in recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).contributingTags" :key="tag.tag" class="flex justify-between">
-              <span class="truncate pr-2" :class="tag.score > 0 ? 'text-green-400' : 'text-red-400'">{{ tag.tag }}</span>
-              <span>{{ (tag.score).toFixed(2) }}</span>
-            </li>
-          </ul>
-        </div>
-        
-        <div v-if="recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).ratingScore" class="mt-1 text-gray-400">
-           Rating Bonus: +{{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).ratingScore.toFixed(2) }}
-        </div>
-        <div v-if="recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).mediaScore" class="text-gray-400">
-           Media Bonus: +{{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).mediaScore.toFixed(2) }}
-        </div>
-        <div v-if="recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).discoveryBonus" class="text-purple-400 mt-1">
-           Discovery Bonus: +{{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).discoveryBonus.toFixed(2) }}
-           <span class="text-gray-500 text-xs block">({{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).familiarWeight?.toFixed(1) }} anchor weight, {{ recommendationSystem.getPostScoreDetails(posts[currentPostIndex]).novelTagCount }} novel tags)</span>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 

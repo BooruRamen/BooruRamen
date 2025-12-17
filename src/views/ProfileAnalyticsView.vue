@@ -70,8 +70,11 @@
             <span>🏆</span> Top Tags
           </h3>
           <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-            <div v-for="(score, tag) in recommendationTagScores" :key="tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
-              <span class="text-gray-200 truncate">{{ tag }}</span>
+            <div v-for="(score, tag, index) in recommendationTagScores" :key="tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <div class="flex items-center gap-2 truncate">
+                <span class="text-gray-500 text-xs font-mono w-6">{{ index + 1 }}</span>
+                <span class="text-gray-200 truncate">{{ tag }}</span>
+              </div>
               <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-emerald-400">{{ formatScore(score) }}</span>
             </div>
             <div v-if="Object.keys(recommendationTagScores).length === 0" class="text-center text-gray-500 mt-10">
@@ -115,8 +118,11 @@
             <span>�</span> Most Liked Tags
           </h3>
           <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-            <div v-for="(count, tag) in topTags" :key="tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
-              <span class="text-gray-200 truncate">{{ tag }}</span>
+            <div v-for="(count, tag, index) in topTags" :key="tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <div class="flex items-center gap-2 truncate">
+                <span class="text-gray-500 text-xs font-mono w-6">{{ index + 1 }}</span>
+                <span class="text-gray-200 truncate">{{ tag }}</span>
+              </div>
               <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-pink-400">{{ count }}</span>
             </div>
             <div v-if="Object.keys(topTags).length === 0" class="text-center text-gray-500 mt-10">
@@ -131,8 +137,11 @@
             <span>🔗</span> Top Tag Pairs
           </h3>
           <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-             <div v-for="(count, pair) in topTagPairs" :key="pair" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
-              <span class="text-gray-200 text-sm truncate max-w-[70%]">{{ pair }}</span>
+             <div v-for="(count, pair, index) in topTagPairs" :key="pair" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <div class="flex items-center gap-2 truncate max-w-[70%]">
+                <span class="text-gray-500 text-xs font-mono w-6">{{ index + 1 }}</span>
+                <span class="text-gray-200 text-sm truncate">{{ pair }}</span>
+              </div>
               <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-blue-400">{{ count }}</span>
             </div>
             <div v-if="Object.keys(topTagPairs).length === 0" class="text-center text-gray-500 mt-10">
@@ -158,10 +167,13 @@
              </div>
           </div>
           <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-             <div v-for="item in likeRates" :key="item.tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
-              <div class="flex flex-col truncate max-w-[70%]">
-                 <span class="text-gray-200 font-medium truncate">{{ item.tag }}</span>
-                 <span class="text-xs text-gray-500">{{ item.likes }}/{{ item.views }} viewed</span>
+             <div v-for="(item, index) in likeRates" :key="item.tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <div class="flex items-center gap-2 truncate max-w-[70%]">
+                <span class="text-gray-500 text-xs font-mono w-6">{{ index + 1 }}</span>
+                <div class="flex flex-col truncate">
+                   <span class="text-gray-200 font-medium truncate">{{ item.tag }}</span>
+                   <span class="text-xs text-gray-500">{{ item.likes }}/{{ item.views }} viewed</span>
+                </div>
               </div>
               <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-red-500 font-bold">{{ item.rate }}%</span>
             </div>
@@ -188,10 +200,13 @@
              </div>
           </div>
           <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-             <div v-for="item in favoriteRates" :key="item.tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
-              <div class="flex flex-col truncate max-w-[70%]">
-                 <span class="text-gray-200 font-medium truncate">{{ item.tag }}</span>
-                 <span class="text-xs text-gray-500">{{ item.favorites }}/{{ item.views }} viewed</span>
+             <div v-for="(item, index) in favoriteRates" :key="item.tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <div class="flex items-center gap-2 truncate max-w-[70%]">
+                <span class="text-gray-500 text-xs font-mono w-6">{{ index + 1 }}</span>
+                <div class="flex flex-col truncate">
+                   <span class="text-gray-200 font-medium truncate">{{ item.tag }}</span>
+                   <span class="text-xs text-gray-500">{{ item.favorites }}/{{ item.views }} viewed</span>
+                </div>
               </div>
               <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-yellow-500 font-bold">{{ item.rate }}%</span>
             </div>
@@ -218,10 +233,13 @@
              </div>
           </div>
           <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-             <div v-for="item in dislikeRates" :key="item.tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
-              <div class="flex flex-col truncate max-w-[70%]">
-                 <span class="text-gray-200 font-medium truncate">{{ item.tag }}</span>
-                 <span class="text-xs text-gray-500">{{ item.dislikes }}/{{ item.views }} viewed</span>
+             <div v-for="(item, index) in dislikeRates" :key="item.tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <div class="flex items-center gap-2 truncate max-w-[70%]">
+                <span class="text-gray-500 text-xs font-mono w-6">{{ index + 1 }}</span>
+                <div class="flex flex-col truncate">
+                   <span class="text-gray-200 font-medium truncate">{{ item.tag }}</span>
+                   <span class="text-xs text-gray-500">{{ item.dislikes }}/{{ item.views }} viewed</span>
+                </div>
               </div>
               <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-gray-400 font-bold">{{ item.rate }}%</span>
             </div>
@@ -237,8 +255,11 @@
             <span>👎</span> Most Disliked Tags
           </h3>
           <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-             <div v-for="(count, tag) in topDislikedTags" :key="tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
-              <span class="text-gray-200 truncate">{{ tag }}</span>
+             <div v-for="(count, tag, index) in topDislikedTags" :key="tag" class="flex justify-between items-center p-2 bg-gray-700 rounded hover:bg-gray-600 transition">
+              <div class="flex items-center gap-2 truncate">
+                <span class="text-gray-500 text-xs font-mono w-6">{{ index + 1 }}</span>
+                <span class="text-gray-200 truncate">{{ tag }}</span>
+              </div>
               <span class="bg-gray-900 px-2 py-1 rounded text-xs font-mono text-gray-400">{{ count }}</span>
             </div>
             <div v-if="Object.keys(topDislikedTags).length === 0" class="text-center text-gray-500 mt-10">
@@ -425,8 +446,8 @@ export default {
       return s.charAt(0).toUpperCase() + s.slice(1);
     },
     formatScore(score) {
-      // Format recommendation score as percentage-like display
-      return (score * 100).toFixed(0) + '%';
+      // Display raw recommendation score (not percentage - that was misleading)
+      return score.toFixed(2);
     },
     getPieColor(i) {
         const colors = [
