@@ -97,11 +97,12 @@ export default {
       // Local tracking for video elements to interactions
       videoElements: {}, 
       hasMorePosts: true,
+      isProgrammaticVolumeChange: false, // Flag to ignore volumechange events during programmatic updates
     }
   },
   computed: {
     ...mapState(useSettingsStore, ['autoScroll', 'autoScrollSeconds', 'disableScrollAnimation', 'debugMode']),
-    ...mapState(usePlayerStore, ['volume', 'muted']),
+    ...mapState(usePlayerStore, ['volume', 'muted', 'defaultMuted']),
     
     // Alias to match template if needed, or just updated template to use 'muted'
     // The template uses 'isMuted' prop, so we alias it or change template.
@@ -386,8 +387,9 @@ export default {
         if (!this.videoElements[key] || this.videoElements[key] !== el) {
             this.videoElements[key] = el;
             el.volume = this.volume;
-            // Start muted - IntersectionObserver will apply user pref when visible
-            el.muted = true;
+            // Start muted based on defaultMuted setting - IntersectionObserver will apply user pref when visible
+            el.muted = this.defaultMuted || true; // Default to muted for autoplay compliance
+            el.currentTime = 0; // Reset progress to prevent carryover
         }
       }
     },
@@ -434,6 +436,9 @@ export default {
       }
     },
     onVideoVolumeChange(event, post) {
+      // Ignore programmatic volume changes (from IntersectionObserver, drag handlers)
+      if (this.isProgrammaticVolumeChange) return;
+      
       // Only emit volume changes from the CURRENT video
       // This prevents non-visible videos (muted by IntersectionObserver) from overwriting user preference
       if (this.posts[this.currentPostIndex] && this.getCompositeKey(this.posts[this.currentPostIndex]) !== this.getCompositeKey(post)) return;
@@ -473,10 +478,21 @@ export default {
           const video = entry.target.querySelector('video');
           if (entry.isIntersecting) {
             if (video) {
+              // Set flag to prevent volumechange event from overwriting store
+              this.isProgrammaticVolumeChange = true;
+              
+              // Reset video progress to start when becoming visible
+              video.currentTime = 0;
+              
               // Apply user's volume and mute preferences when video becomes visible
               video.volume = this.volume;
               // If global mute is off, but browser blocked autoplay, we might need to handle it.
-              video.muted = this.isMuted;
+              // Respect defaultMuted if user hasn't explicitly set muted preference
+              video.muted = this.defaultMuted || this.isMuted;
+              
+              // Clear flag after a short delay to allow volumechange event to pass
+              setTimeout(() => { this.isProgrammaticVolumeChange = false; }, 50);
+              
               video.play().catch(e => {
                 // If autoplay fails, try again with muted=true
                 if (e.name === 'NotAllowedError') {
@@ -490,10 +506,13 @@ export default {
           } else {
             if (video) {
               video.pause();
+              // Set flag before muting to prevent event feedback
+              this.isProgrammaticVolumeChange = true;
               // Only mute if we aren't already muted (reduce spam)
               if (!video.muted) {
                   video.muted = true; // Always mute non-visible videos
               }
+              setTimeout(() => { this.isProgrammaticVolumeChange = false; }, 50);
             }
           }
         });

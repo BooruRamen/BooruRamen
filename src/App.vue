@@ -730,7 +730,8 @@ export default {
         setPlayerVolume: 'setVolume',
         setPlayerMuted: 'setMuted',
         setPlayerPlaying: 'setPlaying',
-        initializePlayer: 'initialize'
+        initializePlayer: 'initialize',
+        savePlayerPreferences: 'savePreferences'
     }),
     ...mapActions(useInteractionsStore, {
         logInteraction: 'logInteraction',
@@ -949,8 +950,11 @@ export default {
         // Update local state from event, relying on store writable computing to update store via setters
         if (state.isPlaying !== undefined) this.isPlaying = state.isPlaying;
         if (state.progress !== undefined) this.videoProgress = state.progress;
-        if (state.volume !== undefined) this.volume = state.volume;
-        if (state.muted !== undefined) this.muted = state.muted;
+        // Ignore volume/muted changes during drag to prevent race condition
+        if (!this.isVolumeDragging) {
+            if (state.volume !== undefined) this.volume = state.volume;
+            if (state.muted !== undefined) this.muted = state.muted;
+        }
     },
     seekVideo(e) {
         if (!this.currentVideoElement) return;
@@ -1013,7 +1017,7 @@ export default {
          this.isVolumeDragging = false;
          document.removeEventListener('mousemove', this.handleVolumeDrag);
          document.removeEventListener('mouseup', this.stopVolumeDrag);
-         this.saveSettings(); 
+         this.savePlayerPreferences(); // Save volume to player store
     },
     changeVolumeVertical(e) {
         const rect = e.target.getBoundingClientRect();
@@ -1027,13 +1031,14 @@ export default {
             this.currentVideoElement.volume = this.volume;
             if (this.volume > 0) this.currentVideoElement.muted = false;
         }
-        this.saveSettings();
+        this.savePlayerPreferences(); // Save volume to player store
     },
     toggleMute() {
         this.muted = !this.muted; // Update store
         if (this.currentVideoElement) {
             this.currentVideoElement.muted = this.muted;
         }
+        this.savePlayerPreferences(); // Save mute state to player store
     },
 
     updateRecommendationStatus() {

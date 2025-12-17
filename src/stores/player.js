@@ -3,8 +3,9 @@ import StorageService from '../services/StorageService'
 
 export const usePlayerStore = defineStore('player', {
     state: () => ({
-        volume: 1, // Default full volume
+        volume: 0.5, // Default 50% volume
         muted: false,
+        defaultMuted: false, // Whether videos should start muted by default
         isPlaying: true,
         initialized: false
     }),
@@ -16,6 +17,7 @@ export const usePlayerStore = defineStore('player', {
             const prefs = await StorageService.getPreferences()
             if (prefs.volume !== undefined) this.volume = prefs.volume
             if (prefs.muted !== undefined) this.muted = prefs.muted
+            if (prefs.defaultMuted !== undefined) this.defaultMuted = prefs.defaultMuted
 
             this.initialized = true
         },
@@ -40,6 +42,11 @@ export const usePlayerStore = defineStore('player', {
             this.savePreferences()
         },
 
+        setDefaultMuted(value) {
+            this.defaultMuted = value
+            this.savePreferences()
+        },
+
         setPlaying(playing) {
             this.isPlaying = playing
         },
@@ -47,7 +54,8 @@ export const usePlayerStore = defineStore('player', {
         async savePreferences() {
             await StorageService.storePreferences({
                 volume: this.volume,
-                muted: this.muted
+                muted: this.muted,
+                defaultMuted: this.defaultMuted
             })
         }
     }
