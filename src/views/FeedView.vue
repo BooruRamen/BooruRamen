@@ -387,8 +387,9 @@ export default {
         if (!this.videoElements[key] || this.videoElements[key] !== el) {
             this.videoElements[key] = el;
             el.volume = this.volume;
-            // Start muted based on defaultMuted setting - IntersectionObserver will apply user pref when visible
-            el.muted = this.defaultMuted || true; // Default to muted for autoplay compliance
+            // If defaultMuted is ON, start muted. If OFF, inherit current mute state.
+            // Use muted=true for initial autoplay compliance, IntersectionObserver will set correct state when visible.
+            el.muted = true; // Safe default for autoplay
             el.currentTime = 0; // Reset progress to prevent carryover
         }
       }
@@ -486,9 +487,15 @@ export default {
               
               // Apply user's volume and mute preferences when video becomes visible
               video.volume = this.volume;
-              // If global mute is off, but browser blocked autoplay, we might need to handle it.
-              // Respect defaultMuted if user hasn't explicitly set muted preference
-              video.muted = this.defaultMuted || this.isMuted;
+              // If defaultMuted is ON: always start this video muted
+              // If defaultMuted is OFF: inherit the current global mute state (from previous video)
+              const shouldMute = this.defaultMuted ? true : this.isMuted;
+              video.muted = shouldMute;
+              
+              // Sync store state with the actual video muted state so icon matches
+              if (shouldMute !== this.isMuted) {
+                this.$emit('video-state-change', { muted: shouldMute });
+              }
               
               // Clear flag after a short delay to allow volumechange event to pass
               setTimeout(() => { this.isProgrammaticVolumeChange = false; }, 50);

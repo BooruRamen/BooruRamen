@@ -372,7 +372,6 @@
                 ></span>
               </button>
             </div>
-            <p class="text-xs text-gray-400 mt-1">Videos will start muted when scrolling through feed</p>
           </div>
           
           <!-- Media type selection -->
@@ -784,7 +783,13 @@ export default {
 
       if (videoEl) {
         videoEl.volume = this.volume;
-        videoEl.muted = this.muted;
+        // Respect defaultMuted setting: if ON, always mute new videos; if OFF, inherit current muted state
+        const shouldMute = this.defaultMuted ? true : this.muted;
+        videoEl.muted = shouldMute;
+        // Sync store state so mute icon matches
+        if (shouldMute !== this.muted) {
+          this.muted = shouldMute;
+        }
       }
       
       if (this.debugMode && post) {
