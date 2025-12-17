@@ -1247,53 +1247,64 @@ class RecommendationSystem {
         });
       }
 
-      // Rank the combined posts using our recommendation system
-      const rankedPosts = this.rankPosts(uniquePosts);
+      // PROBABILISTIC FEED INTERLEAVING
+      // Separates posts into Ranked (safe) and Discovery (exploratory) buckets
+      // then interleaves them to ensure content diversity.
 
-      // ANTI-CLUMPING DISTRIBUTOR
-      // Preserves score ranking but prevents long chains (streaks) of the same strategy.
+      const DISCOVERY_INTERVAL = 4; // Slot a discovery post every Nth position
+
+      // Score each post
+      const scoredPosts = uniquePosts.map(post => ({
+        post,
+        score: this.scorePost(post)
+      }));
+
+      // Bucket 1: RANKED (Score > 0.8) - High-confidence content
+      const rankedBucket = scoredPosts
+        .filter(sp => sp.score > 0.8)
+        .sort((a, b) => b.score - a.score)
+        .map(sp => sp.post);
+
+      // Bucket 2: DISCOVERY (Score 0.4–0.7) - Exploratory content
+      const discoveryBucket = scoredPosts
+        .filter(sp => sp.score >= 0.4 && sp.score <= 0.7)
+        .sort((a, b) => b.score - a.score)
+        .map(sp => sp.post);
+
+      // Bucket 3: REMAINDER (0.7 < score <= 0.8 OR score < 0.4) - Fallback
+      const remainderBucket = scoredPosts
+        .filter(sp => (sp.score > 0.7 && sp.score <= 0.8) || sp.score < 0.4)
+        .sort((a, b) => b.score - a.score)
+        .map(sp => sp.post);
+
+      console.log(`Feed Interleaving: ${rankedBucket.length} ranked, ${discoveryBucket.length} discovery, ${remainderBucket.length} remainder`);
+
+      // Build interleaved feed
       const finalFeed = [];
-      let streakType = null;
-      let streakCount = 0;
-      const MAX_STREAK = 3;
+      let rankedIndex = 0;
+      let discoveryIndex = 0;
+      let remainderIndex = 0;
 
-      const candidatePool = [...rankedPosts];
-
-      while (candidatePool.length > 0) {
-        const bestPost = candidatePool[0];
-        const bestType = bestPost._strategy || 'single';
-
-        // Check if adding this would violate streak limit
-        if (streakType === bestType && streakCount >= MAX_STREAK) {
-          // Streak too long! Search for first post of DIFFERENT type
-          const rescueIndex = candidatePool.findIndex(p => (p._strategy || 'single') !== streakType);
-
-          if (rescueIndex !== -1) {
-            // Found one! Pull it up.
-            const rescuePost = candidatePool[rescueIndex];
-            finalFeed.push(rescuePost);
-            candidatePool.splice(rescueIndex, 1);
-
-            // Reset streak
-            streakType = rescuePost._strategy || 'single';
-            streakCount = 1;
-          } else {
-            // No alternative found. Must accept the clump.
-            finalFeed.push(bestPost);
-            candidatePool.shift();
-            streakCount++;
-          }
-        } else {
-          // No streak violation, take the best post (score priority)
-          finalFeed.push(bestPost);
-          candidatePool.shift();
-
-          if (streakType === bestType) {
-            streakCount++;
-          } else {
-            streakType = bestType;
-            streakCount = 1;
-          }
+      for (let position = 0; finalFeed.length < Math.min(maxTotal, uniquePosts.length); position++) {
+        // Every Nth position (e.g., 4th, 8th, 12th...), slot a discovery post
+        if ((position + 1) % DISCOVERY_INTERVAL === 0 && discoveryIndex < discoveryBucket.length) {
+          finalFeed.push(discoveryBucket[discoveryIndex++]);
+        }
+        // Otherwise, try ranked posts first
+        else if (rankedIndex < rankedBucket.length) {
+          finalFeed.push(rankedBucket[rankedIndex++]);
+        }
+        // Fallback to discovery if ranked is exhausted
+        else if (discoveryIndex < discoveryBucket.length) {
+          finalFeed.push(discoveryBucket[discoveryIndex++]);
+        }
+        // Fallback to remainder if both are exhausted
+        else if (remainderIndex < remainderBucket.length) {
+          finalFeed.push(remainderBucket[remainderIndex++]);
+        }
+        // All buckets exhausted
+        else {
+          break;
         }
       }
 
