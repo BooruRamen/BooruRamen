@@ -31,13 +31,15 @@ export const COMMON_TAGS = [
   'long_hair', 'breasts', 'large_breasts', 'looking_at_user', 'short_hair',
   'animated', 'tagme', 'copyright_request', 'spoiler', 'source_request',
   'artist_request', 'character_request', 'cosplay_request', 'check_character',
-  'duplicate', 'sound', 'looking_at_viewer', 'looking_at_another'
+  'duplicate', 'sound', 'looking_at_viewer', 'looking_at_another',
+  'simple_background'
 ];
 
 class RecommendationSystem {
   constructor() {
     this.userEmbedding = null;
     this.tagScores = null;
+    this.tagEngagement = null; // Tracks total engagement regardless of sentiment
     this.tagCategories = null;
     this.ratingPreferences = null;
     this.avoidedTags = [...COMMON_TAGS]; // Default to common tags
@@ -111,8 +113,9 @@ class RecommendationSystem {
     const now = Date.now();
     this.lastUpdateTime = now;
 
-    // Initialize tag scores object
+    // Initialize tag scores and engagement objects
     this.tagScores = {};
+    this.tagEngagement = {}; // Tracks total engagement regardless of sentiment
     this.tagCategories = {};
 
 
@@ -166,20 +169,40 @@ class RecommendationSystem {
    * Update the profile based on interaction with a specific post
    */
   updateProfileWithPost(post, weight) {
+    // Create a Set for fast lookups of avoided/common tags
+    // These tags should NEVER influence the user profile
+    const avoidedSet = new Set(this.avoidedTags || []);
+
+    // Helper to process a single tag
+    const processTag = (tag, category) => {
+      if (!tag) return;
+
+      // BLOCK COMMON TAGS: Don't let tags like '1girl', 'long_hair' accumulate score
+      // This prevents them from dominating recommendations
+      if (avoidedSet.has(tag)) return;
+
+      // Initialize if first time seeing this tag
+      if (this.tagScores[tag] === undefined) {
+        this.tagScores[tag] = 0;
+        this.tagCategories[tag] = category;
+      }
+      if (this.tagEngagement[tag] === undefined) {
+        this.tagEngagement[tag] = 0;
+      }
+
+      // Update net score (sentiment: likes cancel dislikes)
+      this.tagScores[tag] += weight;
+
+      // Update engagement (history: always positive)
+      // Like (+1.0) adds 1. Dislike (-1.0) also adds 1.
+      this.tagEngagement[tag] += Math.abs(weight);
+    };
+
     // Process all tag categories
     TAG_CATEGORIES.forEach(category => {
       const tagString = post[`tag_string_${category}`] || '';
       if (tagString) {
-        tagString.split(' ').forEach(tag => {
-          if (tag) {
-            if (!this.tagScores[tag]) {
-              this.tagScores[tag] = 0;
-              this.tagCategories[tag] = category;
-            }
-            this.tagScores[tag] += weight;
-
-          }
-        });
+        tagString.split(' ').forEach(tag => processTag(tag, category));
       }
     });
 
@@ -187,11 +210,16 @@ class RecommendationSystem {
     const generalTags = post.tag_string || '';
     if (generalTags) {
       generalTags.split(' ').forEach(tag => {
-        if (tag && !this.tagScores[tag]) {
-          this.tagScores[tag] = 0;
-          this.tagCategories[tag] = 'general';
-          this.tagScores[tag] += weight;
+        // Block avoided tags here too
+        if (avoidedSet.has(tag)) return;
 
+        // Only process if not already in a specific category
+        if (tag && this.tagCategories[tag] === undefined) {
+          processTag(tag, 'general');
+        } else if (tag && this.tagCategories[tag] === 'general') {
+          // Already processed as general, just update scores
+          this.tagScores[tag] += weight;
+          this.tagEngagement[tag] += Math.abs(weight);
         }
       });
     }
@@ -248,6 +276,7 @@ class RecommendationSystem {
    */
   initializeDefaultProfile() {
     this.tagScores = {};
+    this.tagEngagement = {};
     this.tagCategories = {};
     this.ratingPreferences = {
       general: 1.0,
@@ -285,6 +314,7 @@ class RecommendationSystem {
 
     // Reset all scoring data
     this.tagScores = {};
+    this.tagEngagement = {};
     this.tagCategories = {};
     this.ratingPreferences = {
       general: 1.0,
@@ -352,15 +382,69 @@ class RecommendationSystem {
     let tagScore = 0;
     let tagCount = 0;
 
+    // ---------------------------------------------------------
+    // REFINED: Category-Weighted Discovery Logic
+    // ---------------------------------------------------------
+    // Uses ENGAGEMENT + CATEGORY WEIGHTING to determine anchor quality
+    // Character/Copyright/Artist = Strong Anchor (1.0)
+    // General/Meta = Weak Anchor (0.2) - need 5 to equal one strong anchor
+    let familiarWeight = 0;  // Weighted sum of familiar anchors
+    let novelCount = 0;      // Truly new tags (zero engagement), excluding noise
+
+    // Use avoidedTags (COMMON_TAGS) to filter noise - these shouldn't count for discovery
+    const noiseTags = new Set(this.avoidedTags || []);
+
+    // Helper to process a tag for discovery bonus (excludes noise, weights by category)
+    const processTagForDiscovery = (tag) => {
+      if (!tag) return;
+
+      // SKIP NOISE: Common tags don't count for novelty or familiarity
+      if (noiseTags.has(tag)) return;
+
+      const engagement = this.tagEngagement?.[tag] || 0;
+      const tagScoreVal = this.tagScores?.[tag] || 0;
+
+      // Retrieve category. Fallback to 'general' if unknown.
+      const category = this.tagCategories?.[tag] || 'general';
+
+      if (engagement > 0) {
+        // Only consider positive sentiments as anchors (lowered to 0.3 for weighted system)
+        if (tagScoreVal > 0.3) {
+          // WEIGHTING LOGIC:
+          // Specific Identifiers (Character, Copyright, Artist) = 1.0 (Strong Anchor)
+          // Broad Descriptors (General, Meta) = 0.2 (Weak Anchor)
+          if (['character', 'copyright', 'artist'].includes(category)) {
+            familiarWeight += 1.0;
+          } else {
+            familiarWeight += 0.2; // It takes 5 generic tags to equal 1 character
+          }
+        }
+      } else {
+        // Truly novel (zero engagement)
+        novelCount++;
+      }
+    };
+
     // Process all tag categories
     TAG_CATEGORIES.forEach(category => {
       const tagString = post[`tag_string_${category}`] || '';
       if (tagString) {
         tagString.split(' ').forEach(tag => {
+          if (!tag) return;
+
+          // SKIP NOISE in score calculation too - don't let common tags influence ranking
+          if (noiseTags.has(tag)) return;
+
           tagCount++;
-          if (this.tagScores[tag]) {
-            tagScore += this.tagScores[tag];
+          const tagScoreValue = this.tagScores[tag] || 0;
+
+          // Add to tag score calculation
+          if (this.tagScores[tag] !== undefined) {
+            tagScore += tagScoreValue;
           }
+
+          // Process for discovery (filters noise, weights by category)
+          processTagForDiscovery(tag);
         });
       }
     });
@@ -369,11 +453,22 @@ class RecommendationSystem {
     const generalTags = post.tag_string || '';
     if (generalTags) {
       generalTags.split(' ').forEach(tag => {
+        if (!tag) return;
+
+        // SKIP NOISE in score calculation - don't let common tags influence ranking
+        if (noiseTags.has(tag)) return;
+
         if (!TAG_CATEGORIES.some(cat => post[`tag_string_${cat}`]?.includes(tag))) {
           tagCount++;
-          if (this.tagScores[tag]) {
-            tagScore += this.tagScores[tag];
+          const tagScoreValue = this.tagScores[tag] || 0;
+
+          // Add to tag score calculation
+          if (this.tagScores[tag] !== undefined) {
+            tagScore += tagScoreValue;
           }
+
+          // Process for discovery (filters noise, weights by category)
+          processTagForDiscovery(tag);
         }
       });
     }
@@ -381,6 +476,15 @@ class RecommendationSystem {
     // Average tag score and add to total
     if (tagCount > 0) {
       score += (tagScore / tagCount) * 3.0; // Weight tag matching heavily
+    }
+
+    // Discovery Bonus: Reward "Novelty in a Familiar Context"
+    // CATEGORY-WEIGHTED THRESHOLDS:
+    // - Need familiarWeight >= 1.0 (1 Character OR 5 General tags as anchor)
+    // - Need 5 new elements (to ensure it's actually different)
+    // Common tags like 1girl, long_hair are filtered out so they don't trigger this trivially
+    if (familiarWeight >= 1.0 && novelCount >= 5) {
+      score += 0.25;
     }
 
     // Score based on rating
@@ -416,6 +520,9 @@ class RecommendationSystem {
       ratingScore: 0,
       mediaScore: 0,
       tagScore: 0,
+      discoveryBonus: 0,
+      familiarWeight: 0,  // Changed from familiarTagCount to weighted system
+      novelTagCount: 0,
       contributingTags: []
     };
 
@@ -427,16 +534,49 @@ class RecommendationSystem {
     let tagCount = 0;
     const contributors = [];
 
-    // Helper to process tags
+    // Use avoidedTags (COMMON_TAGS) to filter noise - these shouldn't count for discovery
+    const noiseTags = new Set(this.avoidedTags || []);
+
+    // Helper to process tags - uses ENGAGEMENT + CATEGORY WEIGHTING for discovery bonus
     const processTag = (tag, category) => {
-      if (this.tagScores[tag]) {
+      if (!tag) return;
+
+      // SKIP NOISE FIRST: Common tags don't count for scoring or discovery
+      if (noiseTags.has(tag)) return;
+
+      const tagScoreValue = this.tagScores[tag] || 0;
+      const tagEngagementValue = this.tagEngagement?.[tag] || 0;
+
+      // Retrieve stored category, fallback to passed category or 'general'
+      const storedCategory = this.tagCategories?.[tag] || category || 'general';
+
+      // Track score contributors if tag has any score history
+      if (this.tagScores[tag] !== undefined) {
         tagCount++;
-        tagScoreSum += this.tagScores[tag];
+        tagScoreSum += tagScoreValue;
         contributors.push({
           tag,
-          score: this.tagScores[tag],
-          category
+          score: tagScoreValue,
+          category: storedCategory
         });
+      }
+
+      // Use engagement + category weighting to determine familiarity
+      if (tagEngagementValue > 0) {
+        // Only consider positive sentiments as anchors
+        if (tagScoreValue > 0.3) {
+          // WEIGHTING LOGIC:
+          // Specific Identifiers (Character, Copyright, Artist) = 1.0 (Strong Anchor)
+          // Broad Descriptors (General, Meta) = 0.2 (Weak Anchor)
+          if (['character', 'copyright', 'artist'].includes(storedCategory)) {
+            details.familiarWeight += 1.0;
+          } else {
+            details.familiarWeight += 0.2;
+          }
+        }
+      } else {
+        // Truly novel (zero engagement)
+        details.novelTagCount++;
       }
     };
 
@@ -465,6 +605,15 @@ class RecommendationSystem {
 
     // Sort contributors by score descending
     details.contributingTags = contributors.sort((a, b) => b.score - a.score).slice(0, 10);
+
+    // Discovery Bonus: Reward "Novelty in a Familiar Context"
+    // CATEGORY-WEIGHTED THRESHOLDS (matching scorePost):
+    // - Need familiarWeight >= 1.0 (1 Character OR 5 General tags as anchor)
+    // - Need 5 new elements (to ensure it's actually different)
+    if (details.familiarWeight >= 1.0 && details.novelTagCount >= 5) {
+      details.discoveryBonus = 0.25;
+      details.totalScore += details.discoveryBonus;
+    }
 
     // Rating score
     if (post.rating && this.ratingPreferences[post.rating]) {
@@ -787,15 +936,17 @@ class RecommendationSystem {
   async getCuratedExploreFeed(fetchFunction, options = {}) {
     const {
       postsPerFetch = 20,   // Number of posts to fetch per query
-      maxTotal = 50,        // Maximum total posts to return
+      maxTotal = 10,        // Maximum total posts to return (curated subset)
       selectedRatings = ['general'], // Rating filters to apply
       whitelist = [],
       blacklist = [],
       existingPostIds = new Set()
     } = options;
 
+    // Update user profile before fetching to incorporate recent interactions
+    await this.updateUserProfile();
 
-    // Generate multi-strategy query sets (3 single, 3 duo)
+    // Generate multi-strategy query sets (2 single, 2 duo)
     const queries = this.generateMultiStrategyQueries(selectedRatings, whitelist);
     console.log("Explore queries:", queries);
 
@@ -1150,14 +1301,16 @@ class RecommendationSystem {
       const limitedFeed = finalFeed.slice(0, maxTotal);
 
       // Cache scores for these posts to ensure consistency
-      finalFeed.forEach(post => {
+      limitedFeed.forEach(post => {
         if (!this.postScoreCache.has(post.id)) {
           this.scorePost(post); // Ensure score is cached
         }
       });
 
-      // Return processed results
-      return finalFeed;
+      console.log(`Returning ${limitedFeed.length} curated posts (from ${finalFeed.length} ranked candidates)`);
+
+      // Return processed results (limited to maxTotal)
+      return limitedFeed;
     } catch (error) {
       console.error("Error fetching curated explore feed:", error);
       return [];

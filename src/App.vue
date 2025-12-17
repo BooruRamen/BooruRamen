@@ -159,7 +159,7 @@
         ></router-view>
         
         <!-- Debug Overlay -->
-        <div v-if="debugMode && currentPost" class="absolute top-0 left-1/2 transform -translate-x-1/2 mt-4 p-0 bg-black bg-opacity-75 text-xs text-white z-40 max-w-xs pointer-events-none font-mono rounded shadow-lg">
+        <div v-if="debugMode && currentPost" class="absolute top-0 left-1/2 transform -translate-x-1/2 mt-4 p-4 bg-black bg-opacity-75 text-xs text-white z-40 max-w-xs pointer-events-none font-mono rounded shadow-lg">
           <h3 class="font-bold mb-1 text-pink-400">Recommendation Debug</h3>
           
           <div class="mb-2 border-b border-gray-700 pb-2">
@@ -197,6 +197,10 @@
             </div>
              <div v-if="debugDetails.mediaScore" class="text-gray-400">
                Media Bonus: +{{ debugDetails.mediaScore.toFixed(2) }}
+            </div>
+            <div v-if="debugDetails.discoveryBonus" class="text-purple-400 mt-1">
+               Discovery Bonus: +{{ debugDetails.discoveryBonus.toFixed(2) }}
+               <span class="text-gray-500 text-xs block">({{ debugDetails.familiarWeight?.toFixed(1) }} anchor weight, {{ debugDetails.novelTagCount }} novel tags)</span>
             </div>
           </div>
           <div v-else>
@@ -719,7 +723,8 @@ export default {
         addBlacklistTagAction: 'addBlacklistTag',
         removeBlacklistTag: 'removeBlacklistTag', 
         toggleExploreMode: 'toggleExploreMode',
-        saveSettings: 'saveSettings'
+        saveSettings: 'saveSettings',
+        initializeSettings: 'initialize'
     }),
     ...mapActions(usePlayerStore, {
         setPlayerVolume: 'setVolume',
@@ -1051,7 +1056,8 @@ export default {
       }
     }
   },
-  created() {
+  async created() {
+      await this.initializeSettings();
       this.initializePlayer();
       this.initializeInteractions();
       

@@ -485,6 +485,25 @@ export default {
             return;
         }
 
+        // Check if Gelbooru.com is selected without authentication
+        const gelbooruSource = this.localActiveSources.find(
+            s => s.type === 'gelbooru' && s.url.toLowerCase().includes('gelbooru.com')
+        );
+        if (gelbooruSource) {
+            // Get the full source with credentials
+            const fullSource = this.predefinedSources.find(p => p.url === gelbooruSource.url) 
+                            || this.customSources.find(c => c.url === gelbooruSource.url) 
+                            || gelbooruSource;
+            if (!fullSource.userId || !fullSource.apiKey) {
+                this.confirmAction(
+                    'Gelbooru Authentication Required',
+                    'Gelbooru.com requires authentication to function properly. Please click the key icon next to Gelbooru to enter your User ID and API Key.',
+                    () => {}
+                );
+                return;
+            }
+        }
+
         const preferences = await StorageService.getPreferences();
         
         this.localActiveSources = this.localActiveSources.map(active => {
