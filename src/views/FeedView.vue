@@ -16,7 +16,7 @@
       <div 
         v-for="post in posts" 
         :key="getCompositeKey(post)"
-        class="h-full w-full snap-start flex items-center justify-center relative"
+        class="h-full w-full snap-start snap-always flex items-center justify-center relative"
       >
         <!-- Post media -->
         <div class="relative max-h-full max-w-full">
