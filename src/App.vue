@@ -7,7 +7,7 @@
         class="absolute top-0 left-0 w-80 h-full bg-transparent backdrop-blur-sm border-r border-gray-700 overflow-y-auto z-50 transition-transform duration-300 ease-in-out"
         :style="{ transform: showPostDetails ? 'translateX(0)' : 'translateX(-100%)' }"
       >
-        <div class="p-4 pb-20">
+        <div class="p-4" style="padding-top: calc(1rem + env(safe-area-inset-top, 0)); padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0));">
           <h2 class="text-xl font-bold mb-4">Post Details</h2>
           
           <div class="space-y-4" v-if="currentPost">
@@ -141,12 +141,14 @@
         </div>
       </div>
       
-      <!-- Floating toggle button for post details sidebar -->
       <button 
         v-if="currentPost"
         @click="togglePostDetails" 
-        class="absolute top-4 left-0 z-30 p-2 rounded-r-md bg-black hover:bg-gray-900 transition-all duration-300 ease-in-out"
-        :style="{ transform: showPostDetails ? 'translateX(320px)' : 'translateX(0)' }"
+        class="absolute left-0 z-30 p-2 rounded-r-md bg-black hover:bg-gray-900 transition-all duration-300 ease-in-out"
+        :style="{ 
+          transform: showPostDetails ? 'translateX(320px)' : 'translateX(0)',
+          top: `calc(1rem + env(safe-area-inset-top, 0))`
+        }"
       >
         <span class="text-xl font-bold">{{ showPostDetails ? '<<' : '>>' }}</span>
       </button>
@@ -297,7 +299,7 @@
         class="absolute top-0 right-0 w-80 h-full bg-transparent backdrop-blur-sm border-l border-gray-700 overflow-y-auto z-50 transition-transform duration-300 ease-in-out"
         :style="{ transform: showSettingsSidebar ? 'translateX(0)' : 'translateX(100%)' }"
       >
-      <div class="p-4 pb-20">
+      <div class="p-4" style="padding-top: calc(1rem + env(safe-area-inset-top, 0)); padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0));">
           <h2 class="text-xl font-bold mb-4">Settings</h2>
           
           
@@ -565,15 +567,19 @@
       <!-- Floating toggle button for settings sidebar -->
       <button 
         @click="showSettingsSidebar = !showSettingsSidebar" 
-        class="absolute top-4 right-0 z-30 p-2 rounded-l-md bg-black hover:bg-gray-900 transition-all duration-300 ease-in-out"
-        :style="{ transform: showSettingsSidebar ? 'translateX(-320px)' : 'translateX(0)' }"
+        class="absolute right-0 z-30 p-2 rounded-l-md bg-black hover:bg-gray-900 transition-all duration-300 ease-in-out"
+        :style="{ 
+          transform: showSettingsSidebar ? 'translateX(-320px)' : 'translateX(0)',
+          top: `calc(1rem + env(safe-area-inset-top, 0))`
+        }"
       >
         <Settings class="h-6 w-6" />
       </button>
       
       <!-- Floating post action buttons - repositioned to appear below sidebar but above content -->
       <div 
-        class="fixed right-4 bottom-24 flex flex-col items-center gap-4 z-15" 
+        class="fixed right-4 flex flex-col items-center gap-4 z-15" 
+        :style="{ bottom: `calc(6.5rem + env(safe-area-inset-bottom, 0))` }"
         v-if="currentPost"
       >
         <button 
