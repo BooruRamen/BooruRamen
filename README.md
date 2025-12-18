@@ -1,18 +1,22 @@
-# BooruRamen <img src="./src/assets/BooruRamen_Icon - Transparent.png" width="40" alt="BooruRamen Logo" style="border-radius: 10px; vertical-align: middle;" />
+<div align="center">
+  <img src="./src/assets/BooruRamen Banner.png" alt="BooruRamen Banner" width="100%" />
+</div>
 
-## 📋 Overview
+<br />
 
-BooruRamen is a Vue.js application that provides a personalized image and video browsing experience. It features a sophisticated recommendation system inspired by ByteDance's Monolith algorithm that learns from your interactions to show content tailored to your preferences.
+# Overview
+
+BooruRamen is a personalized booru browser that learns what you love. It uses a client-side recommendation algorithm to deliver a unique, curated feed of images and videos that improves the more you use it.
 
 ### Key Features
 
-- **Smart Recommendations**: Content recommendations improve as you interact with the app (likes, dislikes, time spent).
-- **Profile Analytics**: Detailed insights into your viewing habits, including top tags, engagement rates, and video watch time.
-- **Personal Preferences**: Your preferences and history are stored locally for privacy.
-- **Tag-based Filtering**: Easily discover content using tag-based searches with support for whitelists and blacklists.
-- **Responsive Design**: Works on desktop and mobile devices with adaptive layouts.
+- **Adaptive Feed**: A TikTok-style scroll that learns what you like in real-time.
+- **Total Privacy**: No servers. No tracking. Your history stays on your device.
+- **All-in-One**: Seamlessly browse sites running on Danbooru and Gelbooru engines in a single app.
+- **Immersive Player**: Cinema-style viewer with custom controls for HD video & art.
+- **Profile Stats**: Charts and graphs that visualize your unique taste.
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -42,7 +46,7 @@ npm run dev
 http://localhost:5173
 ```
 
-## 🛠️ Building for Production
+## Building for Production
 
 Compile and minify for production:
 ```
@@ -50,15 +54,6 @@ npm run build
 ```
 
 The built files will be in the `dist/` directory, ready for deployment.
-
-## 🧰 Technologies Used
-
-- **Vue.js 3**: Frontend framework
-- **Vite**: Next Generation Frontend Tooling
-- **Tailwind CSS**: Styling and UI components
-- **Vue Router**: Client-side routing
-- **Lucide Vue Next**: Beautiful & consistent icons
-- **Local Storage API**: For data persistence (No external database required)
 
 ## 📊 Profile Analytics
 
@@ -79,43 +74,6 @@ BooruRamen uses a sophisticated recommendation system that:
 - Delivers a unique feed based on your preferences
 
 All recommendations are processed locally in your browser for privacy.
-
-## 📷 Screenshots
-
-![Home Screen](./screenshots/home-placeholder.png)
-*Home Screen with personalized recommendations*
-
-![Browse View](./screenshots/browse-placeholder.png)
-*Browse interface with tag filtering*
-
-![Settings](./screenshots/settings-placeholder.png)
-*Customizable user settings*
-
-## 🧩 Project Structure
-
-```
-src/
-  ├── assets/          # Static assets
-  ├── components/      # Reusable Vue components (BottomNavBar, etc.)
-  ├── router/          # Route definitions
-  ├── services/        # Service modules
-  │   ├── RecommendationSystem.js  # Content recommendation engine
-  │   ├── StorageService.js        # Local storage & analytics data management
-  │   └── DanbooruService.js       # External API integration
-  ├── views/           # Page views
-  │   ├── FeedView.vue             # Main content feed
-  │   ├── PostViewerView.vue       # Immersive media viewer
-  │   ├── ProfileView.vue          # User profile hub
-  │   └── ProfileAnalyticsView.vue # Detailed analytics dashboard
-  └── App.vue          # Main application component
-```
-
-## 🧪 Linting and Testing
-
-Run linting checks:
-```
-npm run lint
-```
 
 ## 👩‍💻 Contributing
 
