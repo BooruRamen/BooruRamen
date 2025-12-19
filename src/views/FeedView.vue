@@ -152,10 +152,26 @@ export default {
     async processVideoUrls(posts) {
       // Pre-fetch video URLs as blobs for Tauri production
       for (const post of posts) {
-        if (this.isVideoPost(post) && post.file_url && !this.videoBlobUrls[post.file_url]) {
+        if (this.isVideoPost(post) && post.file_url) {
+           // If we already have a blob, skip (avoid redundant work)
+           if (this.videoBlobUrls[post.file_url]) continue;
+
+           // Check if video is already playing fine with original URL
+           const key = this.getCompositeKey(post);
+           const videoEl = this.videoElements[key];
+           // If video is active (playing or buffered enough), don't swap and cause a restart
+           if (videoEl && (videoEl.currentTime > 0 || videoEl.readyState >= 3)) {
+               // console.log('[FeedView] Video already playing, skipping proxy swap:', post.id);
+               continue;
+           }
+
           try {
             const blobUrl = await getPlayableVideoUrl(post.file_url);
             if (blobUrl !== post.file_url) {
+              // Final check before applying (in case it started playing ASYNC while we fetched)
+              if (videoEl && (videoEl.currentTime > 0 || videoEl.readyState >= 3)) {
+                 continue;
+              }
               this.videoBlobUrls[post.file_url] = blobUrl;
             }
           } catch (e) {
