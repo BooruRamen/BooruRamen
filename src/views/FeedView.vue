@@ -32,14 +32,13 @@
             v-else-if="getFileExtension(post) === 'mp4' || getFileExtension(post) === 'webm' || isVideoPost(post)" 
             :src="getVideoSrc(post)" 
             :ref="(el) => setVideoRef(el, post)"
+            :poster="post.preview_url || post.sample_url"
             autoplay 
             loop 
             playsinline
-            preload="auto"
             muted 
-            class="max-h-[calc(100vh-56px)] max-w-full transition-opacity duration-300"
-            :class="{ 'opacity-0': videoLoadingStates[getCompositeKey(post)], 'opacity-100': !videoLoadingStates[getCompositeKey(post)] }"
-            :preload="index === currentPostIndex ? 'auto' : 'metadata'"
+            class="max-h-[calc(100vh-56px)] max-w-full"
+            :preload="index === currentPostIndex || index === currentPostIndex + 1 ? 'auto' : 'metadata'"
             @click="togglePlayPause"
             @play="onVideoPlay($event, post)"
             @pause="onVideoPause($event, post)"
