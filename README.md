@@ -75,7 +75,7 @@ BooruRamen uses a sophisticated recommendation system that:
 
 All recommendations are processed locally in your browser for privacy.
 
-## 👩Contributing
+## Contributing
 
 1. Fork the repository
 2. Create your feature branch: `git checkout -b feature/amazing-feature`
