@@ -55,7 +55,7 @@ npm run build
 
 The built files will be in the `dist/` directory, ready for deployment.
 
-## 📊 Profile Analytics
+## Profile Analytics
 
 Gain insights into your preferences with the dedicated Analytics page:
 - **Top Tags & Pairs**: See which content you engage with most.
@@ -64,7 +64,7 @@ Gain insights into your preferences with the dedicated Analytics page:
 - **Video Analytics**: Monitor your total video watch time and average viewing duration.
 - **Visualizations**: View tag distributions via responsive SVG-based charts.
 
-## 🧠 Recommendation System
+## Recommendation System
 
 BooruRamen uses a sophisticated recommendation system that:
 
@@ -75,7 +75,7 @@ BooruRamen uses a sophisticated recommendation system that:
 
 All recommendations are processed locally in your browser for privacy.
 
-## 👩‍💻 Contributing
+## 👩Contributing
 
 1. Fork the repository
 2. Create your feature branch: `git checkout -b feature/amazing-feature`
@@ -83,7 +83,7 @@ All recommendations are processed locally in your browser for privacy.
 4. Push to the branch: `git push origin feature/amazing-feature`
 5. Open a Pull Request
 
-## 📝 License
+## License
 
 This project is licensed under the [MIT License](LICENSE)
 
