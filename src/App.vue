@@ -782,15 +782,31 @@ export default {
       this.accumulatedWatchTime = 0;
       this.startWatchTimeTracking();
 
-      if (post) {
-        const interactions = await StorageService.getPostInteractions(post.id);
-        post.liked = interactions.some(i => i.type === 'like' && i.value > 0);
-        post.disliked = interactions.some(i => i.type === 'dislike' && i.value > 0);
-        post.favorited = interactions.some(i => i.type === 'favorite' && i.value > 0);
-      }
-      
       this.currentPost = post;
       this.currentVideoElement = videoEl;
+
+      if (post) {
+        // Reset state immediately to prevent "sticking" buttons from previous post
+        // Only if they aren't already set (to avoid flickering if we revisit a loaded post)
+        if (post.liked === undefined) post.liked = false;
+        if (post.disliked === undefined) post.disliked = false;
+        if (post.favorited === undefined) post.favorited = false;
+
+        // Async fetch - will update reactivity when done
+        StorageService.getPostInteractions(post.id).then(interactions => {
+             // Verify we are still looking at the same post to avoid race conditions
+             if (this.currentPost && this.currentPost.id === post.id) {
+                 this.currentPost.liked = interactions.some(i => i.type === 'like' && i.value > 0);
+                 this.currentPost.disliked = interactions.some(i => i.type === 'dislike' && i.value > 0);
+                 this.currentPost.favorited = interactions.some(i => i.type === 'favorite' && i.value > 0);
+             } else {
+                 // Even if we moved away, update the post object so it's cached correctly for next time
+                 post.liked = interactions.some(i => i.type === 'like' && i.value > 0);
+                 post.disliked = interactions.some(i => i.type === 'dislike' && i.value > 0);
+                 post.favorited = interactions.some(i => i.type === 'favorite' && i.value > 0);
+             }
+        });
+      }
 
       if (videoEl) {
         videoEl.volume = this.volume;
