@@ -1346,13 +1346,13 @@ class RecommendationSystem {
       let allPosts = [];
       fetchResults.forEach((posts, index) => {
         const queryTags = queries[index].tags;
-        const isDuo = queryTags.trim().split(' ').length > 1;
+        const queryType = (queries[index].type || 'UNKNOWN').toUpperCase();
 
         if (posts && posts.length) {
-          console.log(`Query [${isDuo ? 'DUO' : 'SINGLE'}] "${queryTags}" returned ${posts.length} posts`);
+          console.log(`Query [${queryType}] "${queryTags}" returned ${posts.length} posts`);
           allPosts = [...allPosts, ...posts];
         } else {
-          console.warn(`Query [${isDuo ? 'DUO' : 'SINGLE'}] "${queryTags}" returned NO posts`);
+          console.warn(`Query [${queryType}] "${queryTags}" returned NO posts`);
         }
       });
 
