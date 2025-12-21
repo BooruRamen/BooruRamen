@@ -25,7 +25,7 @@
             :src="post.file_url" 
             :alt="post.tags || 'Post image'"
             class="max-h-[calc(100vh-56px)] max-w-full object-contain"
-            :referrerpolicy="post.file_url && post.file_url.includes('gelbooru') ? 'no-referrer' : 'origin-when-cross-origin'"
+            :referrerpolicy="post.file_url && post.file_url.includes('gelbooru') ? 'no-referrer' : 'strict-origin-when-cross-origin'"
             @error="(e) => console.error('Image load error:', post.file_url, e)"
           />
           <video 

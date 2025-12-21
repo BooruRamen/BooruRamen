@@ -10,10 +10,15 @@ class BooruService {
     constructor() {
         this.adapters = [];
         this.activeSources = [];
-        this.initialize();
+        this.initializationPromise = this.initializeInternal();
     }
 
+    // Public initialize that just waits for the internal one
     async initialize() {
+        return this.initializationPromise;
+    }
+
+    async initializeInternal() {
         // Prioritize Preferences (new location)
         const preferences = await StorageService.getPreferences();
         const settings = await StorageService.loadAppSettings();

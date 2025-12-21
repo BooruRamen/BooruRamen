@@ -232,6 +232,71 @@ export class GelbooruAdapter extends BooruAdapter {
         return false;
     }
 
+    // Convert age: query to id: query
+    translateAgeToId(operator, amount, unit) {
+        // ID mapping for Jan 1st of each year (User provided + extrapolated)
+        const YEAR_IDS = {
+            2007: 1,
+            2008: 132204,
+            2009: 407581,
+            2010: 676805,
+            2011: 1020436,
+            2012: 1382384,
+            2013: 1757245,
+            2014: 2116687,
+            2015: 2536659,
+            2016: 2994708,
+            2017: 3497715,
+            2018: 4038325,
+            2019: 4550300,
+            2020: 5065398,
+            2021: 5781187,
+            2022: 6790766,
+            2023: 8084028,
+            2024: 9425769,
+            2025: 11229486
+        };
+
+        // Calculate target date
+        const now = new Date();
+        let targetDate = new Date();
+
+        const value = parseInt(amount);
+        if (unit.startsWith('y')) targetDate.setFullYear(now.getFullYear() - value);
+        else if (unit.startsWith('mo')) targetDate.setMonth(now.getMonth() - value);
+        else if (unit.startsWith('w')) targetDate.setDate(now.getDate() - (value * 7));
+        else if (unit.startsWith('d')) targetDate.setDate(now.getDate() - value);
+        else return ''; // Unknown unit
+
+        // Find standard ID for that year
+        const targetYear = targetDate.getFullYear();
+
+        // Estimation check
+        if (targetYear < 2007) return operator === '>' ? 'id:<1' : 'id:>1'; // Before time
+        if (targetYear > 2025) return ''; // Future??
+
+        // Get bounds
+        const startId = YEAR_IDS[targetYear] || YEAR_IDS[2024]; // Fallback
+        const nextId = YEAR_IDS[targetYear + 1] || (startId + 2000000); // Rough estimate for next year
+
+        // Interpolate within the year
+        // Day of year / 365
+        const startOfYear = new Date(targetYear, 0, 1);
+        const dayOfYear = Math.floor((targetDate - startOfYear) / (1000 * 60 * 60 * 24));
+        const totalPostsInYear = nextId - startId;
+        const offset = Math.floor(totalPostsInYear * (dayOfYear / 365));
+
+        const estimatedId = startId + offset;
+
+        // "age:<1y" (Newer than 1 year) -> ID > estimatedID
+        if (operator === '<') return `id:>${estimatedId}`;
+
+        // "age:>1y" (Older than 1 year) -> ID < estimatedID
+        if (operator === '>') return `id:<${estimatedId}`;
+
+        return '';
+    }
+
     /**
      * Check if this Gelbooru-engine site has a free tier (no auth required)
      * @returns {boolean}
@@ -601,6 +666,14 @@ export class GelbooruAdapter extends BooruAdapter {
                 }
                 return '';
             });
+
+            // 3. Handle 'age:' filters (convert to id range for Gelbooru)
+            // Gelbooru doesn't support age/date, but we can approximate using IDs
+            if (cleanTags.includes('age:')) {
+                cleanTags = cleanTags.replace(/age:([<>])?(\d+)([a-z]+)/g, (match, operator, amount, unit) => {
+                    return this.translateAgeToId(operator, amount, unit);
+                });
+            }
 
             // Cleanup and ensure sort order
             cleanTags = cleanTags.replace(/\s+/g, ' ').trim();
