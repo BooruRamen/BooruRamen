@@ -31,6 +31,18 @@ db.version(1).stores({
     tagCache: 'tag'
 });
 
+// Update schema to include profileSnapshot
+db.version(2).stores({
+    interactions: '++id, postId, type, source, timestamp, [postId+type+source]',
+    viewHistory: 'key, lastViewed',
+    preferences: 'id',
+    appSettings: 'id',
+    tagCache: 'tag',
+    // Snapshot of the user profile for incremental updates
+    // key: 'singleton'
+    profileSnapshot: 'id'
+});
+
 /**
  * Migrate data from localStorage to IndexedDB
  * This runs once on first load after update

@@ -85,6 +85,27 @@ const getInteractions = async (type = null) => {
 };
 
 /**
+ * Get recent interactions since a specific timestamp
+ */
+const getRecentInteractions = async (sinceTimestamp) => {
+  try {
+    const timestamp = Number(sinceTimestamp) || 0;
+    // console.log(`[Storage] Fetching interactions since ${timestamp} (${new Date(timestamp).toISOString()})`);
+
+    const results = await db.interactions
+      .where('timestamp')
+      .above(timestamp)
+      .toArray();
+
+    // Double check with JS filter in case of index issues
+    return results.filter(i => i.timestamp > timestamp);
+  } catch (error) {
+    console.error('Error getting recent interactions:', error);
+    return [];
+  }
+};
+
+/**
  * Get interactions by post ID
  */
 const getPostInteractions = async (postId) => {
@@ -340,9 +361,34 @@ const loadAppSettings = async () => {
   }
 };
 
+const storeProfileSnapshot = async (snapshot) => {
+  try {
+    await db.profileSnapshot.put(toPlainObject({ id: 'singleton', ...snapshot }));
+    return true;
+  } catch (error) {
+    console.error('Failed to store profile snapshot:', error);
+    return false;
+  }
+};
+
+const getProfileSnapshot = async () => {
+  try {
+    const snapshot = await db.profileSnapshot.get('singleton');
+    if (snapshot) {
+      const { id, ...rest } = snapshot;
+      return rest;
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to get profile snapshot:', error);
+    return null;
+  }
+};
+
 export default {
   storeInteraction,
   getInteractions,
+  getRecentInteractions,
   getPostInteractions,
   storePreferences,
   getPreferences,
@@ -357,4 +403,6 @@ export default {
   exportAnalytics,
   saveAppSettings,
   loadAppSettings,
+  storeProfileSnapshot,
+  getProfileSnapshot,
 };

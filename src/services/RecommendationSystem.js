@@ -34,16 +34,37 @@ export const COMMON_TAGS = [
   'simple_background'
 ];
 
+const instanceId = Math.floor(Math.random() * 10000);
+
 class RecommendationSystem {
   constructor() {
+    this.instanceId = instanceId; // Assign unique ID
+    console.log(`[RecommendationSystem] Constructed instance #${this.instanceId}`);
+
     this.userEmbedding = null;
-    this.tagScores = null;
-    this.tagEngagement = null; // Tracks total engagement regardless of sentiment
-    this.tagCategories = null;
+
+    // Raw scores (accumulated, not normalized) - used for incremental updates
+    this.rawTagScores = {};
+    this.rawRatingPreferences = {
+      general: 0,
+      sensitive: 0,
+      questionable: 0,
+      explicit: 0
+    };
+    this.rawMediaTypePreferences = {
+      image: 0,
+      video: 0
+    };
+
+    // Normalized scores - used for actual recommendation logic
+    this.tagScores = {};
+    this.tagEngagement = {}; // Tracks total engagement regardless of sentiment (persisted directly)
+    this.tagCategories = {};
     this.ratingPreferences = null;
+    this.mediaTypePreferences = null;
+
     this.avoidedTags = [...COMMON_TAGS]; // Default to common tags
 
-    this.mediaTypePreferences = null;
     this.lastUpdateTime = 0;
 
     // Cache for post scores to avoid recalculating
@@ -60,13 +81,25 @@ class RecommendationSystem {
   async initialize() {
     // Session state for explore mode
     this.strategyCursors = {};
-    this.exhaustedStrategies = new Set();
+    // Prevent duplicate initialization
+    if (this.initPromise) {
+      return this.initPromise;
+    }
 
-    // Build initial user profile from stored interactions
-    await this.updateUserProfile();
+    this.initPromise = (async () => {
+      // Session state for explore mode
+      this.strategyCursors = {};
+      this.exhaustedStrategies = new Set();
 
-    // Set up periodic profile updates (every 5 minutes)
-    setInterval(() => this.updateUserProfile(), 5 * 60 * 1000);
+      // Build initial user profile from stored interactions or snapshot
+      await this.updateUserProfile();
+
+      // Set up periodic profile updates (every 5 minutes)
+      if (this.updateInterval) clearInterval(this.updateInterval);
+      this.updateInterval = setInterval(() => this.updateUserProfile(), 5 * 60 * 1000);
+    })();
+
+    return this.initPromise;
   }
 
   /**
@@ -80,12 +113,36 @@ class RecommendationSystem {
   }
 
   /**
+   * Apply time-based decay to raw scores
+   * @param {number} hoursPassed - Hours since the last update
+   */
+  applyDecay(hoursPassed) {
+    const decayFactor = Math.exp(-0.05 * hoursPassed);
+
+    // Decay tag scores
+    for (const tag in this.rawTagScores) {
+      this.rawTagScores[tag] *= decayFactor;
+      // Prune very small scores to keep profile size manageable
+      if (Math.abs(this.rawTagScores[tag]) < 0.01) {
+        delete this.rawTagScores[tag];
+      }
+    }
+
+    // Decay rating preferences
+    for (const rating in this.rawRatingPreferences) {
+      this.rawRatingPreferences[rating] *= decayFactor;
+    }
+
+    // Decay media preferences
+    for (const type in this.rawMediaTypePreferences) {
+      this.rawMediaTypePreferences[type] *= decayFactor;
+    }
+  }
+
+  /**
    * Update the user's profile based on their interaction history
    */
   async updateUserProfile() {
-    console.log("Updating user recommendation profile...");
-    let interactions = await StorageService.getInteractions();
-
     // Load preferences including avoided tags and reset timestamp
     const preferences = await StorageService.getPreferences();
     if (preferences.avoidedTags && Array.isArray(preferences.avoidedTags)) {
@@ -94,73 +151,104 @@ class RecommendationSystem {
       this.avoidedTags = [...COMMON_TAGS];
     }
 
-    // Filter out interactions that occurred before the recommendation reset
     const resetTimestamp = preferences.recommendationResetTime || 0;
-    if (resetTimestamp > 0) {
-      const beforeCount = interactions.length;
-      interactions = interactions.filter(i => i.timestamp > resetTimestamp);
-      console.log(`Filtered interactions: ${beforeCount} -> ${interactions.length} (reset at ${new Date(resetTimestamp).toISOString()})`);
+    const now = Date.now();
+    let interactions = [];
+    let isIncremental = false;
+
+    // Try to load snapshot
+    const snapshot = await StorageService.getProfileSnapshot();
+
+    // Check if snapshot exists and is valid (newer than reset time)
+    if (snapshot && (!resetTimestamp || snapshot.timestamp > resetTimestamp)) {
+      console.log("Loading user profile from snapshot...");
+      // Support both new 'rawTagScores' and legacy 'tagScores' keys during transition
+      this.rawTagScores = snapshot.rawTagScores || snapshot.tagScores || {};
+      this.tagEngagement = snapshot.tagEngagement || {};
+      this.tagCategories = snapshot.tagCategories || {};
+      this.rawRatingPreferences = snapshot.ratingPreferences || { general: 0, sensitive: 0, questionable: 0, explicit: 0 };
+      this.rawMediaTypePreferences = snapshot.mediaTypePreferences || { image: 0, video: 0 };
+      this.lastUpdateTime = snapshot.timestamp || 0;
+
+      // Calculate time since snapshot
+      const hoursSinceSnapshot = (now - this.lastUpdateTime) / (1000 * 60 * 60);
+
+      if (hoursSinceSnapshot > 0) {
+        this.applyDecay(hoursSinceSnapshot);
+      }
+
+      // Fetch only NEW interactions
+      interactions = await StorageService.getRecentInteractions(this.lastUpdateTime);
+      isIncremental = true;
+      console.log(`Incremental update: Processing ${interactions.length} new interactions since ${new Date(this.lastUpdateTime).toISOString()}`);
+    } else {
+      console.log("Rebuilding user profile from scratch...");
+      // Reset raw state
+      this.initializeDefaultProfile();
+      interactions = await StorageService.getInteractions();
+
+      // Filter by reset time
+      if (resetTimestamp > 0) {
+        interactions = interactions.filter(i => i.timestamp > resetTimestamp);
+      }
     }
 
-    if (interactions.length === 0) {
-      console.log("No interactions found (or all filtered by reset), using default profile");
-      this.initializeDefaultProfile();
+    if (interactions.length === 0 && !isIncremental) {
+      console.log("No interactions found, using default profile");
+      this.normalizeScores(); // Ensure defaults are normalized
       return;
     }
 
-    // Recency-based weighting: More recent interactions have more influence
-    const now = Date.now();
-    this.lastUpdateTime = now;
-
-    // Initialize tag scores and engagement objects
-    this.tagScores = {};
-    this.tagEngagement = {}; // Tracks total engagement regardless of sentiment
-    this.tagCategories = {};
-
-
-    // Initialize rating and media type preferences
-    this.ratingPreferences = {
-      general: 0,
-      sensitive: 0,
-      questionable: 0,
-      explicit: 0
+    // Track stats for debugging
+    const debugStats = {
+      types: {},
+      totalRawScoreAdded: 0,
     };
 
-    this.mediaTypePreferences = {
-      image: 0,
-      video: 0
-    };
-
-    // Process each interaction to build user preferences
+    // Process interactions
     interactions.forEach(interaction => {
-      // Calculate recency weight (higher for more recent interactions)
+      // track counts
+      debugStats.types[interaction.type] = (debugStats.types[interaction.type] || 0) + 1;
+
+      // Calculate recency weight
       const ageInHours = (now - interaction.timestamp) / (1000 * 60 * 60);
-      const recencyWeight = Math.exp(-0.05 * ageInHours); // Exponential decay
+      const recencyWeight = Math.exp(-0.05 * ageInHours);
 
-      // Get base weight for this interaction type
+      // Get base weight
       let weight = INTERACTION_WEIGHTS[interaction.type] || 0;
-
-      // Adjust weight based on recency
       weight *= recencyWeight;
 
-      // For timeSpent, we need to convert to seconds and apply the weight
+      // Time spent adjustment
       if (interaction.type === 'timeSpent') {
-        weight *= (interaction.value / 1000); // Convert ms to seconds
+        weight *= (interaction.value / 1000);
       }
 
-      // Apply the interaction to our user profile if we have post data
+      debugStats.totalRawScoreAdded += weight;
+
       if (interaction.metadata && interaction.metadata.post) {
         this.updateProfileWithPost(interaction.metadata.post, weight);
       }
     });
 
-    // Normalize scores
+    // Save snapshot (raw scores)
+    this.lastUpdateTime = now;
+    await StorageService.storeProfileSnapshot({
+      timestamp: now,
+      rawTagScores: this.rawTagScores,
+      tagEngagement: this.tagEngagement,
+      tagCategories: this.tagCategories,
+      ratingPreferences: this.rawRatingPreferences,
+      mediaTypePreferences: this.rawMediaTypePreferences
+    });
+
+    // Normalize scores for use
     this.normalizeScores();
 
-    console.log("User profile updated:", {
-      tagScores: this.summarizeTagScores(),
-      ratingPreferences: this.ratingPreferences,
-      mediaTypePreferences: this.mediaTypePreferences
+    console.log("User profile updated", {
+      tagCount: Object.keys(this.tagScores).length,
+      mode: isIncremental ? 'incremental' : 'full_rebuild',
+      interactions: debugStats.types,
+      rawScoreDelta: debugStats.totalRawScoreAdded.toFixed(4)
     });
   }
 
@@ -169,31 +257,28 @@ class RecommendationSystem {
    */
   updateProfileWithPost(post, weight) {
     // Create a Set for fast lookups of avoided/common tags
-    // These tags should NEVER influence the user profile
     const avoidedSet = new Set(this.avoidedTags || []);
 
     // Helper to process a single tag
     const processTag = (tag, category) => {
       if (!tag) return;
 
-      // BLOCK COMMON TAGS: Don't let tags like '1girl', 'long_hair' accumulate score
-      // This prevents them from dominating recommendations
+      // BLOCK COMMON TAGS
       if (avoidedSet.has(tag)) return;
 
       // Initialize if first time seeing this tag
-      if (this.tagScores[tag] === undefined) {
-        this.tagScores[tag] = 0;
+      if (this.rawTagScores[tag] === undefined) {
+        this.rawTagScores[tag] = 0;
         this.tagCategories[tag] = category;
       }
       if (this.tagEngagement[tag] === undefined) {
         this.tagEngagement[tag] = 0;
       }
 
-      // Update net score (sentiment: likes cancel dislikes)
-      this.tagScores[tag] += weight;
+      // Update net score (raw)
+      this.rawTagScores[tag] += weight;
 
-      // Update engagement (history: always positive)
-      // Like (+1.0) adds 1. Dislike (-1.0) also adds 1.
+      // Update engagement (history: accumulated, never decays)
       this.tagEngagement[tag] += Math.abs(weight);
     };
 
@@ -205,100 +290,111 @@ class RecommendationSystem {
       }
     });
 
-    // Process general tags (if not already processed)
+    // Process general tags
     const generalTags = post.tag_string || '';
     if (generalTags) {
       generalTags.split(' ').forEach(tag => {
-        // Block avoided tags here too
         if (avoidedSet.has(tag)) return;
-
-        // Only process if not already in a specific category
         if (tag && this.tagCategories[tag] === undefined) {
           processTag(tag, 'general');
         } else if (tag && this.tagCategories[tag] === 'general') {
-          // Already processed as general, just update scores
-          this.tagScores[tag] += weight;
+          this.rawTagScores[tag] += weight;
           this.tagEngagement[tag] += Math.abs(weight);
         }
       });
     }
 
-    // Update rating preferences
+    // Update rating preferences (raw)
     if (post.rating) {
-      this.ratingPreferences[post.rating] += weight;
+      if (this.rawRatingPreferences[post.rating] === undefined) this.rawRatingPreferences[post.rating] = 0;
+      this.rawRatingPreferences[post.rating] += weight;
     }
 
-    // Update media type preferences
+    // Update media type preferences (raw)
     if (post.file_ext) {
       const isVideo = ['mp4', 'webm'].includes(post.file_ext);
-      this.mediaTypePreferences[isVideo ? 'video' : 'image'] += weight;
+      const type = isVideo ? 'video' : 'image';
+      this.rawMediaTypePreferences[type] += weight;
     }
   }
 
   /**
    * Normalize all scores to reasonable ranges
+   * converts rawTagScores -> tagScores
    */
   normalizeScores() {
+    this.tagScores = {};
+
     // Normalize tag scores
-    const tagScoreValues = Object.values(this.tagScores);
+    const tagScoreValues = Object.values(this.rawTagScores);
     if (tagScoreValues.length > 0) {
       const maxTagScore = Math.max(...tagScoreValues.map(Math.abs));
       if (maxTagScore > 0) {
-        for (const tag in this.tagScores) {
-          this.tagScores[tag] /= maxTagScore;
+        for (const tag in this.rawTagScores) {
+          this.tagScores[tag] = this.rawTagScores[tag] / maxTagScore;
         }
+      } else {
+        // Copy as is if max is 0 (shouldn't happen often)
+        this.tagScores = { ...this.rawTagScores };
       }
     }
 
-    // Normalize rating preferences to sum to 1
-    const totalRatingScore = Object.values(this.ratingPreferences).reduce((sum, val) => sum + Math.max(0, val), 0);
+    // Normalize rating preferences
+    this.ratingPreferences = {};
+    const totalRatingScore = Object.values(this.rawRatingPreferences).reduce((sum, val) => sum + Math.max(0, val), 0);
     if (totalRatingScore > 0) {
-      for (const rating in this.ratingPreferences) {
-        this.ratingPreferences[rating] = Math.max(0, this.ratingPreferences[rating]) / totalRatingScore;
+      for (const rating in this.rawRatingPreferences) {
+        this.ratingPreferences[rating] = Math.max(0, this.rawRatingPreferences[rating]) / totalRatingScore;
       }
     } else {
-      // Default to equal distribution if no positive scores
-      const ratings = Object.keys(this.ratingPreferences);
+      // Default to equal distribution
+      const ratings = Object.keys(this.rawRatingPreferences);
       ratings.forEach(rating => {
         this.ratingPreferences[rating] = 1 / ratings.length;
       });
     }
 
     // Normalize media type preferences
-    const totalMediaScore = Math.max(0.001, this.mediaTypePreferences.image + this.mediaTypePreferences.video);
-    this.mediaTypePreferences.image /= totalMediaScore;
-    this.mediaTypePreferences.video /= totalMediaScore;
+    this.mediaTypePreferences = {};
+    const totalMediaScore = Math.max(0.001, this.rawMediaTypePreferences.image + this.rawMediaTypePreferences.video);
+    this.mediaTypePreferences.image = this.rawMediaTypePreferences.image / totalMediaScore;
+    this.mediaTypePreferences.video = this.rawMediaTypePreferences.video / totalMediaScore;
   }
 
   /**
    * Initialize a default profile when no interactions exist
    */
   initializeDefaultProfile() {
+    this.rawTagScores = {};
     this.tagScores = {};
+
     this.tagEngagement = {};
     this.tagCategories = {};
-    this.ratingPreferences = {
+
+    this.rawRatingPreferences = {
       general: 1.0,
       sensitive: 0.0,
       questionable: 0,
       explicit: 0
     };
-    this.mediaTypePreferences = {
+    this.ratingPreferences = { ...this.rawRatingPreferences };
+
+    this.rawMediaTypePreferences = {
       image: 0.8,
       video: 0.2
     };
+    this.mediaTypePreferences = { ...this.rawMediaTypePreferences };
+
     this.lastUpdateTime = Date.now();
   }
 
   /**
    * Reset the recommendation system to a fresh state.
-   * This clears tag scores and preferences but does NOT delete
-   * stored interactions, history, likes, favorites, or other user data.
    */
   async resetRecommendations() {
     console.log("Resetting recommendation system to fresh state...");
 
-    // Store reset timestamp so future profile rebuilds ignore old interactions
+    // Store reset timestamp
     const resetTime = Date.now();
     await StorageService.storePreferences({ recommendationResetTime: resetTime });
     console.log(`Recommendation reset timestamp set to: ${new Date(resetTime).toISOString()}`);
@@ -312,19 +408,7 @@ class RecommendationSystem {
     }
 
     // Reset all scoring data
-    this.tagScores = {};
-    this.tagEngagement = {};
-    this.tagCategories = {};
-    this.ratingPreferences = {
-      general: 1.0,
-      sensitive: 0.0,
-      questionable: 0,
-      explicit: 0
-    };
-    this.mediaTypePreferences = {
-      image: 0.8,
-      video: 0.2
-    };
+    this.initializeDefaultProfile();
 
     // Clear the post score cache
     this.postScoreCache.clear();
@@ -332,7 +416,15 @@ class RecommendationSystem {
     // Reset explore session state
     this.resetExploreSession();
 
-    this.lastUpdateTime = Date.now();
+    // Force save the cleared snapshot
+    await StorageService.storeProfileSnapshot({
+      timestamp: resetTime,
+      rawTagScores: this.rawTagScores,
+      tagEngagement: this.tagEngagement,
+      tagCategories: this.tagCategories,
+      ratingPreferences: this.rawRatingPreferences,
+      mediaTypePreferences: this.rawMediaTypePreferences
+    });
 
     console.log("Recommendation system reset complete.");
   }
@@ -1068,9 +1160,6 @@ class RecommendationSystem {
       existingPostIds = new Set()
     } = options;
 
-    // Update user profile before fetching to incorporate recent interactions
-    await this.updateUserProfile();
-
     // Generate multi-strategy query sets (2 single, 2 duo)
     const queries = this.generateMultiStrategyQueries(selectedRatings, whitelist);
     console.log("Explore queries:", queries);
@@ -1472,4 +1561,15 @@ class RecommendationSystem {
 }
 
 const recommendationSystem = new RecommendationSystem();
+
+// HMR Cleanup: Ensure the interval is cleared when the module is hot-replaced
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (recommendationSystem.updateInterval) {
+      clearInterval(recommendationSystem.updateInterval);
+      console.log("[HMR] Cleared RecommendationSystem update interval");
+    }
+  });
+}
+
 export default recommendationSystem;
