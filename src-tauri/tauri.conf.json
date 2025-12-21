@@ -1,0 +1,37 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "BooruRamen",
+  "version": "0.1.0",
+  "identifier": "com.booruramen.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "BooruRamen",
+        "width": 800,
+        "height": 600,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' customprotocol: asset:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data: blob: https://*.donmai.us https://*.gelbooru.com https://gelbooru.com https://safebooru.org https://*.safebooru.org https://konachan.com https://yande.re https://*.yande.re; media-src 'self' blob: https://*.donmai.us https://*.gelbooru.com https://gelbooru.com https://video-cdn1.gelbooru.com https://video-cdn2.gelbooru.com https://video-cdn3.gelbooru.com https://video-cdn4.gelbooru.com https://safebooru.org https://konachan.com https://yande.re; connect-src 'self' ipc: http://ipc.localhost https://*.donmai.us https://danbooru.donmai.us https://gelbooru.com https://*.gelbooru.com https://safebooru.org https://konachan.com https://yande.re"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

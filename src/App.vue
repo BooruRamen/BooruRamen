@@ -7,7 +7,7 @@
         class="absolute top-0 left-0 w-80 h-full bg-transparent backdrop-blur-sm border-r border-gray-700 overflow-y-auto z-50 transition-transform duration-300 ease-in-out"
         :style="{ transform: showPostDetails ? 'translateX(0)' : 'translateX(-100%)' }"
       >
-        <div class="p-4 pb-20">
+        <div class="p-4" style="padding-top: calc(1rem + env(safe-area-inset-top, 0)); padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0));">
           <h2 class="text-xl font-bold mb-4">Post Details</h2>
           
           <div class="space-y-4" v-if="currentPost">
@@ -141,17 +141,21 @@
         </div>
       </div>
       
-      <!-- Floating toggle button for post details sidebar -->
       <button 
         v-if="currentPost"
         @click="togglePostDetails" 
-        class="absolute top-4 left-0 z-30 p-2 rounded-r-md bg-black hover:bg-gray-900 transition-all duration-300 ease-in-out"
-        :style="{ transform: showPostDetails ? 'translateX(320px)' : 'translateX(0)' }"
+        class="absolute left-0 z-30 p-2 rounded-r-md bg-black hover:bg-gray-900 transition-all duration-300 ease-in-out"
+        :style="{ 
+          transform: showPostDetails ? 'translateX(320px)' : 'translateX(0)',
+          top: `calc(1rem + env(safe-area-inset-top, 0))`
+        }"
       >
         <span class="text-xl font-bold">{{ showPostDetails ? '<<' : '>>' }}</span>
       </button>
       
-      <div class="h-full w-full relative overflow-hidden pb-14">
+      <div class="h-full w-full relative overflow-hidden" 
+        style="padding-top: env(safe-area-inset-top, 0); padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0));"
+      >
         <router-view 
           :key="routerViewKey"
           @current-post-changed="updateCurrentPost"
@@ -159,7 +163,9 @@
         ></router-view>
         
         <!-- Debug Overlay -->
-        <div v-if="debugMode && currentPost" class="absolute top-0 left-1/2 transform -translate-x-1/2 mt-4 p-4 bg-black bg-opacity-75 text-xs text-white z-40 max-w-xs pointer-events-none font-mono rounded shadow-lg">
+        <div v-if="debugMode && currentPost" class="absolute top-0 left-1/2 transform -translate-x-1/2 p-4 bg-black bg-opacity-75 text-xs text-white z-40 max-w-xs pointer-events-none font-mono rounded shadow-lg"
+          style="margin-top: calc(1rem + env(safe-area-inset-top, 0));"
+        >
           <h3 class="font-bold mb-1 text-pink-400">Recommendation Debug</h3>
           
           <div class="mb-2 border-b border-gray-700 pb-2">
@@ -212,8 +218,9 @@
       <!-- Custom Video Controls -->
       <div 
         v-if="isCurrentPostVideo && currentPost" 
-        class="fixed bottom-14 left-0 right-0 bg-black bg-opacity-60 backdrop-blur-sm py-2 px-4 flex items-center gap-4 transition-opacity duration-300 z-40"
+        class="fixed left-0 right-0 bg-black bg-opacity-60 backdrop-blur-sm py-2 px-4 flex items-center gap-4 transition-opacity duration-300 z-40"
         :class="{ 'opacity-0': !showVideoControls && !isVideoControlsHovered, 'opacity-100': showVideoControls || isVideoControlsHovered }"
+        :style="{ bottom: `calc(3.5rem + env(safe-area-inset-bottom, 0))` }"
         @mouseenter="isVideoControlsHovered = true"
         @mouseleave="isVideoControlsHovered = false"
       >
@@ -292,7 +299,7 @@
         class="absolute top-0 right-0 w-80 h-full bg-transparent backdrop-blur-sm border-l border-gray-700 overflow-y-auto z-50 transition-transform duration-300 ease-in-out"
         :style="{ transform: showSettingsSidebar ? 'translateX(0)' : 'translateX(100%)' }"
       >
-      <div class="p-4 pb-20">
+      <div class="p-4" style="padding-top: calc(1rem + env(safe-area-inset-top, 0)); padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0));">
           <h2 class="text-xl font-bold mb-4">Settings</h2>
           
           
@@ -560,15 +567,19 @@
       <!-- Floating toggle button for settings sidebar -->
       <button 
         @click="showSettingsSidebar = !showSettingsSidebar" 
-        class="absolute top-4 right-0 z-30 p-2 rounded-l-md bg-black hover:bg-gray-900 transition-all duration-300 ease-in-out"
-        :style="{ transform: showSettingsSidebar ? 'translateX(-320px)' : 'translateX(0)' }"
+        class="absolute right-0 z-30 p-2 rounded-l-md bg-black hover:bg-gray-900 transition-all duration-300 ease-in-out"
+        :style="{ 
+          transform: showSettingsSidebar ? 'translateX(-320px)' : 'translateX(0)',
+          top: `calc(1rem + env(safe-area-inset-top, 0))`
+        }"
       >
         <Settings class="h-6 w-6" />
       </button>
       
       <!-- Floating post action buttons - repositioned to appear below sidebar but above content -->
       <div 
-        class="fixed right-4 bottom-24 flex flex-col items-center gap-4 z-15" 
+        class="fixed right-4 flex flex-col items-center gap-4 z-15" 
+        :style="{ bottom: `calc(6.5rem + env(safe-area-inset-bottom, 0))` }"
         v-if="currentPost"
       >
         <button 
@@ -771,15 +782,31 @@ export default {
       this.accumulatedWatchTime = 0;
       this.startWatchTimeTracking();
 
-      if (post) {
-        const interactions = await StorageService.getPostInteractions(post.id);
-        post.liked = interactions.some(i => i.type === 'like' && i.value > 0);
-        post.disliked = interactions.some(i => i.type === 'dislike' && i.value > 0);
-        post.favorited = interactions.some(i => i.type === 'favorite' && i.value > 0);
-      }
-      
       this.currentPost = post;
       this.currentVideoElement = videoEl;
+
+      if (post) {
+        // Reset state immediately to prevent "sticking" buttons from previous post
+        // Only if they aren't already set (to avoid flickering if we revisit a loaded post)
+        if (post.liked === undefined) post.liked = false;
+        if (post.disliked === undefined) post.disliked = false;
+        if (post.favorited === undefined) post.favorited = false;
+
+        // Async fetch - will update reactivity when done
+        StorageService.getPostInteractions(post.id).then(interactions => {
+             // Verify we are still looking at the same post to avoid race conditions
+             if (this.currentPost && this.currentPost.id === post.id) {
+                 this.currentPost.liked = interactions.some(i => i.type === 'like' && i.value > 0);
+                 this.currentPost.disliked = interactions.some(i => i.type === 'dislike' && i.value > 0);
+                 this.currentPost.favorited = interactions.some(i => i.type === 'favorite' && i.value > 0);
+             } else {
+                 // Even if we moved away, update the post object so it's cached correctly for next time
+                 post.liked = interactions.some(i => i.type === 'like' && i.value > 0);
+                 post.disliked = interactions.some(i => i.type === 'dislike' && i.value > 0);
+                 post.favorited = interactions.some(i => i.type === 'favorite' && i.value > 0);
+             }
+        });
+      }
 
       if (videoEl) {
         videoEl.volume = this.volume;

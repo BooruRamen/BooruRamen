@@ -14,12 +14,12 @@
       </div>
       
       <div 
-        v-for="post in posts" 
+        v-for="(post, index) in posts" 
         :key="getCompositeKey(post)"
-        class="h-full w-full snap-start flex items-center justify-center relative"
+        class="h-full w-full snap-start snap-always flex items-center justify-center relative"
       >
-        <!-- Post media -->
-        <div class="relative max-h-full max-w-full">
+        <!-- Post media (Lazy rendered window for performance) -->
+        <div v-if="shouldRenderMedia(index)" class="relative max-h-full max-w-full">
           <img 
             v-if="['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(getFileExtension(post))" 
             :src="post.file_url" 
@@ -32,24 +32,37 @@
             v-else-if="getFileExtension(post) === 'mp4' || getFileExtension(post) === 'webm' || isVideoPost(post)" 
             :src="getVideoSrc(post)" 
             :ref="(el) => setVideoRef(el, post)"
+            :poster="post.preview_url || post.sample_url"
             autoplay 
             loop 
             playsinline
-            preload="auto"
             muted 
-            :referrerpolicy="'origin-when-cross-origin'"
             class="max-h-[calc(100vh-56px)] max-w-full"
+            :preload="index === currentPostIndex || index === currentPostIndex + 1 ? 'auto' : 'metadata'"
             @click="togglePlayPause"
             @play="onVideoPlay($event, post)"
             @pause="onVideoPause($event, post)"
             @timeupdate="onVideoTimeUpdate($event, post)"
             @volumechange="onVideoVolumeChange($event, post)"
-          ></video>
+            @loadstart="onVideoLoadStart(post)"
+            @waiting="onVideoWaiting(post)"
+            @playing="onVideoPlaying(post)"
+            @canplay="onVideoCanPlay(post)"
+            @error="onVideoError(post)"
+          </video>
           <div 
             v-else
             class="flex items-center justify-center bg-gray-900 p-4 rounded"
           >
             <p>Unable to display media. <a :href="post.file_url" target="_blank" class="text-pink-500 underline">Open directly</a></p>
+          </div>
+
+          <!-- Custom Loading Spinner -->
+          <div 
+            v-if="videoLoadingStates[getCompositeKey(post)]" 
+            class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20 pointer-events-none"
+          >
+            <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-pink-600"></div>
           </div>
         </div>
       </div>
@@ -98,6 +111,8 @@ export default {
       videoElements: {}, 
       hasMorePosts: true,
       isProgrammaticVolumeChange: false, // Flag to ignore volumechange events during programmatic updates
+      videoLoadingStates: {}, // Map of composite key -> loading boolean
+      videoLoadingTimeouts: {}, // Non-reactive timers for debouncing spinner
     }
   },
   computed: {
@@ -123,6 +138,11 @@ export default {
       if (!post) return '';
       return post.source ? `${post.source}|${post.id}` : String(post.id);
     },
+    shouldRenderMedia(index) {
+      // Show media only for current and nearby posts to save memory/CPU
+      const range = 2; // Render 2 posts ahead and 1 behind
+      return index >= this.currentPostIndex - 1 && index <= this.currentPostIndex + range;
+    },
     getVideoSrc(post) {
       if (!post || !post.file_url) return '';
       // Use blob URL if available (for Tauri production), otherwise use original
@@ -131,10 +151,26 @@ export default {
     async processVideoUrls(posts) {
       // Pre-fetch video URLs as blobs for Tauri production
       for (const post of posts) {
-        if (this.isVideoPost(post) && post.file_url && !this.videoBlobUrls[post.file_url]) {
+        if (this.isVideoPost(post) && post.file_url) {
+           // If we already have a blob, skip (avoid redundant work)
+           if (this.videoBlobUrls[post.file_url]) continue;
+
+           // Check if video is already playing fine with original URL
+           const key = this.getCompositeKey(post);
+           const videoEl = this.videoElements[key];
+           // If video is active (playing or buffered enough), don't swap and cause a restart
+           if (videoEl && (videoEl.currentTime > 0 || videoEl.readyState >= 3)) {
+               // console.log('[FeedView] Video already playing, skipping proxy swap:', post.id);
+               continue;
+           }
+
           try {
             const blobUrl = await getPlayableVideoUrl(post.file_url);
             if (blobUrl !== post.file_url) {
+              // Final check before applying (in case it started playing ASYNC while we fetched)
+              if (videoEl && (videoEl.currentTime > 0 || videoEl.readyState >= 3)) {
+                 continue;
+              }
               this.videoBlobUrls[post.file_url] = blobUrl;
             }
           } catch (e) {
@@ -468,6 +504,49 @@ export default {
         clearInterval(this.autoScrollInterval);
         this.autoScrollInterval = null;
       }
+    },
+    onVideoLoadStart(post) {
+      const key = this.getCompositeKey(post);
+      // Clear existing timeout
+      if (this.videoLoadingTimeouts[key]) {
+        clearTimeout(this.videoLoadingTimeouts[key]);
+      }
+      // Debounce showing spinner: only show if it takes > 400ms
+      this.videoLoadingTimeouts[key] = setTimeout(() => {
+        this.videoLoadingStates[key] = true;
+      }, 400);
+    },
+    onVideoWaiting(post) {
+      const key = this.getCompositeKey(post);
+      if (!this.videoLoadingTimeouts[key]) {
+        this.videoLoadingTimeouts[key] = setTimeout(() => {
+          this.videoLoadingStates[key] = true;
+        }, 400);
+      }
+    },
+    onVideoPlaying(post) {
+      const key = this.getCompositeKey(post);
+      if (this.videoLoadingTimeouts[key]) {
+        clearTimeout(this.videoLoadingTimeouts[key]);
+        delete this.videoLoadingTimeouts[key];
+      }
+      this.videoLoadingStates[key] = false;
+    },
+    onVideoCanPlay(post) {
+      const key = this.getCompositeKey(post);
+      if (this.videoLoadingTimeouts[key]) {
+        clearTimeout(this.videoLoadingTimeouts[key]);
+        delete this.videoLoadingTimeouts[key];
+      }
+      this.videoLoadingStates[key] = false;
+    },
+    onVideoError(post) {
+      const key = this.getCompositeKey(post);
+      if (this.videoLoadingTimeouts[key]) {
+        clearTimeout(this.videoLoadingTimeouts[key]);
+        delete this.videoLoadingTimeouts[key];
+      }
+      this.videoLoadingStates[key] = false;
     },
   },
   mounted() {
