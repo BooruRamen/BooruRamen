@@ -54,7 +54,10 @@ export async function httpFetch(url, options = {}) {
     }
 
     // Fall back to browser fetch (works in dev with Vite proxy)
-    return fetch(url, options);
+    return fetch(url, {
+        ...options,
+        referrerPolicy: 'strict-origin-when-cross-origin'
+    });
 }
 
 // Export a default fetch-like function for convenience
