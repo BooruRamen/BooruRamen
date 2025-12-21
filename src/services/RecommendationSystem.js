@@ -969,7 +969,7 @@ class RecommendationSystem {
     // PIVOT (2 Queries): Top tag + temporal modifier from Tier 1 pool
     // ---------------------------------------------------------
     // Pivot queries resurface old or random content from favorite interests
-    const pivotModifiers = ['age:>3mo', 'age:>1y', 'order:rank', 'order:favcount']; // Expanded temporal modifiers
+    const pivotModifiers = ['age:>3mo', 'age:>1y', 'order:rank age:<1mo', 'order:favcount age:<1mo']; // Expanded temporal modifiers
 
     for (let i = 0; i < 2; i++) {
       const pivotTag = this.weightedRandomSelect(tier1Pool, usedTags);
@@ -1012,7 +1012,8 @@ class RecommendationSystem {
     // WILDCARD (1 Query): Global trends
     // ---------------------------------------------------------
     // Wildcard queries expose users to globally popular content
-    const wildcardOptions = ['order:rank', 'order:popular'];
+    // OPTIMIZATION: Restrict expensive sorts to recent history to avoid API timeouts (500 errors)
+    const wildcardOptions = ['order:rank age:<1mo', 'order:popular age:<1mo'];
     const wildcardQuery = wildcardOptions[Math.floor(Math.random() * wildcardOptions.length)];
 
     if (!this.exhaustedStrategies.has(wildcardQuery)) {
@@ -1029,7 +1030,8 @@ class RecommendationSystem {
     // ---------------------------------------------------------
     if (queries.length === 0) {
       console.warn("[APRW] No queries generated, using fallback");
-      const fallbacks = ['order:rank', 'order:popular', 'age:<1w'];
+      // Use constrained fallbacks
+      const fallbacks = ['order:rank age:<1mo', 'order:popular age:<1mo', 'age:<1w'];
       for (const fb of fallbacks) {
         if (!this.exhaustedStrategies.has(fb)) {
           queries.push({ tags: fb, type: 'fallback', intent: 'Emergency fallback' });
