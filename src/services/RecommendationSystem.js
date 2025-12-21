@@ -1012,7 +1012,7 @@ class RecommendationSystem {
     // WILDCARD (1 Query): Global trends
     // ---------------------------------------------------------
     // Wildcard queries expose users to globally popular content
-    const wildcardOptions = ['order:rank', 'order:popular', 'order:score'];
+    const wildcardOptions = ['order:rank', 'order:popular'];
     const wildcardQuery = wildcardOptions[Math.floor(Math.random() * wildcardOptions.length)];
 
     if (!this.exhaustedStrategies.has(wildcardQuery)) {
@@ -1029,7 +1029,7 @@ class RecommendationSystem {
     // ---------------------------------------------------------
     if (queries.length === 0) {
       console.warn("[APRW] No queries generated, using fallback");
-      const fallbacks = ['order:score', 'order:popular', 'date:>1w'];
+      const fallbacks = ['order:rank', 'order:popular', 'date:>1w'];
       for (const fb of fallbacks) {
         if (!this.exhaustedStrategies.has(fb)) {
           queries.push({ tags: fb, type: 'fallback', intent: 'Emergency fallback' });
