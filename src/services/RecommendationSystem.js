@@ -807,9 +807,9 @@ class RecommendationSystem {
     if (exploreMode && tags.length < 2) {
       // Only use safe strategies that won't timeout the database
       const saferStrategies = [
-        'date:>1d', // Last day
-        'date:>3d', // Last 3 days
-        'date:>7d', // Last week
+        'age:<1d', // Last day
+        'age:<3d', // Last 3 days
+        'age:<1w', // Last week
         'order:rank', // Content trending algorithm
         'order:favcount' // High favorites
       ];
@@ -966,25 +966,22 @@ class RecommendationSystem {
     // PIVOT (2 Queries): Top tag + temporal modifier from Tier 1 pool
     // ---------------------------------------------------------
     // Pivot queries resurface old or random content from favorite interests
-    const pivotModifiers = [
-      { suffix: ' date:>1y', label: 'classic content (>1 year old)' },
-      { suffix: ' order:score', label: 'highest scored content' }
-    ];
+    const pivotModifiers = ['age:>3mo', 'age:>1y', 'order:rank', 'order:favcount']; // Expanded temporal modifiers
 
     for (let i = 0; i < 2; i++) {
       const pivotTag = this.weightedRandomSelect(tier1Pool, usedTags);
       if (pivotTag) {
-        const modifier = pivotModifiers[i % pivotModifiers.length];
-        const pivotQuery = pivotTag.tag + modifier.suffix;
+        const modifier = pivotModifiers[Math.floor(Math.random() * pivotModifiers.length)];
+        const pivotQuery = `${pivotTag.tag} ${modifier}`;
 
         if (!this.exhaustedStrategies.has(pivotQuery)) {
           queries.push({
             tags: pivotQuery,
             type: 'pivot',
-            intent: `Temporal exploration - ${modifier.label}`
+            intent: `Core interest "${pivotTag.tag}" + modifier`
           });
           usedTags.add(pivotTag.tag);
-          console.log(`[PIVOT ${i + 1}] "${pivotQuery}" (score: ${pivotTag.score.toFixed(2)}) - ${modifier.label}`);
+          console.log(`[PIVOT ${i + 1}] "${pivotQuery}" (score: ${pivotTag.score.toFixed(2)}) - ${modifier}`);
         }
       }
     }
@@ -1029,7 +1026,7 @@ class RecommendationSystem {
     // ---------------------------------------------------------
     if (queries.length === 0) {
       console.warn("[APRW] No queries generated, using fallback");
-      const fallbacks = ['order:rank', 'order:popular', 'date:>1w'];
+      const fallbacks = ['order:rank', 'order:popular', 'age:<1w'];
       for (const fb of fallbacks) {
         if (!this.exhaustedStrategies.has(fb)) {
           queries.push({ tags: fb, type: 'fallback', intent: 'Emergency fallback' });
