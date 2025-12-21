@@ -116,7 +116,7 @@ export default {
     }
   },
   computed: {
-    ...mapState(useSettingsStore, ['autoScroll', 'autoScrollSeconds', 'disableScrollAnimation', 'debugMode']),
+    ...mapState(useSettingsStore, ['autoScroll', 'autoScrollSeconds', 'disableScrollAnimation', 'debugMode', 'whitelistTags', 'blacklistTags']),
     ...mapState(usePlayerStore, ['volume', 'muted', 'defaultMuted']),
     
     // Alias to match template if needed, or just updated template to use 'muted'
@@ -199,11 +199,17 @@ export default {
         tags.push('-filetype:mp4,webm');
       }
 
+      // Use query param if present, otherwise fall back to global settings
       if (query.whitelist) {
         tags.push(...query.whitelist.split(','));
+      } else if (this.whitelistTags && this.whitelistTags.length > 0) {
+        tags.push(...this.whitelistTags);
       }
+      
       if (query.blacklist) {
         tags.push(...query.blacklist.split(',').map(t => `-${t}`));
+      } else if (this.blacklistTags && this.blacklistTags.length > 0) {
+        tags.push(...this.blacklistTags.map(t => `-${t}`));
       }
       
       return tags.join(' ');
@@ -278,6 +284,10 @@ export default {
 
           const { ratings, whitelist, blacklist } = this.$route.query;
 
+          // Resolve whitelist/blacklist: use query first, then global settings
+          const activeWhitelist = whitelist ? whitelist.split(',') : (this.whitelistTags || []);
+          const activeBlacklist = blacklist ? blacklist.split(',') : (this.blacklistTags || []);
+
           // Loop until we find news posts or hit max attempts
           while (newPosts.length < targetCount && attempts < maxAttempts) {
             attempts++;
@@ -285,8 +295,8 @@ export default {
             const batch = await this.recommendationSystem.getCuratedExploreFeed(fetchFunction, {
               postsPerFetch: 20,
               selectedRatings: ratings ? ratings.split(',') : ['general'],
-              whitelist: whitelist ? whitelist.split(',') : [],
-              blacklist: blacklist ? blacklist.split(',') : [],
+              whitelist: activeWhitelist,
+              blacklist: activeBlacklist,
               existingPostIds: blockedKeys, 
               wantsImages: 'images' in this.$route.query ? this.$route.query.images === '1' : true,
               wantsVideos: 'videos' in this.$route.query ? this.$route.query.videos === '1' : true,
@@ -399,6 +409,7 @@ export default {
         if (currentPost) {
           const videoEl = this.videoElements[this.getCompositeKey(currentPost)] || null;
           this.$emit('current-post-changed', currentPost, videoEl);
+          
           await StorageService.trackPostView(currentPost.id, currentPost, currentPost.source);
         }
       }

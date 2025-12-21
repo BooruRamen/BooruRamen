@@ -180,7 +180,7 @@ class RecommendationSystem {
       // Fetch only NEW interactions
       interactions = await StorageService.getRecentInteractions(this.lastUpdateTime);
       isIncremental = true;
-      console.log(`Incremental update: Processing ${interactions.length} new interactions since ${new Date(this.lastUpdateTime).toISOString()}`);
+      // console.log(`Incremental update: Processing ${interactions.length} new interactions since ${new Date(this.lastUpdateTime).toISOString()}`);
     } else {
       console.log("Rebuilding user profile from scratch...");
       // Reset raw state
@@ -189,9 +189,12 @@ class RecommendationSystem {
 
       // Filter by reset time
       if (resetTimestamp > 0) {
+        // console.log(`Filtering interactions older than reset timestamp: ${resetTimestamp}`);
         interactions = interactions.filter(i => i.timestamp > resetTimestamp);
       }
     }
+
+    // console.log(`[RecommendationSystem] Update Profile: Found ${interactions.length} valid interactions to process.`);
 
     if (interactions.length === 0 && !isIncremental) {
       console.log("No interactions found, using default profile");
@@ -966,7 +969,7 @@ class RecommendationSystem {
     // PIVOT (2 Queries): Top tag + temporal modifier from Tier 1 pool
     // ---------------------------------------------------------
     // Pivot queries resurface old or random content from favorite interests
-    const pivotModifiers = ['age:>3mo', 'age:>1y', 'order:rank', 'order:favcount']; // Expanded temporal modifiers
+    const pivotModifiers = ['age:>3mo', 'age:>1y', 'order:rank age:<1mo', 'order:favcount age:<1mo']; // Expanded temporal modifiers
 
     for (let i = 0; i < 2; i++) {
       const pivotTag = this.weightedRandomSelect(tier1Pool, usedTags);
@@ -1009,7 +1012,8 @@ class RecommendationSystem {
     // WILDCARD (1 Query): Global trends
     // ---------------------------------------------------------
     // Wildcard queries expose users to globally popular content
-    const wildcardOptions = ['order:rank', 'order:popular'];
+    // OPTIMIZATION: Restrict expensive sorts to recent history to avoid API timeouts (500 errors)
+    const wildcardOptions = ['order:rank age:<1mo', 'order:popular age:<1mo'];
     const wildcardQuery = wildcardOptions[Math.floor(Math.random() * wildcardOptions.length)];
 
     if (!this.exhaustedStrategies.has(wildcardQuery)) {
@@ -1026,7 +1030,8 @@ class RecommendationSystem {
     // ---------------------------------------------------------
     if (queries.length === 0) {
       console.warn("[APRW] No queries generated, using fallback");
-      const fallbacks = ['order:rank', 'order:popular', 'age:<1w'];
+      // Use constrained fallbacks
+      const fallbacks = ['order:rank age:<1mo', 'order:popular age:<1mo', 'age:<1w'];
       for (const fb of fallbacks) {
         if (!this.exhaustedStrategies.has(fb)) {
           queries.push({ tags: fb, type: 'fallback', intent: 'Emergency fallback' });
@@ -1134,13 +1139,17 @@ class RecommendationSystem {
     if (!posts || posts.length === 0) return [];
 
     return posts.filter(post => {
-      const postTags = (post.tag_string || '').split(' ');
-      if (blacklist.some(tag => postTags.includes(tag))) return false;
+      // OPTIMIZATION: Use string inclusion check instead of splitting into array
+      // Pad with spaces to ensure we match full tags (e.g. " cat " instead of partial match in "category")
+      const tagString = ' ' + (post.tag_string || '') + ' ';
+
+      if (blacklist.some(tag => tagString.includes(' ' + tag + ' '))) return false;
+
       // Check whitelist (include ONLY if AT LEAST ONE whitelist tag is present -> CHANGED to ALL)
       // Standard search logic implies AND for multiple tags.
       // If user Whitelists "1girl" and "hat", they want posts with BOTH.
       if (whitelist.length > 0) {
-        if (!whitelist.every(tag => postTags.includes(tag))) {
+        if (!whitelist.every(tag => tagString.includes(' ' + tag + ' '))) {
           return false;
         }
       }
@@ -1157,6 +1166,13 @@ class RecommendationSystem {
       blacklist = [],
       existingPostIds = new Set()
     } = options;
+
+    // ALWAYS FRESH MODE:
+    // Before generating new queries, pull the latest interactions from the DB.
+    // This allows the feed to adapt immediately to what the user just viewed/liked in the previous batch.
+    // Since updateUserProfile handles incremental updates efficiently (only fetching new data), 
+    // this is performant enough to run before every batch fetch.
+    await this.updateUserProfile();
 
     // Generate multi-strategy query sets (2 single, 2 duo)
     const queries = this.generateMultiStrategyQueries(selectedRatings, whitelist);
