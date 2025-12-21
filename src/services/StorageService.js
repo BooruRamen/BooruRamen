@@ -56,7 +56,7 @@ const storeInteraction = async (interaction) => {
       }));
     } else {
       // Add new interaction
-      await db.interactions.add(toPlainObject({
+      const id = await db.interactions.add(toPlainObject({
         ...interaction,
         source,
         timestamp,
@@ -64,7 +64,7 @@ const storeInteraction = async (interaction) => {
     }
     return true;
   } catch (error) {
-    console.error('Error storing interaction:', error);
+    console.error('[Storage] Error storing interaction:', error);
     return false;
   }
 };
@@ -90,7 +90,7 @@ const getInteractions = async (type = null) => {
 const getRecentInteractions = async (sinceTimestamp) => {
   try {
     const timestamp = Number(sinceTimestamp) || 0;
-    // console.log(`[Storage] Fetching interactions since ${timestamp} (${new Date(timestamp).toISOString()})`);
+    console.log(`[Storage] Fetching interactions since ${timestamp} (${new Date(timestamp).toISOString()})`);
 
     const results = await db.interactions
       .where('timestamp')
@@ -98,7 +98,10 @@ const getRecentInteractions = async (sinceTimestamp) => {
       .toArray();
 
     // Double check with JS filter in case of index issues
-    return results.filter(i => i.timestamp > timestamp);
+    const filtered = results.filter(i => i.timestamp > timestamp);
+    console.log(`[Storage] Found ${filtered.length} interactions (Raw: ${results.length})`);
+
+    return filtered;
   } catch (error) {
     console.error('Error getting recent interactions:', error);
     return [];
