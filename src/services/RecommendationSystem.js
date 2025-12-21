@@ -803,14 +803,15 @@ class RecommendationSystem {
 
     // In explore mode, add diversity via time-based query or popularity
     // Completely avoid order:random as it causes timeouts
+    // order:score also causes timeouts on Danbooru, using order:rank or order:favcount instead
     if (exploreMode && tags.length < 2) {
       // Only use safe strategies that won't timeout the database
       const saferStrategies = [
         'date:>1d', // Last day
         'date:>3d', // Last 3 days
         'date:>7d', // Last week
-        'order:score', // High scoring posts
-        'order:popular' // Popular posts
+        'order:rank', // Content trending algorithm
+        'order:favcount' // High favorites
       ];
 
       tags.push(saferStrategies[Math.floor(Math.random() * saferStrategies.length)]);
@@ -1362,13 +1363,15 @@ class RecommendationSystem {
       if (allPosts.length < 10) {
         console.log(`Only found ${allPosts.length} posts, trying fallback query`);
 
-        // Fallback: Simple order:score query (very reliable)
+        // Fallback: Use order:rank as it's more stable than order:score
         try {
-          // Build a base query object for the fallback
-          const fallbackBaseQuery = { tags: 'order:score' };
+          const fallbackQuery = {
+            tags: 'order:rank',
+            page: 1
+          };
 
           // Use the hybrid builder to handle limits and filtering
-          const { apiQuery, clientSideFilterNeeded } = buildHybridQuery(fallbackBaseQuery);
+          const { apiQuery, clientSideFilterNeeded } = buildHybridQuery(fallbackQuery);
 
           // If we need client side filtering, fetch MORE posts
           const limit = clientSideFilterNeeded ? 100 : postsPerFetch;
