@@ -379,25 +379,23 @@ export default {
       const container = this.$refs.feedContainer;
       if (!container) return;
 
-      const postElements = [...container.querySelectorAll('.snap-start')];
-      const containerMidY = container.getBoundingClientRect().top + container.clientHeight / 2;
+      // Optimization: Calculate index mathematically since all posts are h-full (100% height).
+      // This allows O(1) lookup instead of O(N) loop with getBoundingClientRect + Reflows.
+      const itemHeight = container.clientHeight;
+      if (itemHeight === 0) return;
 
-      let closestPostIndex = -1;
-      let minDistance = Infinity;
+      // We use Math.round to find which post is mostly in view
+      const calculatedIndex = Math.round(container.scrollTop / itemHeight);
 
-      postElements.forEach((postEl, index) => {
-        const postMidY = postEl.getBoundingClientRect().top + postEl.clientHeight / 2;
-        const distance = Math.abs(containerMidY - postMidY);
-
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestPostIndex = index;
-        }
-      });
-
-        if (closestPostIndex !== -1 && this.currentPostIndex !== closestPostIndex) {
-        this.currentPostIndex = closestPostIndex;
+      // Bounds check: ensure index is valid and points to an actual post
+      if (
+        calculatedIndex >= 0 && 
+        calculatedIndex < this.posts.length && 
+        calculatedIndex !== this.currentPostIndex
+      ) {
+        this.currentPostIndex = calculatedIndex;
         const currentPost = this.posts[this.currentPostIndex];
+        
         if (currentPost) {
           const videoEl = this.videoElements[this.getCompositeKey(currentPost)] || null;
           this.$emit('current-post-changed', currentPost, videoEl);
