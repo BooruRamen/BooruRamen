@@ -1,3 +1,12 @@
+<!--
+  BooruRamen - A personalized booru browser
+  Copyright (C) 2025 DottsGit
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+-->
 <template>
   <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 p-4">
     <div 

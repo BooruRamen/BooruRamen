@@ -1,9 +1,18 @@
+/*
+ * BooruRamen - A personalized booru browser
+ * Copyright (C) 2025 DottsGit
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ */
+
 /**
  * db.js
  * IndexedDB database schema using Dexie.js
  * Replaces localStorage for better performance and unlimited storage
  */
-
 import Dexie from 'dexie';
 
 export const db = new Dexie('BooruRamenDB');

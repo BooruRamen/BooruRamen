@@ -1,3 +1,12 @@
+<!--
+  BooruRamen - A personalized booru browser
+  Copyright (C) 2025 DottsGit
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+-->
 <template>
   <div class="p-4 text-white pb-20 h-full overflow-y-auto"> <!-- Added h-full and overflow-y-auto -->
     <div class="max-w-7xl mx-auto space-y-6">
