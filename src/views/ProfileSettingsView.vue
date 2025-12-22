@@ -1,4 +1,13 @@
-﻿<template>
+﻿<!--
+  BooruRamen - A personalized booru browser
+  Copyright (C) 2025 DottsGit
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+-->
+<template>
   <div class="p-4 text-white h-full overflow-y-auto">
     <router-link to="/profile" class="text-pink-500 mb-4 inline-block">&lt; Back to Profile</router-link>
     <h1 class="text-2xl font-bold mb-8 text-center">Profile Settings</h1>

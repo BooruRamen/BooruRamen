@@ -1,3 +1,12 @@
+/*
+ * BooruRamen - A personalized booru browser
+ * Copyright (C) 2025 DottsGit
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ */
 /**
  * videoProxy.js
  * Proxies video URLs through Tauri HTTP to create blob URLs for playback.
