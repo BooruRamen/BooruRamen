@@ -14,7 +14,7 @@ BooruRamen is a personalized booru browser that learns what you love. It uses a 
   <img src="./src/assets/BooruRamen_Banner_Example_1.png" alt="BooruRamen Banner Example 1" width="100%" />
 </div>
 <div align="center">
-  <img src="./src/assets/BooruRamen_Banner_Example_2.png" alt="BooruRamen Banner Example 2" width="86%" />
+  <img src="./src/assets/BooruRamen_Banner_Example_2.png" alt="BooruRamen Banner Example 2" width="100%" />
 </div>
 
 ### Key Features
