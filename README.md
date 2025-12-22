@@ -18,6 +18,17 @@ BooruRamen is a personalized booru browser that learns what you love. It uses a 
 - **Immersive Player**: Cinema-style viewer with custom controls for HD video & art.
 - **Profile Stats**: Charts and graphs that visualize your unique taste.
 
+### Recommendation System
+
+BooruRamen uses a sophisticated recommendation system that:
+
+- Analyzes your browsing patterns
+- Learns from your likes, dislikes, favorites, and watchtime.
+- Builds a personalized content profile
+- Delivers a unique feed based on your preferences
+
+All recommendations are processed locally in your browser for privacy.
+
 ### Profile Analytics
 
 Gain insights into your preferences with the dedicated Analytics page:
@@ -26,17 +37,6 @@ Gain insights into your preferences with the dedicated Analytics page:
 - **Most Disliked**: Identify tags you frequently dislike to refine recommendations.
 - **Video Analytics**: Monitor your total video watch time and average viewing duration.
 - **Visualizations**: View tag distributions via responsive SVG-based charts.
-
-### Recommendation System
-
-BooruRamen uses a sophisticated recommendation system that:
-
-- Analyzes your browsing patterns
-- Learns from your explicit likes and dislikes
-- Builds a personalized content profile
-- Delivers a unique feed based on your preferences
-
-All recommendations are processed locally in your browser for privacy.
 
 # Getting Started
 ### Windows
