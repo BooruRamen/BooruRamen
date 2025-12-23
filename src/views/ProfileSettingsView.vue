@@ -289,7 +289,7 @@
 
     <!-- About/License Note -->
     <div class="mt-16 pb-8 text-center border-t border-gray-800 pt-8 opacity-40">
-      <p class="text-sm font-semibold text-gray-400">BooruRamen v0.1.0</p>
+      <p class="text-sm font-semibold text-gray-400">BooruRamen v0.2.0-0</p>
       <p class="text-xs text-gray-500 mt-1">
         Licensed under <span class="text-pink-500/80 uppercase">GPL-3.0</span>
       </p>
