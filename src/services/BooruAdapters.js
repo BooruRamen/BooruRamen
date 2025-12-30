@@ -1008,11 +1008,26 @@ export class GelbooruAdapter extends BooruAdapter {
             if (!text || text.trim().length === 0) {
                 return [];
             }
+            // Debug raw XML
+            if (postId) {
+                console.log(`[Gelbooru] Raw comments XML for ${postId}:`, text.substring(0, 500) + '...');
+            }
 
             // Gelbooru returns XML for comments, need to parse it
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(text, 'text/xml');
             const commentNodes = xmlDoc.querySelectorAll('comment');
+
+            if (commentNodes.length > 0) {
+                console.log('[Gelbooru] First comment attributes:', {
+                    id: commentNodes[0].getAttribute('id'),
+                    creator: commentNodes[0].getAttribute('creator'),
+                    creator_id: commentNodes[0].getAttribute('creator_id'),
+                    user: commentNodes[0].getAttribute('user'),
+                    owner: commentNodes[0].getAttribute('owner'),
+                    attributes: Array.from(commentNodes[0].attributes).map(a => `${a.name}=${a.value}`)
+                });
+            }
 
             const comments = [];
             commentNodes.forEach(node => {
@@ -1021,7 +1036,8 @@ export class GelbooruAdapter extends BooruAdapter {
                     post_id: postId,
                     body: node.getAttribute('body'),
                     creator: node.getAttribute('creator'),
-                    created_at: node.getAttribute('created_at')
+                    created_at: node.getAttribute('created_at'),
+                    score: node.getAttribute('score') // Extract score
                 }));
             });
 
@@ -1037,9 +1053,10 @@ export class GelbooruAdapter extends BooruAdapter {
             id: parseInt(comment.id) || 0,
             postId: comment.post_id,
             body: comment.body || '',
-            creator: comment.creator || 'Anonymous',
+            // Gelbooru usually returns 'creator' as the username. If empty, it might be anonymous.
+            creator: comment.creator || comment.owner || comment.creator_name || 'Anonymous',
             createdAt: comment.created_at || new Date().toISOString(),
-            score: 0
+            score: parseInt(comment.score) || 0
         };
     }
 }
@@ -1147,9 +1164,9 @@ export class MoebooruAdapter extends BooruAdapter {
             id: comment.id,
             postId: comment.post_id,
             body: comment.body || '',
-            creator: comment.creator || 'Anonymous',
+            creator: comment.creator || comment.creator_name || comment.owner || 'Anonymous',
             createdAt: comment.created_at ? new Date(comment.created_at * 1000).toISOString() : new Date().toISOString(),
-            score: 0
+            score: parseInt(comment.score) || 0
         };
     }
 }

@@ -101,7 +101,12 @@
                 <span class="text-pink-400 font-medium text-sm">{{ comment.creator }}</span>
                 <span class="text-gray-500 text-xs">{{ formatDate(comment.createdAt) }}</span>
               </div>
-              <p class="text-gray-200 text-sm whitespace-pre-wrap break-words">{{ comment.body }}</p>
+              <div class="text-gray-200 text-sm whitespace-pre-wrap break-words comment-body" v-html="formatComment(comment.body)"></div>
+              
+              <!-- Footer with Rating -->
+              <div class="mt-2 text-xs text-gray-500 font-medium">
+                Rating: {{ comment.score }}
+              </div>
             </div>
 
             <!-- Link to source -->
@@ -404,6 +409,49 @@ export default {
       } catch {
         return dateString;
       }
+    },
+    formatComment(text) {
+      if (!text) return '';
+
+      // 1. Escape HTML first to prevent XSS
+      let formatted = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+      // 2. Handle [quote] blocks
+      // Global replace for flat quotes
+      formatted = formatted.replace(
+        /\[quote\]([\s\S]*?)\[\/quote\]/gi,
+        '<blockquote class="border-l-2 border-pink-500 pl-3 my-2 text-gray-400 italic bg-gray-900/30 p-2 rounded text-xs">$1</blockquote>'
+      );
+
+      // 3. Handle [i] italics
+      formatted = formatted.replace(/\[i\]([\s\S]*?)\[\/i\]/gi, '<em class="text-pink-200">$1</em>');
+
+      // 4. Handle [b] bold
+      formatted = formatted.replace(/\[b\]([\s\S]*?)\[\/b\]/gi, '<strong class="text-white font-bold">$1</strong>');
+      
+      // 5. Handle [s] strikethrough (common in boorus)
+      formatted = formatted.replace(/\[s\]([\s\S]*?)\[\/s\]/gi, '<del class="text-gray-500">$1</del>');
+
+      // 6. Auto-linkify URLs (http/https)
+      // We look for URLs that are NOT preceded by a quote or within a tag (simplified)
+      // Since we escaped HTML < > earlier, we can safely match http...
+      // but we inserted HTML tags in steps 2-5. 
+      // The HTML tags we inserted use double quotes for attributes.
+      // We should be careful not to match URLs inside attributes.
+      // However, our inserted HTML only has class="..." and no hrefs yet.
+      // So matching http://... should be safe as long as we don't match inside class="..." (which we won't usually find http there).
+      
+      formatted = formatted.replace(
+        /(https?:\/\/[^\s<"']+)/g,
+        '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-pink-400 hover:text-pink-300 hover:underline break-all">$1</a>'
+      );
+
+      return formatted;
     }
   }
 };
