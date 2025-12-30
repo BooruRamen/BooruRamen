@@ -374,7 +374,14 @@ export default {
       this.error = null;
 
       try {
-        this.comments = await BooruService.getComments(this.post);
+        const result = await BooruService.getComments(this.post);
+        // Check if the result is an error object
+        if (result && result.error) {
+          this.error = result.error;
+          this.comments = [];
+        } else {
+          this.comments = result || [];
+        }
       } catch (err) {
         console.error('Error fetching comments:', err);
         this.error = 'Failed to load comments';
@@ -445,6 +452,28 @@ export default {
       // We should be careful not to match URLs inside attributes.
       // However, our inserted HTML only has class="..." and no hrefs yet.
       // So matching http://... should be safe as long as we don't match inside class="..." (which we won't usually find http there).
+      
+      // 6. Handle !asset embeds (e.g. !asset #123: Title [url])
+      // Format: !asset #id: Title [url]
+      formatted = formatted.replace(
+        /!asset #(\d+): (.+?) \[(.+?)\]/g,
+        (match, id, title, url) => {
+           return `<div class="my-2 p-2 bg-gray-900 rounded border border-gray-700 hover:border-pink-500 transition-colors group">
+             <a href="${url}" target="_blank" rel="noopener noreferrer" class="flex items-center gap-3 no-underline">
+               <div class="h-10 w-10 bg-gray-800 rounded flex items-center justify-center text-gray-400 group-hover:text-pink-400">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+               </div>
+               <div class="flex-1 min-w-0">
+                 <div class="text-sm font-medium text-pink-400 truncate">${title}</div>
+                 <div class="text-xs text-gray-500 truncate">Origin ${url}</div>
+               </div>
+             </a>
+           </div>`;
+        }
+      );
+
+      // 7. Auto-linkify URLs (http/https)
+      // We look for URLs that are NOT preceded by a quote or within a tag (simplified)
       
       formatted = formatted.replace(
         /(https?:\/\/[^\s<"']+)/g,

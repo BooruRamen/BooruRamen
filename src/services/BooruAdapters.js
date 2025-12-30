@@ -100,6 +100,8 @@ export class DanbooruAdapter extends BooruAdapter {
     constructor(baseUrl = 'https://danbooru.donmai.us', credentials = {}) {
         super(baseUrl, 'danbooru');
         this.credentials = credentials;
+        // Cache for user lookups to avoid repeated API calls
+        this.userCache = new Map();
     }
 
     /**
@@ -249,7 +251,6 @@ export class DanbooruAdapter extends BooruAdapter {
     async getComments(postId) {
         const params = new URLSearchParams({
             'search[post_id]': postId,
-            'group_by': 'comment',
             'limit': 100
         });
 
@@ -266,6 +267,16 @@ export class DanbooruAdapter extends BooruAdapter {
             const response = await httpFetch(url);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
+
+            // Collect unique creator IDs that need to be looked up
+            const creatorIds = [...new Set(data.map(c => c.creator_id).filter(id => id && !this.userCache.has(id)))];
+
+            // Batch fetch usernames for all unknown creators
+            if (creatorIds.length > 0) {
+                await this.fetchUsernames(creatorIds);
+            }
+
+            // Map comments with resolved usernames
             return data.map(comment => this.normalizeComment(comment));
         } catch (error) {
             console.error('[Danbooru] Error fetching comments:', error);
@@ -273,12 +284,55 @@ export class DanbooruAdapter extends BooruAdapter {
         }
     }
 
+    /**
+     * Fetch usernames for a list of user IDs
+     * @param {number[]} userIds - Array of user IDs to look up
+     */
+    async fetchUsernames(userIds) {
+        // Danbooru supports fetching multiple users with search[id] parameter
+        const params = new URLSearchParams({
+            'search[id]': userIds.join(','),
+            'only': 'id,name',
+            'limit': userIds.length
+        });
+
+        if (this.credentials.userId && this.credentials.apiKey) {
+            params.append('login', this.credentials.userId);
+            params.append('api_key', this.credentials.apiKey);
+        }
+
+        const url = `${this.baseUrl}/users.json?${params.toString()}`;
+
+        try {
+            console.log(`[Danbooru] Fetching usernames for ${userIds.length} users`);
+            const response = await httpFetch(url);
+            if (!response.ok) {
+                console.warn(`[Danbooru] Failed to fetch usernames: ${response.status}`);
+                return;
+            }
+            const users = await response.json();
+            console.log(`[Danbooru] Got ${users.length} users:`, users.map(u => u.name));
+
+            // Cache the results
+            for (const user of users) {
+                if (user.id && user.name) {
+                    this.userCache.set(user.id, user.name);
+                }
+            }
+        } catch (error) {
+            console.error('[Danbooru] Error fetching usernames:', error);
+        }
+    }
+
     normalizeComment(comment) {
+        // Look up username from cache
+        const creatorName = this.userCache.get(comment.creator_id) || 'Anonymous';
+
         return {
             id: comment.id,
             postId: comment.post_id,
             body: comment.body || '',
-            creator: comment.creator_name || 'Anonymous',
+            creator: creatorName,
             createdAt: comment.created_at || new Date().toISOString(),
             score: comment.score || 0
         };
@@ -972,75 +1026,32 @@ export class GelbooruAdapter extends BooruAdapter {
 
     /**
      * Fetch comments for a specific post from Gelbooru
+     * Since the API is disabled, we scrape from the post page HTML
      * @param {number} postId - The ID of the post
      * @returns {Promise<Array>} - Array of normalized comments
      */
     async getComments(postId) {
         await this.throttle();
 
-        const params = new URLSearchParams({
-            page: 'dapi',
-            s: 'comment',
-            q: 'index',
-            post_id: postId
-        });
-
-        // Add credentials if available
-        if (this.credentials.userId && this.credentials.apiKey) {
-            params.append('user_id', this.credentials.userId);
-            params.append('api_key', this.credentials.apiKey);
-        }
-
+        // The API is disabled, so we scrape the post page directly
         let cleanBaseUrl = this.baseUrl.endsWith('/') ? this.baseUrl.slice(0, -1) : this.baseUrl;
         if (import.meta.env && import.meta.env.DEV) {
             if (cleanBaseUrl.includes('gelbooru.com')) cleanBaseUrl = '/api/gelbooru';
             if (cleanBaseUrl.includes('safebooru.org')) cleanBaseUrl = '/api/safebooru';
         }
 
-        const url = `${cleanBaseUrl}/index.php?${params.toString()}`;
+        const url = `${cleanBaseUrl}/index.php?page=post&s=view&id=${postId}`;
 
         try {
-            console.log(`[Gelbooru] Fetching comments for post ${postId}`);
+            console.log(`[Gelbooru] Fetching comments from post page ${postId}`);
             const response = await httpFetch(url);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-            const text = await response.text();
-            if (!text || text.trim().length === 0) {
-                return [];
-            }
-            // Debug raw XML
-            if (postId) {
-                console.log(`[Gelbooru] Raw comments XML for ${postId}:`, text.substring(0, 500) + '...');
-            }
+            const html = await response.text();
 
-            // Gelbooru returns XML for comments, need to parse it
-            const parser = new DOMParser();
-            const xmlDoc = parser.parseFromString(text, 'text/xml');
-            const commentNodes = xmlDoc.querySelectorAll('comment');
-
-            if (commentNodes.length > 0) {
-                console.log('[Gelbooru] First comment attributes:', {
-                    id: commentNodes[0].getAttribute('id'),
-                    creator: commentNodes[0].getAttribute('creator'),
-                    creator_id: commentNodes[0].getAttribute('creator_id'),
-                    user: commentNodes[0].getAttribute('user'),
-                    owner: commentNodes[0].getAttribute('owner'),
-                    attributes: Array.from(commentNodes[0].attributes).map(a => `${a.name}=${a.value}`)
-                });
-            }
-
-            const comments = [];
-            commentNodes.forEach(node => {
-                comments.push(this.normalizeComment({
-                    id: node.getAttribute('id'),
-                    post_id: postId,
-                    body: node.getAttribute('body'),
-                    creator: node.getAttribute('creator'),
-                    created_at: node.getAttribute('created_at'),
-                    score: node.getAttribute('score') // Extract score
-                }));
-            });
-
+            // Parse comments from HTML
+            const comments = this.parseCommentsFromHtml(html, postId);
+            console.log(`[Gelbooru] Parsed ${comments.length} comments from HTML`);
             return comments;
         } catch (error) {
             console.error('[Gelbooru] Error fetching comments:', error);
@@ -1048,13 +1059,89 @@ export class GelbooruAdapter extends BooruAdapter {
         }
     }
 
+    /**
+     * Parse comments from Gelbooru post page HTML
+     * @param {string} html - The HTML content
+     * @param {number} postId - The post ID
+     * @returns {Array} - Array of normalized comments
+     */
+    parseCommentsFromHtml(html, postId) {
+        const comments = [];
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        // Gelbooru comments are in divs with class 'comment' or in a comments section
+        // The structure varies, so we try multiple selectors
+        const commentElements = doc.querySelectorAll('.comment, [id^="c"]');
+
+        commentElements.forEach((el, index) => {
+            // Skip if this doesn't look like a comment
+            const text = el.textContent || '';
+            if (text.length < 5) return;
+
+            // Try to extract comment data
+            // Look for author/creator - usually in an anchor or span with specific class
+            let creator = 'Anonymous';
+            const authorLink = el.querySelector('a[href*="user_id="], a[href*="page=account"], .creator, .author');
+            if (authorLink) {
+                creator = authorLink.textContent.trim() || 'Anonymous';
+            }
+
+            // Look for the comment body - usually in a div or the main text
+            let body = '';
+            const bodyEl = el.querySelector('.comment-body, .body, p');
+            if (bodyEl) {
+                body = bodyEl.textContent.trim();
+            } else {
+                // Get text content but try to exclude author/date info
+                body = text.trim();
+            }
+
+            // Try to extract date
+            let createdAt = new Date().toISOString();
+            const dateEl = el.querySelector('.date, time, [title*="20"]');
+            if (dateEl) {
+                const dateText = dateEl.getAttribute('title') || dateEl.textContent;
+                try {
+                    const parsed = new Date(dateText);
+                    if (!isNaN(parsed.getTime())) {
+                        createdAt = parsed.toISOString();
+                    }
+                } catch (e) { /* ignore */ }
+            }
+
+            // Try to get comment ID from element ID or data attribute
+            let commentId = el.id?.replace(/\D/g, '') || index;
+
+            // Try to get score
+            let score = 0;
+            const scoreEl = el.querySelector('.score, [class*="score"]');
+            if (scoreEl) {
+                score = parseInt(scoreEl.textContent) || 0;
+            }
+
+            if (body && body.length > 0) {
+                comments.push(this.normalizeComment({
+                    id: commentId,
+                    post_id: postId,
+                    body: body,
+                    creator: creator,
+                    created_at: createdAt,
+                    score: score
+                }));
+            }
+        });
+
+        return comments;
+    }
+
     normalizeComment(comment) {
         return {
             id: parseInt(comment.id) || 0,
             postId: comment.post_id,
             body: comment.body || '',
-            // Gelbooru usually returns 'creator' as the username. If empty, it might be anonymous.
-            creator: comment.creator || comment.owner || comment.creator_name || 'Anonymous',
+            // Gelbooru usually returns 'creator' as the username. Fallback to owner/user/username.
+            creator: comment.creator || comment.owner || comment.user || comment.username || 'Anonymous',
             createdAt: comment.created_at || new Date().toISOString(),
             score: parseInt(comment.score) || 0
         };
