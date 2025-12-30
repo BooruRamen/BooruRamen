@@ -3,7 +3,8 @@ name: "Release"
 on:
   push:
     branches:
-      - main  # or master
+      - master
+  workflow_dispatch:      
 
 jobs:
   publish:
