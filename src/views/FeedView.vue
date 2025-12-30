@@ -25,7 +25,8 @@
       <div
         v-for="(post, index) in posts"
         :key="getCompositeKey(post)"
-        class="w-full snap-start snap-always flex items-center justify-center relative"
+        class="w-full snap-start snap-always flex justify-center relative"
+        :class="commentsSheetHeight > 0 ? 'items-end' : 'items-center'"
         :style="postContainerStyle"
       >
         <!-- Post media (Lazy rendered window for performance) -->
@@ -138,10 +139,10 @@ export default {
 
     // Calculate max height for media based on comments sheet
     mediaMaxHeight() {
-      // Base: 100vh - 56px (nav bar) - comments sheet height
-      const baseHeight = 'calc(100vh - 56px)';
+      // Base: 100vh - 4rem (nav bar) - comments sheet height
+      const baseHeight = 'calc(100vh - 4rem)';
       if (this.commentsSheetHeight > 0) {
-        return `calc(100vh - 56px - ${this.commentsSheetHeight}px)`;
+        return `calc(100vh - 4rem - ${this.commentsSheetHeight}px)`;
       }
       return baseHeight;
     },
@@ -160,8 +161,8 @@ export default {
     postContainerStyle() {
       return {
         height: this.commentsSheetHeight > 0
-          ? `calc(100vh - 56px - ${this.commentsSheetHeight}px)`
-          : 'calc(100vh - 56px)',
+          ? `calc(100vh - 4rem - ${this.commentsSheetHeight}px)`
+          : 'calc(100vh - 4rem)',
         transition: 'height 0.35s cubic-bezier(0.32, 0.72, 0, 1)'
       };
     },

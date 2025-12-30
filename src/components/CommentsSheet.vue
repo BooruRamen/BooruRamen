@@ -8,11 +8,11 @@
   (at your option) any later version.
 -->
 <template>
-  <!-- Bottom Sheet - No backdrop, sits at the bottom -->
+  <!-- Bottom Sheet - No backdrop, sits above the nav bar -->
   <Teleport to="body">
     <div
       ref="sheetRef"
-      class="fixed inset-x-0 bottom-0 z-40 touch-none"
+      class="fixed inset-x-0 z-40 touch-none"
       :style="sheetStyle"
       @touchstart="onTouchStart"
       @touchmove="onTouchMove"
@@ -20,7 +20,6 @@
     >
       <div
         class="bg-gray-900 rounded-t-2xl flex flex-col h-full shadow-2xl"
-        style="padding-bottom: env(safe-area-inset-bottom, 0);"
       >
         <!-- Handle -->
         <div
@@ -171,15 +170,20 @@ export default {
       return this.post?.post_url || null;
     },
     sheetStyle() {
+      // Nav bar height is 4rem (64px) + safe area
+      const navBarHeight = 'calc(4rem + env(safe-area-inset-bottom, 0))';
+
       if (!this.isOpen) {
         return {
           transform: 'translateY(100%)',
           height: '0px',
+          bottom: navBarHeight,
           visibility: 'hidden'
         };
       }
       return {
         height: `${this.currentHeight}px`,
+        bottom: navBarHeight,
         transition: this.isDragging ? 'none' : 'height 0.35s cubic-bezier(0.32, 0.72, 0, 1)',
         visibility: 'visible'
       };
