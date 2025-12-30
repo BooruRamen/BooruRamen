@@ -7,7 +7,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # JOB 1: Handle versioning and prep (Fast Linux Runner)
   prepare:
     runs-on: ubuntu-latest
     outputs:
@@ -17,7 +16,6 @@ jobs:
         with:
           token: ${{ secrets.ADMIN_PAT }}
           fetch-depth: 0
-
       - name: Automated Version Bump
         id: bump
         uses: phips28/gh-action-bump-version@master
@@ -25,7 +23,6 @@ jobs:
           tag-prefix: 'v'
         env:
           GITHUB_TOKEN: ${{ secrets.ADMIN_PAT }}
-
       - name: Sync Tauri Version
         id: get_version
         run: |
@@ -38,7 +35,6 @@ jobs:
           git push origin master
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-  # JOB 2: Build the apps
   publish:
     needs: prepare
     permissions:
@@ -51,30 +47,30 @@ jobs:
             target: "x86_64-pc-windows-msvc"
           - platform: "ubuntu-latest"
             target: "aarch64-linux-android"
-
     runs-on: ${{ matrix.platform }}
-    
     steps:
       - uses: actions/checkout@v4
         with:
           ref: master
           fetch-depth: 0 
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
           cache: 'npm'
-
       - name: Install dependencies
         run: npm install
 
-      # NEW: Android specific setup (Only runs on the Linux/Android job)
+      # IMPROVED: Complete Android NDK Toolchain Setup
       - name: Install Android NDK
         if: matrix.target == 'aarch64-linux-android'
         run: |
-          echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
-          echo "PATH=$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH" >> $GITHUB_ENV
+          ANDROID_NDK_PATH=$ANDROID_NDK_LATEST_HOME
+          TOOLCHAIN=$ANDROID_NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64
+          echo "NDK_HOME=$ANDROID_NDK_PATH" >> $GITHUB_ENV
+          echo "CC=$TOOLCHAIN/bin/aarch64-linux-android33-clang" >> $GITHUB_ENV
+          echo "AR=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+          echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
