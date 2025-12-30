@@ -3,8 +3,8 @@ name: "Release"
 on:
   push:
     branches:
+      - main
       - master
-    # This ignores any push that contains "[skip ci]" in the message
     paths-ignore:
       - 'package.json'
       - 'src-tauri/tauri.conf.json'
@@ -26,7 +26,6 @@ jobs:
         uses: phips28/gh-action-bump-version@master
         with:
           tag-prefix: 'v'
-          # CRITICAL: Adds skip ci to the version bump commit
           commit-message: 'ci: version bump to v%s [skip ci]'
         env:
           GITHUB_TOKEN: ${{ secrets.ADMIN_PAT }}
@@ -39,7 +38,6 @@ jobs:
           git config user.name "Automated Version Bump"
           git config user.email "gh-action-bump-version@users.noreply.github.com"
           git add src-tauri/tauri.conf.json
-          # CRITICAL: Adds skip ci to the sync commit
           git commit -m "ci: sync tauri version to $VERSION [skip ci]" || echo "No changes"
           git push origin master
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -58,8 +56,8 @@ jobs:
             extra_args: ""
           - platform: "ubuntu-latest"
             target: "aarch64-linux-android"
-            # THE FIX: Tell Tauri to generate the APK specifically
-            extra_args: "--apk"
+            # THE FIX: Extra set of dashes for npm run
+            extra_args: "-- --apk"
 
     runs-on: ${{ matrix.platform }}
     
@@ -106,5 +104,4 @@ jobs:
           releaseName: 'BooruRamen v${{ needs.prepare.outputs.new_version }}'
           releaseDraft: false
           prerelease: false
-          # Combines the target with the --apk flag only for Android
           args: --target ${{ matrix.target }} ${{ matrix.extra_args }}
