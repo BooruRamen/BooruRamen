@@ -15,6 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          token: ${{ secrets.ADMIN_PAT }}
           fetch-depth: 0 
 
       # 1. Automate Version Bump (Increments x.x.#)
