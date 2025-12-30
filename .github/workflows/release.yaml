@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - master
+    # This ignores any push that contains "[skip ci]" in the message
+    paths-ignore:
+      - 'package.json'
+      - 'src-tauri/tauri.conf.json'
   workflow_dispatch:
 
 jobs:
@@ -16,13 +20,17 @@ jobs:
         with:
           token: ${{ secrets.ADMIN_PAT }}
           fetch-depth: 0
+
       - name: Automated Version Bump
         id: bump
         uses: phips28/gh-action-bump-version@master
         with:
           tag-prefix: 'v'
+          # CRITICAL: Adds skip ci to the version bump commit
+          commit-message: 'ci: version bump to v%s [skip ci]'
         env:
           GITHUB_TOKEN: ${{ secrets.ADMIN_PAT }}
+
       - name: Sync Tauri Version
         id: get_version
         run: |
@@ -31,7 +39,8 @@ jobs:
           git config user.name "Automated Version Bump"
           git config user.email "gh-action-bump-version@users.noreply.github.com"
           git add src-tauri/tauri.conf.json
-          git commit -m "ci: sync tauri version to $VERSION" || echo "No changes to commit"
+          # CRITICAL: Adds skip ci to the sync commit
+          git commit -m "ci: sync tauri version to $VERSION [skip ci]" || echo "No changes"
           git push origin master
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
@@ -57,20 +66,21 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
-          cache: 'npm'
       - name: Install dependencies
         run: npm install
 
-      # IMPROVED: Complete Android NDK Toolchain Setup
       - name: Install Android NDK
         if: matrix.target == 'aarch64-linux-android'
         run: |
           ANDROID_NDK_PATH=$ANDROID_NDK_LATEST_HOME
           TOOLCHAIN=$ANDROID_NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64
+          # Target API 33
           echo "NDK_HOME=$ANDROID_NDK_PATH" >> $GITHUB_ENV
-          echo "CC=$TOOLCHAIN/bin/aarch64-linux-android33-clang" >> $GITHUB_ENV
-          echo "AR=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
-          echo "PATH=$TOOLCHAIN/bin:$PATH" >> $GITHUB_ENV
+          echo "CC_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android33-clang" >> $GITHUB_ENV
+          echo "AR_aarch64_linux_android=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/aarch64-linux-android33-clang" >> $GITHUB_ENV
+          # THE FIX: Tell the linker where the NDK system libraries actually live
+          echo "RUSTFLAGS=-L $ANDROID_NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/33" >> $GITHUB_ENV
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
