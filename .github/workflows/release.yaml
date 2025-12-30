@@ -54,18 +54,26 @@ jobs:
         include:
           - platform: "windows-latest"
             target: "x86_64-pc-windows-msvc"
+            # Windows uses standard build
+            extra_args: ""
           - platform: "ubuntu-latest"
             target: "aarch64-linux-android"
+            # THE FIX: Tell Tauri to generate the APK specifically
+            extra_args: "--apk"
+
     runs-on: ${{ matrix.platform }}
+    
     steps:
       - uses: actions/checkout@v4
         with:
           ref: master
           fetch-depth: 0 
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
+
       - name: Install dependencies
         run: npm install
 
@@ -74,12 +82,10 @@ jobs:
         run: |
           ANDROID_NDK_PATH=$ANDROID_NDK_LATEST_HOME
           TOOLCHAIN=$ANDROID_NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64
-          # Target API 33
           echo "NDK_HOME=$ANDROID_NDK_PATH" >> $GITHUB_ENV
           echo "CC_aarch64_linux_android=$TOOLCHAIN/bin/aarch64-linux-android33-clang" >> $GITHUB_ENV
           echo "AR_aarch64_linux_android=$TOOLCHAIN/bin/llvm-ar" >> $GITHUB_ENV
           echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/bin/aarch64-linux-android33-clang" >> $GITHUB_ENV
-          # THE FIX: Tell the linker where the NDK system libraries actually live
           echo "RUSTFLAGS=-L $ANDROID_NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/33" >> $GITHUB_ENV
 
       - name: Setup Rust
@@ -100,4 +106,5 @@ jobs:
           releaseName: 'BooruRamen v${{ needs.prepare.outputs.new_version }}'
           releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }}
+          # Combines the target with the --apk flag only for Android
+          args: --target ${{ matrix.target }} ${{ matrix.extra_args }}
