@@ -17,7 +17,17 @@ jobs:
         with:
           token: ${{ secrets.ADMIN_PAT }}
           fetch-depth: 0 
+     
+      # Install Node.js
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
 
+      # Install dependencies
+      - name: Install dependencies
+        run: npm install
+        
       # 1. Automate Version Bump (Increments x.x.#)
       - name: Automated Version Bump
         id: version_bump
@@ -52,8 +62,6 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'BooruRamen v__VERSION__'
-          # This enables the automatically generated changelog in the release notes
-          generateReleaseNotes: true 
           releaseDraft: false
           prerelease: false
           args: --target x86_64-pc-windows-msvc --target aarch64-linux-android
