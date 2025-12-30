@@ -204,6 +204,66 @@ class BooruService {
         }));
         return results;
     }
+
+    /**
+     * Fetch comments for a specific post
+     * @param {Object} post - The post object (must have id and source)
+     * @returns {Promise<Array>} - Array of normalized comments
+     */
+    async getComments(post) {
+        if (!post || !post.id) {
+            console.warn('[BooruService] getComments called without valid post');
+            return [];
+        }
+
+        // Find the adapter that matches this post's source
+        const adapter = this.adapters.find(a =>
+            post.source && (a.baseUrl === post.source || post.source.includes(a.baseUrl))
+        );
+
+        if (!adapter) {
+            console.warn(`[BooruService] No adapter found for source: ${post.source}`);
+            // Try to create a temporary adapter based on the source URL
+            if (post.source) {
+                const tempSource = this.guessSourceFromUrl(post.source);
+                if (tempSource) {
+                    const tempAdapter = this.createAdapter(tempSource);
+                    return tempAdapter.getComments(post.id);
+                }
+            }
+            return [];
+        }
+
+        return adapter.getComments(post.id);
+    }
+
+    /**
+     * Guess source configuration from a URL
+     * @param {string} url - The source URL
+     * @returns {Object|null} - Source config or null
+     */
+    guessSourceFromUrl(url) {
+        if (!url) return null;
+        const lowerUrl = url.toLowerCase();
+
+        if (lowerUrl.includes('danbooru')) {
+            return { type: 'danbooru', url: 'https://danbooru.donmai.us' };
+        }
+        if (lowerUrl.includes('gelbooru.com')) {
+            return { type: 'gelbooru', url: 'https://gelbooru.com' };
+        }
+        if (lowerUrl.includes('safebooru.org')) {
+            return { type: 'gelbooru', url: 'https://safebooru.org' };
+        }
+        if (lowerUrl.includes('konachan')) {
+            return { type: 'moebooru', url: 'https://konachan.com' };
+        }
+        if (lowerUrl.includes('yande.re')) {
+            return { type: 'moebooru', url: 'https://yande.re' };
+        }
+
+        return null;
+    }
 }
 
 // Singleton instance
