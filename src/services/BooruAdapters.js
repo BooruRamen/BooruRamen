@@ -1067,58 +1067,54 @@ export class GelbooruAdapter extends BooruAdapter {
      */
     parseCommentsFromHtml(html, postId) {
         const comments = [];
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
 
-        // Gelbooru comments are in divs with class 'comment' or in a comments section
-        // The structure varies, so we try multiple selectors
-        const commentElements = doc.querySelectorAll('.comment, [id^="c"]');
+        // Debug: Check various patterns
+        const hasCommentedAt = html.includes('commented at');
+        const hasCommentBody = html.includes('commentBody');
+        const hasUserComments = html.includes('User Comments');
+        console.log(`[Gelbooru] HTML length: ${html.length}, has 'commented at': ${hasCommentedAt}, 'commentBody': ${hasCommentBody}, 'User Comments': ${hasUserComments}`);
 
-        commentElements.forEach((el, index) => {
-            // Skip if this doesn't look like a comment
-            const text = el.textContent || '';
-            if (text.length < 5) return;
+        // Log a sample of the HTML around commentBody class
+        if (hasCommentBody) {
+            const idx = html.indexOf('commentBody');
+            console.log('[Gelbooru] Sample around "commentBody":', html.substring(idx, idx + 400));
+        }
 
-            // Try to extract comment data
-            // Look for author/creator - usually in an anchor or span with specific class
-            let creator = 'Anonymous';
-            const authorLink = el.querySelector('a[href*="user_id="], a[href*="page=account"], .creator, .author');
-            if (authorLink) {
-                creator = authorLink.textContent.trim() || 'Anonymous';
-            }
+        // Gelbooru comment structure:
+        // <div class="commentBody ">
+        //   <a href="..."><b>Username</b></a> commented at DATE » #ID<br><br>BODY<br><br>
+        //   <span>...<span id="scID">SCORE</span> Points</span>
+        //   <span>...Flag</span>
+        // </div>
 
-            // Look for the comment body - usually in a div or the main text
-            let body = '';
-            const bodyEl = el.querySelector('.comment-body, .body, p');
-            if (bodyEl) {
-                body = bodyEl.textContent.trim();
-            } else {
-                // Get text content but try to exclude author/date info
-                body = text.trim();
-            }
+        // Match comments using the commentBody structure
+        const commentRegex = /<div\s+class="commentBody[^"]*">\s*<a[^>]*><b>([^<]+)<\/b><\/a>\s*commented\s+at\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s*(?:»|&raquo;|&#187;)\s*#(\d+)<br\s*\/?><br\s*\/?>([\s\S]*?)<span\s+id="sc\d+"[^>]*>(\d+)<\/span>\s*Points/gi;
 
-            // Try to extract date
-            let createdAt = new Date().toISOString();
-            const dateEl = el.querySelector('.date, time, [title*="20"]');
-            if (dateEl) {
-                const dateText = dateEl.getAttribute('title') || dateEl.textContent;
-                try {
-                    const parsed = new Date(dateText);
-                    if (!isNaN(parsed.getTime())) {
-                        createdAt = parsed.toISOString();
-                    }
-                } catch (e) { /* ignore */ }
-            }
+        let match;
+        let matchCount = 0;
+        while ((match = commentRegex.exec(html)) !== null) {
+            matchCount++;
+            const creator = match[1].trim();
+            const dateStr = match[2];
+            const commentId = match[3];
+            let body = match[4];
+            const score = parseInt(match[5]) || 0;
 
-            // Try to get comment ID from element ID or data attribute
-            let commentId = el.id?.replace(/\D/g, '') || index;
+            // Clean up the body
+            body = body
+                .replace(/<br\s*\/?>/gi, '\n')  // Convert <br> to newlines
+                .replace(/<[^>]*>/g, '')         // Remove other HTML tags
+                .replace(/&amp;/g, '&')          // Decode HTML entities
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&#0?39;/g, "'")
+                .replace(/&raquo;/g, '»')
+                .replace(/&#187;/g, '»')
+                .replace(/\n{3,}/g, '\n\n')      // Limit consecutive newlines
+                .trim();
 
-            // Try to get score
-            let score = 0;
-            const scoreEl = el.querySelector('.score, [class*="score"]');
-            if (scoreEl) {
-                score = parseInt(scoreEl.textContent) || 0;
-            }
+            console.log(`[Gelbooru] Matched comment #${commentId} by ${creator}, score ${score}: "${body.substring(0, 50)}..."`);
 
             if (body && body.length > 0) {
                 comments.push(this.normalizeComment({
@@ -1126,12 +1122,13 @@ export class GelbooruAdapter extends BooruAdapter {
                     post_id: postId,
                     body: body,
                     creator: creator,
-                    created_at: createdAt,
+                    created_at: dateStr,
                     score: score
                 }));
             }
-        });
+        }
 
+        console.log(`[Gelbooru] Found ${comments.length} comments (${matchCount} regex matches)`);
         return comments;
     }
 
