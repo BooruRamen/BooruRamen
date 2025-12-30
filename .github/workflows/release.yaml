@@ -1,0 +1,46 @@
+name: "Release"
+
+on:
+  push:
+    branches:
+      - main  # or master
+
+jobs:
+  publish:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest # Tauri action handles the matrix for Windows/Android
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Important for changelog generation
+
+      # 1. Automate Version Bump (Increments patch version x.x.# by default)
+      - name: Automated Version Bump
+        id: version_bump
+        uses: phips28/gh-action-bump-version@master
+        with:
+          tag-prefix: 'v'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 2. Sync Tauri version (Ensures tauri.conf.json matches package.json)
+      - name: Sync Tauri Version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+
+      # 3. Build & Release for Windows and Android
+      - name: Build and Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__ # replaces __VERSION__ with the app version
+          releaseName: 'BooruRamen v__VERSION__'
+          releaseBody: 'Automatically generated release.'
+          releaseDraft: false
+          prerelease: false
+          # This triggers both Windows (.exe) and Android (.apk) builds
+          args: --target x86_64-pc-windows-msvc --target aarch64-linux-android
