@@ -9,14 +9,14 @@ jobs:
   publish:
     permissions:
       contents: write
-    runs-on: ubuntu-latest # Tauri action handles the matrix for Windows/Android
+    runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Important for changelog generation
+          fetch-depth: 0 
 
-      # 1. Automate Version Bump (Increments patch version x.x.# by default)
+      # 1. Automate Version Bump (Increments x.x.#)
       - name: Automated Version Bump
         id: version_bump
         uses: phips28/gh-action-bump-version@master
@@ -25,22 +25,33 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 2. Sync Tauri version (Ensures tauri.conf.json matches package.json)
+      # 2. Sync Tauri version to match the new package.json version
       - name: Sync Tauri Version
         run: |
           VERSION=$(node -p "require('./package.json').version")
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
 
-      # 3. Build & Release for Windows and Android
+      # 3. Setup Rust and Android NDK (Required for Android builds)
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc, aarch64-linux-android
+
+      # 4. Build & Release
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # THESE ARE THE SECRETS YOU JUST ADDED:
+          TAURI_ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          TAURI_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          TAURI_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          TAURI_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         with:
-          tagName: v__VERSION__ # replaces __VERSION__ with the app version
+          tagName: v__VERSION__
           releaseName: 'BooruRamen v__VERSION__'
-          releaseBody: 'Automatically generated release.'
+          # This enables the automatically generated changelog in the release notes
+          generateReleaseNotes: true 
           releaseDraft: false
           prerelease: false
-          # This triggers both Windows (.exe) and Android (.apk) builds
           args: --target x86_64-pc-windows-msvc --target aarch64-linux-android
