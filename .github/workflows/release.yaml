@@ -87,12 +87,17 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # STEP: Initialize Android project (required before building)
+      - name: Initialize Android Project
+        if: matrix.target == 'aarch64-linux-android'
+        run: npm run tauri android init
+
       # STEP: MANUAL BUILD (Bypasses tauri-action limitations)
       - name: Build Tauri App
         run: |
           if [ "${{ matrix.target }}" == "aarch64-linux-android" ]; then
-            # Tauri Android CLI expects 'aarch64', not the full rust target string
-            npm run tauri android build -- --apk true --target aarch64
+            # Tauri Android CLI expects short target names: aarch64, armv7, i686, x86_64
+            npm run tauri android build -- --apk --target aarch64
           else
             # Windows build
             npm run tauri build -- --target x86_64-pc-windows-msvc
