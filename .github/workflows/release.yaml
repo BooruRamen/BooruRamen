@@ -52,12 +52,8 @@ jobs:
         include:
           - platform: "windows-latest"
             target: "x86_64-pc-windows-msvc"
-            # We put the FULL command here
-            tauri_command: "npm run tauri build -- --target x86_64-pc-windows-msvc"
           - platform: "ubuntu-latest"
             target: "aarch64-linux-android"
-            # We put the FULL command here
-            tauri_command: "npm run tauri android build -- --apk --target aarch64-linux-android"
 
     runs-on: ${{ matrix.platform }}
     
@@ -91,19 +87,25 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build and Release
+      # STEP: MANUAL BUILD (Bypasses tauri-action limitations)
+      - name: Build Tauri App
+        run: |
+          if [ "${{ matrix.target }}" == "aarch64-linux-android" ]; then
+            npm run tauri android build -- --apk true --target aarch64-linux-android
+          else
+            npm run tauri build -- --target x86_64-pc-windows-msvc
+          fi
+        shell: bash
+
+      # STEP: UPLOAD ONLY
+      - name: Upload to Release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_B64 }}
-          TAURI_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-          TAURI_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          TAURI_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         with:
           tagName: v${{ needs.prepare.outputs.new_version }}
           releaseName: 'BooruRamen v${{ needs.prepare.outputs.new_version }}'
           releaseDraft: false
           prerelease: false
-          # By providing the full string here and NOT using 'args', 
-          # we bypass the action's automatic command building.
-          tauriScript: ${{ matrix.tauri_command }}
+          # We tell the action NOT to run a build because we just did it manually
+          tauriScript: "echo Skipping build, files already generated"
