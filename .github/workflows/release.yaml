@@ -52,12 +52,12 @@ jobs:
         include:
           - platform: "windows-latest"
             target: "x86_64-pc-windows-msvc"
-            # Simple build for Windows
-            tauri_args: "run tauri build -- --target x86_64-pc-windows-msvc"
+            # We put the FULL command here
+            tauri_command: "npm run tauri build -- --target x86_64-pc-windows-msvc"
           - platform: "ubuntu-latest"
             target: "aarch64-linux-android"
-            # Fixed command for Android
-            tauri_args: "run tauri android build -- --apk --target aarch64-linux-android"
+            # We put the FULL command here
+            tauri_command: "npm run tauri android build -- --apk --target aarch64-linux-android"
 
     runs-on: ${{ matrix.platform }}
     
@@ -104,6 +104,6 @@ jobs:
           releaseName: 'BooruRamen v${{ needs.prepare.outputs.new_version }}'
           releaseDraft: false
           prerelease: false
-          # We tell the action to just run 'npm' and we provide all arguments manually
-          tauriScript: npm
-          args: ${{ matrix.tauri_args }}
+          # By providing the full string here and NOT using 'args', 
+          # we bypass the action's automatic command building.
+          tauriScript: ${{ matrix.tauri_command }}
