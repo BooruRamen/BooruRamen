@@ -8,45 +8,48 @@
   (at your option) any later version.
 -->
 <template>
-  <div class="h-full w-full relative overflow-hidden">
+  <div class="w-full relative overflow-hidden" :style="feedContainerStyle">
     <!-- Post feed -->
     <div class="h-full overflow-y-auto snap-y snap-mandatory" ref="feedContainer">
       <div v-if="loading" class="h-full flex items-center justify-center">
         <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-pink-600"></div>
       </div>
-      
+
       <div v-else-if="posts.length === 0" class="h-full flex items-center justify-center">
         <div class="text-center">
           <p class="text-xl">No posts found</p>
           <p class="text-gray-400 mt-2">Try adjusting your filters</p>
         </div>
       </div>
-      
-      <div 
-        v-for="(post, index) in posts" 
+
+      <div
+        v-for="(post, index) in posts"
         :key="getCompositeKey(post)"
-        class="h-full w-full snap-start snap-always flex items-center justify-center relative"
+        class="w-full snap-start snap-always flex items-center justify-center relative"
+        :style="postContainerStyle"
       >
         <!-- Post media (Lazy rendered window for performance) -->
         <div v-if="shouldRenderMedia(index)" class="relative max-h-full max-w-full">
-          <img 
-            v-if="['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(getFileExtension(post))" 
-            :src="post.file_url" 
+          <img
+            v-if="['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(getFileExtension(post))"
+            :src="post.file_url"
             :alt="post.tags || 'Post image'"
-            class="max-h-[calc(100vh-56px)] max-w-full object-contain"
+            class="max-w-full object-contain transition-[max-height] duration-300"
+            :style="{ maxHeight: mediaMaxHeight }"
             :referrerpolicy="post.file_url && post.file_url.includes('gelbooru') ? 'no-referrer' : 'strict-origin-when-cross-origin'"
             @error="(e) => console.error('Image load error:', post.file_url, e)"
           />
-          <video 
-            v-else-if="getFileExtension(post) === 'mp4' || getFileExtension(post) === 'webm' || isVideoPost(post)" 
-            :src="getVideoSrc(post)" 
+          <video
+            v-else-if="getFileExtension(post) === 'mp4' || getFileExtension(post) === 'webm' || isVideoPost(post)"
+            :src="getVideoSrc(post)"
             :ref="(el) => setVideoRef(el, post)"
             :poster="post.preview_url || post.sample_url"
-            autoplay 
-            loop 
+            autoplay
+            loop
             playsinline
-            muted 
-            class="max-h-[calc(100vh-56px)] max-w-full"
+            muted
+            class="max-w-full transition-[max-height] duration-300"
+            :style="{ maxHeight: mediaMaxHeight }"
             :preload="index === currentPostIndex || index === currentPostIndex + 1 ? 'auto' : 'metadata'"
             @click="togglePlayPause"
             @play="onVideoPlay($event, post)"
@@ -102,7 +105,12 @@ import { getPlayableVideoUrl } from '../services/videoProxy.js';
 
 export default {
   name: 'FeedView',
-  // Props removed as we use stores now
+  props: {
+    commentsSheetHeight: {
+      type: Number,
+      default: 0
+    }
+  },
   data() {
     return {
       posts: [],
@@ -127,7 +135,37 @@ export default {
   computed: {
     ...mapState(useSettingsStore, ['autoScroll', 'autoScrollSeconds', 'disableScrollAnimation', 'debugMode', 'whitelistTags', 'blacklistTags']),
     ...mapState(usePlayerStore, ['volume', 'muted', 'defaultMuted']),
-    
+
+    // Calculate max height for media based on comments sheet
+    mediaMaxHeight() {
+      // Base: 100vh - 56px (nav bar) - comments sheet height
+      const baseHeight = 'calc(100vh - 56px)';
+      if (this.commentsSheetHeight > 0) {
+        return `calc(100vh - 56px - ${this.commentsSheetHeight}px)`;
+      }
+      return baseHeight;
+    },
+
+    // Container style that adjusts height for comments sheet
+    feedContainerStyle() {
+      return {
+        height: this.commentsSheetHeight > 0
+          ? `calc(100% - ${this.commentsSheetHeight}px)`
+          : '100%',
+        transition: 'height 0.35s cubic-bezier(0.32, 0.72, 0, 1)'
+      };
+    },
+
+    // Post container style - each post takes full height of the adjusted feed
+    postContainerStyle() {
+      return {
+        height: this.commentsSheetHeight > 0
+          ? `calc(100vh - 56px - ${this.commentsSheetHeight}px)`
+          : 'calc(100vh - 56px)',
+        transition: 'height 0.35s cubic-bezier(0.32, 0.72, 0, 1)'
+      };
+    },
+
     // Alias to match template if needed, or just updated template to use 'muted'
     // The template uses 'isMuted' prop, so we alias it or change template.
     // Let's alias it for minimal template changes.

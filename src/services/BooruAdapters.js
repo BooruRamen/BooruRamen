@@ -69,6 +69,31 @@ class BooruAdapter {
     normalizePost(post) {
         return post;
     }
+
+    /**
+     * Fetch comments for a specific post
+     * @param {number} postId - The ID of the post to fetch comments for
+     * @returns {Promise<Array>} - Array of normalized comment objects
+     */
+    async getComments(postId) {
+        throw new Error('Not implemented');
+    }
+
+    /**
+     * Normalize a comment to a standard format
+     * @param {Object} comment - Raw comment from API
+     * @returns {Object} - Normalized comment object
+     */
+    normalizeComment(comment) {
+        return {
+            id: comment.id,
+            postId: comment.post_id,
+            body: comment.body || comment.comment || '',
+            creator: comment.creator || comment.creator_name || comment.owner || 'Anonymous',
+            createdAt: comment.created_at || new Date().toISOString(),
+            score: comment.score || 0
+        };
+    }
 }
 
 export class DanbooruAdapter extends BooruAdapter {
@@ -214,6 +239,49 @@ export class DanbooruAdapter extends BooruAdapter {
         post.post_url = `${this.baseUrl}/posts/${post.id}`;
         post.source = this.baseUrl;
         return post;
+    }
+
+    /**
+     * Fetch comments for a specific post from Danbooru
+     * @param {number} postId - The ID of the post
+     * @returns {Promise<Array>} - Array of normalized comments
+     */
+    async getComments(postId) {
+        const params = new URLSearchParams({
+            'search[post_id]': postId,
+            'group_by': 'comment',
+            'limit': 100
+        });
+
+        // Add credentials if available
+        if (this.credentials.userId && this.credentials.apiKey) {
+            params.append('login', this.credentials.userId);
+            params.append('api_key', this.credentials.apiKey);
+        }
+
+        const url = `${this.baseUrl}/comments.json?${params.toString()}`;
+
+        try {
+            console.log(`[Danbooru] Fetching comments for post ${postId}`);
+            const response = await httpFetch(url);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const data = await response.json();
+            return data.map(comment => this.normalizeComment(comment));
+        } catch (error) {
+            console.error('[Danbooru] Error fetching comments:', error);
+            return [];
+        }
+    }
+
+    normalizeComment(comment) {
+        return {
+            id: comment.id,
+            postId: comment.post_id,
+            body: comment.body || '',
+            creator: comment.creator_name || 'Anonymous',
+            createdAt: comment.created_at || new Date().toISOString(),
+            score: comment.score || 0
+        };
     }
 }
 
@@ -901,6 +969,79 @@ export class GelbooruAdapter extends BooruAdapter {
         }
         return url;
     }
+
+    /**
+     * Fetch comments for a specific post from Gelbooru
+     * @param {number} postId - The ID of the post
+     * @returns {Promise<Array>} - Array of normalized comments
+     */
+    async getComments(postId) {
+        await this.throttle();
+
+        const params = new URLSearchParams({
+            page: 'dapi',
+            s: 'comment',
+            q: 'index',
+            post_id: postId
+        });
+
+        // Add credentials if available
+        if (this.credentials.userId && this.credentials.apiKey) {
+            params.append('user_id', this.credentials.userId);
+            params.append('api_key', this.credentials.apiKey);
+        }
+
+        let cleanBaseUrl = this.baseUrl.endsWith('/') ? this.baseUrl.slice(0, -1) : this.baseUrl;
+        if (import.meta.env && import.meta.env.DEV) {
+            if (cleanBaseUrl.includes('gelbooru.com')) cleanBaseUrl = '/api/gelbooru';
+            if (cleanBaseUrl.includes('safebooru.org')) cleanBaseUrl = '/api/safebooru';
+        }
+
+        const url = `${cleanBaseUrl}/index.php?${params.toString()}`;
+
+        try {
+            console.log(`[Gelbooru] Fetching comments for post ${postId}`);
+            const response = await httpFetch(url);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+            const text = await response.text();
+            if (!text || text.trim().length === 0) {
+                return [];
+            }
+
+            // Gelbooru returns XML for comments, need to parse it
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(text, 'text/xml');
+            const commentNodes = xmlDoc.querySelectorAll('comment');
+
+            const comments = [];
+            commentNodes.forEach(node => {
+                comments.push(this.normalizeComment({
+                    id: node.getAttribute('id'),
+                    post_id: postId,
+                    body: node.getAttribute('body'),
+                    creator: node.getAttribute('creator'),
+                    created_at: node.getAttribute('created_at')
+                }));
+            });
+
+            return comments;
+        } catch (error) {
+            console.error('[Gelbooru] Error fetching comments:', error);
+            return [];
+        }
+    }
+
+    normalizeComment(comment) {
+        return {
+            id: parseInt(comment.id) || 0,
+            postId: comment.post_id,
+            body: comment.body || '',
+            creator: comment.creator || 'Anonymous',
+            createdAt: comment.created_at || new Date().toISOString(),
+            score: 0
+        };
+    }
 }
 
 export class MoebooruAdapter extends BooruAdapter {
@@ -971,5 +1112,44 @@ export class MoebooruAdapter extends BooruAdapter {
         if (r === 'q' || r === 'questionable') return 'q';
         if (r === 'e' || r === 'explicit') return 'e';
         return 'g';
+    }
+
+    /**
+     * Fetch comments for a specific post from Moebooru
+     * @param {number} postId - The ID of the post
+     * @returns {Promise<Array>} - Array of normalized comments
+     */
+    async getComments(postId) {
+        let cleanBaseUrl = this.baseUrl.endsWith('/') ? this.baseUrl.slice(0, -1) : this.baseUrl;
+
+        // Proxy rewriting for Development
+        if (import.meta.env && import.meta.env.DEV) {
+            if (cleanBaseUrl === 'https://konachan.com') cleanBaseUrl = '/api/konachan';
+            if (cleanBaseUrl === 'https://yande.re') cleanBaseUrl = '/api/yande';
+        }
+
+        const url = `${cleanBaseUrl}/comment.json?post_id=${postId}`;
+
+        try {
+            console.log(`[Moebooru] Fetching comments for post ${postId}`);
+            const response = await httpFetch(url);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const data = await response.json();
+            return data.map(comment => this.normalizeComment(comment));
+        } catch (error) {
+            console.error('[Moebooru] Error fetching comments:', error);
+            return [];
+        }
+    }
+
+    normalizeComment(comment) {
+        return {
+            id: comment.id,
+            postId: comment.post_id,
+            body: comment.body || '',
+            creator: comment.creator || 'Anonymous',
+            createdAt: comment.created_at ? new Date(comment.created_at * 1000).toISOString() : new Date().toISOString(),
+            score: 0
+        };
     }
 }

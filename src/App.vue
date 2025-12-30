@@ -162,11 +162,12 @@
         <span class="text-xl font-bold">{{ showPostDetails ? '<<' : '>>' }}</span>
       </button>
       
-      <div class="h-full w-full relative overflow-hidden" 
-        style="padding-top: env(safe-area-inset-top, 0); padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0));"
+      <div class="h-full w-full relative overflow-hidden"
+        :style="routerViewContainerStyle"
       >
-        <router-view 
+        <router-view
           :key="routerViewKey"
+          :commentsSheetHeight="commentsSheetHeight"
           @current-post-changed="updateCurrentPost"
           @video-state-change="handleVideoStateChange"
         ></router-view>
@@ -607,21 +608,36 @@
           <ThumbsDown :fill="currentPost.disliked ? 'currentColor' : 'none'" class="h-6 w-6" />
         </button>
         
-        <button 
+        <button
           @click="toggleFavorite(currentPost)"
           class="p-3 rounded-full bg-black bg-opacity-70 hover:bg-yellow-600 transition-colors backdrop-blur-sm"
           :class="{ 'bg-yellow-600': currentPost.favorited }"
         >
           <Star :fill="currentPost.favorited ? 'currentColor' : 'none'" class="h-6 w-6" />
         </button>
+
+        <button
+          @click="openComments(currentPost)"
+          class="p-3 rounded-full bg-black bg-opacity-70 hover:bg-blue-600 transition-colors backdrop-blur-sm"
+        >
+          <MessageCircle class="h-6 w-6" />
+        </button>
       </div>
+
+      <!-- Comments Sheet -->
+      <CommentsSheet
+        v-if="commentsPost"
+        :post="commentsPost"
+        @close="commentsPost = null; commentsSheetHeight = 0"
+        @height-change="commentsSheetHeight = $event"
+      />
     </div>
     <BottomNavBar @navigate-feed="navigateToFeed" />
   </div>
 </template>
 
 <script>
-import { X, Settings, Heart, ThumbsDown, Star } from 'lucide-vue-next';
+import { X, Settings, Heart, ThumbsDown, Star, MessageCircle } from 'lucide-vue-next';
 import { mapState, mapWritableState, mapActions } from 'pinia';
 import { useSettingsStore } from './stores/settings';
 import { usePlayerStore } from './stores/player';
@@ -631,6 +647,7 @@ import BooruService from './services/BooruService.js';
 import recommendationSystem from './services/RecommendationSystem.js';
 
 import BottomNavBar from './components/BottomNavBar.vue';
+import CommentsSheet from './components/CommentsSheet.vue';
 
 export default {
   name: 'App',
@@ -640,7 +657,9 @@ export default {
     Heart,
     ThumbsDown,
     Star,
+    MessageCircle,
     BottomNavBar,
+    CommentsSheet,
   },
   data() {
     return {
@@ -651,7 +670,11 @@ export default {
       showSettingsSidebar: false,
       newWhitelistTag: '',
       newBlacklistTag: '',
-      
+
+      // Comments sheet state
+      commentsPost: null,
+      commentsSheetHeight: 0,
+
       routerViewKey: 0,
       
       // UI state for controls
@@ -711,6 +734,14 @@ export default {
   },
 
   computed: {
+    // Computed style for router-view container that adjusts for comments sheet
+    routerViewContainerStyle() {
+      return {
+        paddingTop: 'env(safe-area-inset-top, 0)',
+        paddingBottom: 'calc(3.5rem + env(safe-area-inset-bottom, 0))',
+        '--comments-sheet-height': `${this.commentsSheetHeight}px`
+      };
+    },
     // Map settings store state
     ...mapWritableState(useSettingsStore, [
       'autoScroll',
@@ -945,13 +976,18 @@ export default {
     toggleFavorite(post) {
         if (!post) return;
         post.favorited = !post.favorited;
-        
+
         this.logInteraction({
             postId: post.id,
             type: 'favorite',
             value: post.favorited ? 1 : 0,
             metadata: { post }
         });
+    },
+
+    openComments(post) {
+        if (!post) return;
+        this.commentsPost = post;
     },
 
     toggleRating(rating) {
