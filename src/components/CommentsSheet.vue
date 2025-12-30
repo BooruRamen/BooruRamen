@@ -182,9 +182,15 @@ export default {
   },
   watch: {
     post: {
-      handler(newPost) {
+      handler(newPost, oldPost) {
         if (newPost) {
-          this.open();
+          // If already open and just switching posts, refetch without re-animating
+          if (this.isOpen && oldPost && newPost.id !== oldPost.id) {
+            this.fetchComments();
+          } else if (!this.isOpen) {
+            // First time opening
+            this.open();
+          }
         }
       },
       immediate: true

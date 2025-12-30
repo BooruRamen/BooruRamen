@@ -708,6 +708,11 @@ export default {
       } else if (this.debugMode) {
           this.updateDebugDetails();
       }
+
+      // Update comments if the comments sheet is open
+      if (this.commentsPost && newPost && newPost.id !== this.commentsPost.id) {
+        this.commentsPost = newPost;
+      }
     },
     debugMode(newVal) {
         if (newVal && this.currentPost) {
