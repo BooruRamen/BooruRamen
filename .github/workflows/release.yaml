@@ -52,12 +52,12 @@ jobs:
         include:
           - platform: "windows-latest"
             target: "x86_64-pc-windows-msvc"
-            # Standard build command for Windows
-            tauri_script: "npm run tauri build"
+            # Simple build for Windows
+            tauri_args: "run tauri build -- --target x86_64-pc-windows-msvc"
           - platform: "ubuntu-latest"
             target: "aarch64-linux-android"
-            # Explicit command for Android to ensure --apk is handled correctly
-            tauri_script: "npm run tauri android build -- --apk"
+            # Fixed command for Android
+            tauri_args: "run tauri android build -- --apk --target aarch64-linux-android"
 
     runs-on: ${{ matrix.platform }}
     
@@ -104,7 +104,6 @@ jobs:
           releaseName: 'BooruRamen v${{ needs.prepare.outputs.new_version }}'
           releaseDraft: false
           prerelease: false
-          # Use the target from matrix
-          args: --target ${{ matrix.target }}
-          # Use the specific script we defined for each platform
-          tauriScript: ${{ matrix.tauri_script }}
+          # We tell the action to just run 'npm' and we provide all arguments manually
+          tauriScript: npm
+          args: ${{ matrix.tauri_args }}
