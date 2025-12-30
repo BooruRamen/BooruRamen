@@ -4,57 +4,59 @@ on:
   push:
     branches:
       - master
-  workflow_dispatch:      
+  workflow_dispatch:
 
 jobs:
   publish:
     permissions:
       contents: write
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # This splits the job into two parallel builds
+        include:
+          - platform: "windows-latest"
+            target: "x86_64-pc-windows-msvc"
+          - platform: "ubuntu-latest"
+            target: "aarch64-linux-android"
+
+    runs-on: ${{ matrix.platform }}
     
     steps:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.ADMIN_PAT }}
           fetch-depth: 0 
-     
-      # Install Node.js
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
 
-      # Install dependencies
       - name: Install dependencies
         run: npm install
-        
-      # 1. Automate Version Bump (Increments x.x.#)
+
+      # 1. Automate Version Bump (Only runs on one of the matrix jobs)
       - name: Automated Version Bump
+        if: matrix.platform == 'windows-latest'
         id: version_bump
         uses: phips28/gh-action-bump-version@master
         with:
           tag-prefix: 'v'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ADMIN_PAT }}
 
-      # 2. Sync Tauri version to match the new package.json version
-      - name: Sync Tauri Version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
-
-      # 3. Setup Rust and Android NDK (Required for Android builds)
+      # 2. Setup Rust
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc, aarch64-linux-android
+          targets: ${{ matrix.target }}
 
-      # 4. Build & Release
+      # 3. Build & Release
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # THESE ARE THE SECRETS YOU JUST ADDED:
           TAURI_ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_B64 }}
           TAURI_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           TAURI_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -64,4 +66,5 @@ jobs:
           releaseName: 'BooruRamen v__VERSION__'
           releaseDraft: false
           prerelease: false
-          args: --target x86_64-pc-windows-msvc --target aarch64-linux-android
+          # Uses the specific target for THIS job in the matrix
+          args: --target ${{ matrix.target }}
