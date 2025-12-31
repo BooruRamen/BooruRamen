@@ -166,14 +166,13 @@ jobs:
           mkdir -p "$ANDROID_RES/values"
 
           # Generate foreground icons at each density
-          # Scale the icon to 150% of canvas size so it completely fills any mask shape (circle, squircle, etc.)
-          # Then crop to the canvas size - this ensures no background is visible
-          # mdpi: 108px canvas -> 162px icon, hdpi: 162px -> 243px, etc.
-          convert "$SOURCE_ICON" -resize 162x162 -gravity center -background none -extent 108x108 "$ANDROID_RES/mipmap-mdpi/ic_launcher_foreground.png"
-          convert "$SOURCE_ICON" -resize 243x243 -gravity center -background none -extent 162x162 "$ANDROID_RES/mipmap-hdpi/ic_launcher_foreground.png"
-          convert "$SOURCE_ICON" -resize 324x324 -gravity center -background none -extent 216x216 "$ANDROID_RES/mipmap-xhdpi/ic_launcher_foreground.png"
-          convert "$SOURCE_ICON" -resize 486x486 -gravity center -background none -extent 324x324 "$ANDROID_RES/mipmap-xxhdpi/ic_launcher_foreground.png"
-          convert "$SOURCE_ICON" -resize 648x648 -gravity center -background none -extent 432x432 "$ANDROID_RES/mipmap-xxxhdpi/ic_launcher_foreground.png"
+          # Scale the icon to ~115% of canvas size so it fills the circular mask while showing main content
+          # mdpi: 108px canvas -> 124px icon, hdpi: 162px -> 186px, etc.
+          convert "$SOURCE_ICON" -resize 124x124 -gravity center -background none -extent 108x108 "$ANDROID_RES/mipmap-mdpi/ic_launcher_foreground.png"
+          convert "$SOURCE_ICON" -resize 186x186 -gravity center -background none -extent 162x162 "$ANDROID_RES/mipmap-hdpi/ic_launcher_foreground.png"
+          convert "$SOURCE_ICON" -resize 248x248 -gravity center -background none -extent 216x216 "$ANDROID_RES/mipmap-xhdpi/ic_launcher_foreground.png"
+          convert "$SOURCE_ICON" -resize 373x373 -gravity center -background none -extent 324x324 "$ANDROID_RES/mipmap-xxhdpi/ic_launcher_foreground.png"
+          convert "$SOURCE_ICON" -resize 497x497 -gravity center -background none -extent 432x432 "$ANDROID_RES/mipmap-xxxhdpi/ic_launcher_foreground.png"
 
           # Generate legacy launcher icons (for older Android) - these can fill completely
           # mdpi: 48px, hdpi: 72px, xhdpi: 96px, xxhdpi: 144px, xxxhdpi: 192px
