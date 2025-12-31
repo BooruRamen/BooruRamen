@@ -139,55 +139,40 @@ jobs:
           # Create gradle.properties with network settings to avoid 403 errors
           GRADLE_PROPS="src-tauri/gen/android/gradle.properties"
           mkdir -p "$(dirname "$GRADLE_PROPS")"
-          cat > "$GRADLE_PROPS" << 'EOF'
-# Network settings to avoid 403 errors from Maven Central
-org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-android.useAndroidX=true
-android.nonTransitiveRClass=true
-# Retry settings
-systemProp.http.connectionTimeout=60000
-systemProp.http.socketTimeout=60000
-systemProp.org.gradle.internal.http.connectionTimeout=60000
-systemProp.org.gradle.internal.http.socketTimeout=60000
-EOF
+          echo "org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8" > "$GRADLE_PROPS"
+          echo "android.useAndroidX=true" >> "$GRADLE_PROPS"
+          echo "android.nonTransitiveRClass=true" >> "$GRADLE_PROPS"
+          echo "systemProp.http.connectionTimeout=60000" >> "$GRADLE_PROPS"
+          echo "systemProp.http.socketTimeout=60000" >> "$GRADLE_PROPS"
+          echo "systemProp.org.gradle.internal.http.connectionTimeout=60000" >> "$GRADLE_PROPS"
+          echo "systemProp.org.gradle.internal.http.socketTimeout=60000" >> "$GRADLE_PROPS"
           echo "Created gradle.properties with network settings"
+          cat "$GRADLE_PROPS"
 
-          # Add Google and Maven Central mirrors to settings.gradle
+          # Add Google and Maven Central to settings.gradle
           SETTINGS_FILE="src-tauri/gen/android/settings.gradle"
           if [ -f "$SETTINGS_FILE" ]; then
-            # Add repository configuration at the beginning
-            cat > /tmp/repo_config.txt << 'EOF'
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
-EOF
-            # Check if pluginManagement already exists
             if grep -q "pluginManagement" "$SETTINGS_FILE"; then
               echo "pluginManagement already configured"
             else
-              cat /tmp/repo_config.txt "$SETTINGS_FILE" > /tmp/settings_new.gradle
+              echo 'pluginManagement {
+                  repositories {
+                      google()
+                      mavenCentral()
+                      gradlePluginPortal()
+                  }
+              }
+              dependencyResolutionManagement {
+                  repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+                  repositories {
+                      google()
+                      mavenCentral()
+                  }
+              }' | cat - "$SETTINGS_FILE" > /tmp/settings_new.gradle
               mv /tmp/settings_new.gradle "$SETTINGS_FILE"
               echo "Added repository configuration to settings.gradle"
             fi
             cat "$SETTINGS_FILE"
-          fi
-
-          # Also ensure build.gradle has proper repositories
-          BUILD_FILE="src-tauri/gen/android/build.gradle.kts"
-          if [ -f "$BUILD_FILE" ]; then
-            echo "build.gradle.kts exists"
-            cat "$BUILD_FILE"
           fi
 
       - name: Copy Android Icons
