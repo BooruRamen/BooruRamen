@@ -150,8 +150,8 @@ jobs:
           # Install ImageMagick for icon resizing
           sudo apt-get update && sudo apt-get install -y imagemagick
 
-          # Source icon - use the non-padded version to fill the circular crop area
-          SOURCE_ICON="src/assets/BooruRamen_Icon.png"
+          # Source icon - use the padded version for proper Android adaptive icon display
+          SOURCE_ICON="src/assets/BooruRamen_Icon_padded.png"
 
           # Target directory
           ANDROID_RES="src-tauri/gen/android/app/src/main/res"
