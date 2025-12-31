@@ -188,8 +188,8 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            artifacts/windows/*.msi
-            artifacts/windows/*.exe
-            artifacts/android/*.apk
+            artifacts/windows/**/*.msi
+            artifacts/windows/**/*.exe
+            artifacts/android/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
