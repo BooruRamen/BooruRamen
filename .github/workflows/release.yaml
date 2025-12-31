@@ -129,7 +129,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
       - name: Initialize Android Project
         run: npm run tauri android init
@@ -162,7 +162,8 @@ jobs:
           MAX_RETRIES=3
           RETRY_COUNT=0
 
-          until npm run tauri android build -- --apk true --target aarch64; do
+          # Build universal APK (all architectures) by not specifying --target
+          until npm run tauri android build -- --apk true; do
             RETRY_COUNT=$((RETRY_COUNT + 1))
             if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
               echo "Build failed after $MAX_RETRIES attempts"
@@ -248,8 +249,8 @@ jobs:
       - name: Rename APK with version
         run: |
           VERSION=${{ needs.prepare.outputs.new_version }}
-          # Find and rename APK files
-          find artifacts/android -name "*.apk" -exec sh -c 'mv "$1" "artifacts/android/BooruRamen_${VERSION}_arm64.apk"' _ {} \; 2>/dev/null || true
+          # Find and rename APK files to include version (universal build)
+          find artifacts/android -name "*.apk" -exec sh -c 'mv "$1" "artifacts/android/BooruRamen_${VERSION}_universal.apk"' _ {} \; 2>/dev/null || true
         env:
           VERSION: ${{ needs.prepare.outputs.new_version }}
 
