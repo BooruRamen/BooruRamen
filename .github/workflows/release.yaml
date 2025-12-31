@@ -111,6 +111,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
       - name: Install Android NDK
         run: |
           ANDROID_NDK_PATH=$ANDROID_NDK_LATEST_HOME
@@ -129,6 +134,62 @@ jobs:
       - name: Initialize Android Project
         run: npm run tauri android init
 
+      - name: Configure Gradle Repositories
+        run: |
+          # Create gradle.properties with network settings to avoid 403 errors
+          GRADLE_PROPS="src-tauri/gen/android/gradle.properties"
+          mkdir -p "$(dirname "$GRADLE_PROPS")"
+          cat > "$GRADLE_PROPS" << 'EOF'
+# Network settings to avoid 403 errors from Maven Central
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+android.nonTransitiveRClass=true
+# Retry settings
+systemProp.http.connectionTimeout=60000
+systemProp.http.socketTimeout=60000
+systemProp.org.gradle.internal.http.connectionTimeout=60000
+systemProp.org.gradle.internal.http.socketTimeout=60000
+EOF
+          echo "Created gradle.properties with network settings"
+
+          # Add Google and Maven Central mirrors to settings.gradle
+          SETTINGS_FILE="src-tauri/gen/android/settings.gradle"
+          if [ -f "$SETTINGS_FILE" ]; then
+            # Add repository configuration at the beginning
+            cat > /tmp/repo_config.txt << 'EOF'
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+EOF
+            # Check if pluginManagement already exists
+            if grep -q "pluginManagement" "$SETTINGS_FILE"; then
+              echo "pluginManagement already configured"
+            else
+              cat /tmp/repo_config.txt "$SETTINGS_FILE" > /tmp/settings_new.gradle
+              mv /tmp/settings_new.gradle "$SETTINGS_FILE"
+              echo "Added repository configuration to settings.gradle"
+            fi
+            cat "$SETTINGS_FILE"
+          fi
+
+          # Also ensure build.gradle has proper repositories
+          BUILD_FILE="src-tauri/gen/android/build.gradle.kts"
+          if [ -f "$BUILD_FILE" ]; then
+            echo "build.gradle.kts exists"
+            cat "$BUILD_FILE"
+          fi
+
       - name: Copy Android Icons
         run: |
           # Copy custom icons to the generated Android project
@@ -137,7 +198,23 @@ jobs:
           ls -la src-tauri/gen/android/app/src/main/res/mipmap-hdpi/ || true
 
       - name: Build Android APK
-        run: npm run tauri android build -- --apk true --target aarch64
+        run: |
+          # Retry logic for transient network failures (403 from Maven Central)
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+
+          until npm run tauri android build -- --apk true --target aarch64; do
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+              echo "Build failed after $MAX_RETRIES attempts"
+              exit 1
+            fi
+            echo "Build attempt $RETRY_COUNT failed, waiting 30 seconds before retry..."
+            sleep 30
+
+            # Clean Gradle cache on retry to force fresh download
+            rm -rf ~/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin || true
+          done
 
       - name: Sign APK
         run: |
