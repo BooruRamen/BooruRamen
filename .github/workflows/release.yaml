@@ -42,26 +42,16 @@ jobs:
           git push origin master
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-  publish:
+  build-windows:
     needs: prepare
+    runs-on: windows-latest
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: "windows-latest"
-            target: "x86_64-pc-windows-msvc"
-          - platform: "ubuntu-latest"
-            target: "aarch64-linux-android"
-
-    runs-on: ${{ matrix.platform }}
-    
     steps:
       - uses: actions/checkout@v4
         with:
           ref: master
-          fetch-depth: 0 
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -71,8 +61,48 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build Windows App
+        run: npm run tauri build -- --target x86_64-pc-windows-msvc
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+
+  build-android:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Install Android NDK
-        if: matrix.target == 'aarch64-linux-android'
         run: |
           ANDROID_NDK_PATH=$ANDROID_NDK_LATEST_HOME
           TOOLCHAIN=$ANDROID_NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64
@@ -85,34 +115,72 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-linux-android
 
-      # STEP: Initialize Android project (required before building)
       - name: Initialize Android Project
-        if: matrix.target == 'aarch64-linux-android'
         run: npm run tauri android init
 
-      # STEP: MANUAL BUILD (Bypasses tauri-action limitations)
-      - name: Build Tauri App
-        run: |
-          if [ "${{ matrix.target }}" == "aarch64-linux-android" ]; then
-            # Tauri Android CLI expects short target names: aarch64, armv7, i686, x86_64
-            npm run tauri android build -- --apk true --target aarch64
-          else
-            # Windows build
-            npm run tauri build -- --target x86_64-pc-windows-msvc
-          fi
-        shell: bash
+      - name: Build Android APK
+        run: npm run tauri android build -- --apk true --target aarch64
 
-      # STEP: UPLOAD ONLY
-      - name: Upload to Release
-        uses: tauri-apps/tauri-action@v0
+      - name: Find APK files
+        id: find_apk
+        run: |
+          echo "Looking for APK files..."
+          find src-tauri -name "*.apk" -type f 2>/dev/null || true
+          APK_PATH=$(find src-tauri -name "*.apk" -type f | head -1)
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+
+      - name: Upload Android Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-artifacts
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+
+  release:
+    needs: [prepare, build-windows, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: artifacts/windows
+
+      - name: Download Android Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: android-artifacts
+          path: artifacts/android
+
+      - name: List all artifacts
+        run: |
+          echo "=== All artifacts ==="
+          find artifacts -type f -ls
+
+      - name: Rename APK with version
+        run: |
+          VERSION=${{ needs.prepare.outputs.new_version }}
+          # Find and rename APK files
+          find artifacts/android -name "*.apk" -exec sh -c 'mv "$1" "artifacts/android/BooruRamen_${VERSION}_arm64.apk"' _ {} \; 2>/dev/null || true
+        env:
+          VERSION: ${{ needs.prepare.outputs.new_version }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.prepare.outputs.new_version }}
+          name: BooruRamen v${{ needs.prepare.outputs.new_version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/windows/*.msi
+            artifacts/windows/*.exe
+            artifacts/android/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: v${{ needs.prepare.outputs.new_version }}
-          releaseName: 'BooruRamen v${{ needs.prepare.outputs.new_version }}'
-          releaseDraft: false
-          prerelease: false
-          # We tell the action NOT to run a build because we just did it manually
-          tauriScript: "echo Skipping build, files already generated"
