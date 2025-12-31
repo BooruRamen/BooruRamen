@@ -189,12 +189,10 @@ jobs:
 
           # Create/update the adaptive icon background color (transparent)
           mkdir -p "$ANDROID_RES/values"
-          cat > "$ANDROID_RES/values/ic_launcher_background.xml" << 'XMLEOF'
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <color name="ic_launcher_background">#00000000</color>
-</resources>
-XMLEOF
+          echo '<?xml version="1.0" encoding="utf-8"?>' > "$ANDROID_RES/values/ic_launcher_background.xml"
+          echo '<resources>' >> "$ANDROID_RES/values/ic_launcher_background.xml"
+          echo '    <color name="ic_launcher_background">#00000000</color>' >> "$ANDROID_RES/values/ic_launcher_background.xml"
+          echo '</resources>' >> "$ANDROID_RES/values/ic_launcher_background.xml"
 
           echo "Generated Android icons from $SOURCE_ICON"
           ls -la "$ANDROID_RES/mipmap-xxxhdpi/"
