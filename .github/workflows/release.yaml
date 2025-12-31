@@ -129,8 +129,46 @@ jobs:
       - name: Initialize Android Project
         run: npm run tauri android init
 
+      - name: Copy Android Icons
+        run: |
+          # Copy custom icons to the generated Android project
+          cp -r src-tauri/icons/android/* src-tauri/gen/android/app/src/main/res/ 2>/dev/null || true
+          echo "Copied Android icons"
+          ls -la src-tauri/gen/android/app/src/main/res/mipmap-hdpi/ || true
+
       - name: Build Android APK
         run: npm run tauri android build -- --apk true --target aarch64
+
+      - name: Sign APK
+        run: |
+          # Find the unsigned APK
+          UNSIGNED_APK=$(find src-tauri/gen/android -name "*-unsigned.apk" -type f | head -1)
+          echo "Found unsigned APK: $UNSIGNED_APK"
+
+          if [ -n "$UNSIGNED_APK" ]; then
+            # Create keystore from base64 secret
+            echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > /tmp/keystore.jks
+
+            # Get the directory and filename
+            APK_DIR=$(dirname "$UNSIGNED_APK")
+            APK_NAME=$(basename "$UNSIGNED_APK" | sed 's/-unsigned//')
+            SIGNED_APK="$APK_DIR/$APK_NAME"
+
+            # Sign the APK using apksigner
+            ${ANDROID_HOME}/build-tools/34.0.0/apksigner sign \
+              --ks /tmp/keystore.jks \
+              --ks-key-alias ${{ secrets.ANDROID_KEY_ALIAS }} \
+              --ks-pass pass:${{ secrets.ANDROID_STORE_PASSWORD }} \
+              --key-pass pass:${{ secrets.ANDROID_KEY_PASSWORD }} \
+              --out "$SIGNED_APK" \
+              "$UNSIGNED_APK"
+
+            echo "Signed APK: $SIGNED_APK"
+            rm /tmp/keystore.jks
+          else
+            echo "No unsigned APK found!"
+            exit 1
+          fi
 
       - name: Find APK files
         id: find_apk
