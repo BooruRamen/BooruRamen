@@ -174,18 +174,40 @@ jobs:
 
       - name: Sign APK
         run: |
-          # Find the unsigned APK
-          UNSIGNED_APK=$(find src-tauri/gen/android -name "*-unsigned.apk" -type f | head -1)
-          echo "Found unsigned APK: $UNSIGNED_APK"
+          echo "=== All APK files before signing ==="
+          find src-tauri/gen/android -name "*.apk" -type f -ls
 
-          if [ -n "$UNSIGNED_APK" ]; then
+          # Find the release APK (could be unsigned or already signed with debug key)
+          # Tauri produces APKs in app/build/outputs/apk/universal/release/
+          RELEASE_APK=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -type f | grep -v aligned | head -1)
+
+          if [ -z "$RELEASE_APK" ]; then
+            # Fallback: look for any APK
+            RELEASE_APK=$(find src-tauri/gen/android -name "*.apk" -type f | head -1)
+          fi
+
+          echo "Found APK to sign: $RELEASE_APK"
+
+          if [ -n "$RELEASE_APK" ]; then
             # Create keystore from base64 secret
             echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > /tmp/keystore.jks
 
-            # Get the directory and filename
-            APK_DIR=$(dirname "$UNSIGNED_APK")
-            APK_NAME=$(basename "$UNSIGNED_APK" | sed 's/-unsigned//')
-            SIGNED_APK="$APK_DIR/$APK_NAME"
+            # Verify keystore was created
+            if [ ! -f /tmp/keystore.jks ]; then
+              echo "ERROR: Failed to create keystore file"
+              exit 1
+            fi
+            echo "Keystore size: $(stat -c%s /tmp/keystore.jks) bytes"
+
+            # Get the directory and create output path
+            APK_DIR=$(dirname "$RELEASE_APK")
+            SIGNED_APK="$APK_DIR/app-release-signed.apk"
+
+            # Zipalign the APK first (required for v2 signing)
+            ALIGNED_APK="$APK_DIR/app-release-aligned.apk"
+            ${ANDROID_HOME}/build-tools/34.0.0/zipalign -v -p 4 "$RELEASE_APK" "$ALIGNED_APK"
+
+            echo "Aligned APK: $ALIGNED_APK"
 
             # Sign the APK using apksigner
             ${ANDROID_HOME}/build-tools/34.0.0/apksigner sign \
@@ -193,13 +215,30 @@ jobs:
               --ks-key-alias ${{ secrets.ANDROID_KEY_ALIAS }} \
               --ks-pass pass:${{ secrets.ANDROID_STORE_PASSWORD }} \
               --key-pass pass:${{ secrets.ANDROID_KEY_PASSWORD }} \
+              --v1-signing-enabled true \
+              --v2-signing-enabled true \
               --out "$SIGNED_APK" \
-              "$UNSIGNED_APK"
+              "$ALIGNED_APK"
 
             echo "Signed APK: $SIGNED_APK"
+
+            # Verify the signature
+            echo "=== Verifying APK signature ==="
+            ${ANDROID_HOME}/build-tools/34.0.0/apksigner verify --verbose "$SIGNED_APK"
+
+            # Remove unsigned/aligned APKs, keep only signed
+            rm -f "$RELEASE_APK" "$ALIGNED_APK" 2>/dev/null || true
+
+            # Move signed APK to a consistent location
+            mkdir -p src-tauri/gen/android/app/build/outputs/apk/release
+            mv "$SIGNED_APK" src-tauri/gen/android/app/build/outputs/apk/release/app-release.apk
+
+            echo "=== Final APK ==="
+            ls -la src-tauri/gen/android/app/build/outputs/apk/release/
+
             rm /tmp/keystore.jks
           else
-            echo "No unsigned APK found!"
+            echo "No APK found!"
             exit 1
           fi
 
@@ -215,7 +254,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-artifacts
-          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          path: src-tauri/gen/android/app/build/outputs/apk/release/*.apk
 
   release:
     needs: [prepare, build-windows, build-android]
