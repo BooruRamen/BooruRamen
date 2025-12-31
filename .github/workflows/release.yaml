@@ -145,12 +145,50 @@ jobs:
           echo "Created gradle.properties:"
           cat "$GRADLE_PROPS"
 
-      - name: Copy Android Icons
+      - name: Generate and Copy Android Icons
         run: |
-          # Copy custom icons to the generated Android project
-          cp -r src-tauri/icons/android/* src-tauri/gen/android/app/src/main/res/ 2>/dev/null || true
-          echo "Copied Android icons"
-          ls -la src-tauri/gen/android/app/src/main/res/mipmap-hdpi/ || true
+          # Install ImageMagick for icon resizing
+          sudo apt-get update && sudo apt-get install -y imagemagick
+
+          # Source icon with proper padding for Android adaptive icons
+          SOURCE_ICON="src/assets/BooruRamen_Icon_padded.png"
+
+          # Target directory
+          ANDROID_RES="src-tauri/gen/android/app/src/main/res"
+
+          # Create mipmap directories
+          mkdir -p "$ANDROID_RES/mipmap-mdpi"
+          mkdir -p "$ANDROID_RES/mipmap-hdpi"
+          mkdir -p "$ANDROID_RES/mipmap-xhdpi"
+          mkdir -p "$ANDROID_RES/mipmap-xxhdpi"
+          mkdir -p "$ANDROID_RES/mipmap-xxxhdpi"
+
+          # Generate foreground icons at each density
+          # Foreground should be 108dp with 72dp safe zone (the icon itself)
+          # mdpi: 108px, hdpi: 162px, xhdpi: 216px, xxhdpi: 324px, xxxhdpi: 432px
+          convert "$SOURCE_ICON" -resize 108x108 "$ANDROID_RES/mipmap-mdpi/ic_launcher_foreground.png"
+          convert "$SOURCE_ICON" -resize 162x162 "$ANDROID_RES/mipmap-hdpi/ic_launcher_foreground.png"
+          convert "$SOURCE_ICON" -resize 216x216 "$ANDROID_RES/mipmap-xhdpi/ic_launcher_foreground.png"
+          convert "$SOURCE_ICON" -resize 324x324 "$ANDROID_RES/mipmap-xxhdpi/ic_launcher_foreground.png"
+          convert "$SOURCE_ICON" -resize 432x432 "$ANDROID_RES/mipmap-xxxhdpi/ic_launcher_foreground.png"
+
+          # Generate legacy launcher icons (for older Android)
+          # mdpi: 48px, hdpi: 72px, xhdpi: 96px, xxhdpi: 144px, xxxhdpi: 192px
+          convert "$SOURCE_ICON" -resize 48x48 "$ANDROID_RES/mipmap-mdpi/ic_launcher.png"
+          convert "$SOURCE_ICON" -resize 72x72 "$ANDROID_RES/mipmap-hdpi/ic_launcher.png"
+          convert "$SOURCE_ICON" -resize 96x96 "$ANDROID_RES/mipmap-xhdpi/ic_launcher.png"
+          convert "$SOURCE_ICON" -resize 144x144 "$ANDROID_RES/mipmap-xxhdpi/ic_launcher.png"
+          convert "$SOURCE_ICON" -resize 192x192 "$ANDROID_RES/mipmap-xxxhdpi/ic_launcher.png"
+
+          # Generate round icons (same sizes as legacy)
+          convert "$SOURCE_ICON" -resize 48x48 "$ANDROID_RES/mipmap-mdpi/ic_launcher_round.png"
+          convert "$SOURCE_ICON" -resize 72x72 "$ANDROID_RES/mipmap-hdpi/ic_launcher_round.png"
+          convert "$SOURCE_ICON" -resize 96x96 "$ANDROID_RES/mipmap-xhdpi/ic_launcher_round.png"
+          convert "$SOURCE_ICON" -resize 144x144 "$ANDROID_RES/mipmap-xxhdpi/ic_launcher_round.png"
+          convert "$SOURCE_ICON" -resize 192x192 "$ANDROID_RES/mipmap-xxxhdpi/ic_launcher_round.png"
+
+          echo "Generated Android icons from $SOURCE_ICON"
+          ls -la "$ANDROID_RES/mipmap-xxxhdpi/"
 
       - name: Build Android APK
         run: |
