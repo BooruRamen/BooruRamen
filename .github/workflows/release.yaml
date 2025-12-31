@@ -134,7 +134,7 @@ jobs:
       - name: Initialize Android Project
         run: npm run tauri android init
 
-      - name: Configure Gradle Repositories
+      - name: Configure Gradle Settings
         run: |
           # Create gradle.properties with network settings to avoid 403 errors
           GRADLE_PROPS="src-tauri/gen/android/gradle.properties"
@@ -146,34 +146,8 @@ jobs:
           echo "systemProp.http.socketTimeout=60000" >> "$GRADLE_PROPS"
           echo "systemProp.org.gradle.internal.http.connectionTimeout=60000" >> "$GRADLE_PROPS"
           echo "systemProp.org.gradle.internal.http.socketTimeout=60000" >> "$GRADLE_PROPS"
-          echo "Created gradle.properties with network settings"
+          echo "Created gradle.properties:"
           cat "$GRADLE_PROPS"
-
-          # Add Google and Maven Central to settings.gradle
-          SETTINGS_FILE="src-tauri/gen/android/settings.gradle"
-          if [ -f "$SETTINGS_FILE" ]; then
-            if grep -q "pluginManagement" "$SETTINGS_FILE"; then
-              echo "pluginManagement already configured"
-            else
-              echo 'pluginManagement {
-                  repositories {
-                      google()
-                      mavenCentral()
-                      gradlePluginPortal()
-                  }
-              }
-              dependencyResolutionManagement {
-                  repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-                  repositories {
-                      google()
-                      mavenCentral()
-                  }
-              }' | cat - "$SETTINGS_FILE" > /tmp/settings_new.gradle
-              mv /tmp/settings_new.gradle "$SETTINGS_FILE"
-              echo "Added repository configuration to settings.gradle"
-            fi
-            cat "$SETTINGS_FILE"
-          fi
 
       - name: Copy Android Icons
         run: |
