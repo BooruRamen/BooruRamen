@@ -162,17 +162,20 @@ jobs:
           mkdir -p "$ANDROID_RES/mipmap-xhdpi"
           mkdir -p "$ANDROID_RES/mipmap-xxhdpi"
           mkdir -p "$ANDROID_RES/mipmap-xxxhdpi"
+          mkdir -p "$ANDROID_RES/mipmap-anydpi-v26"
+          mkdir -p "$ANDROID_RES/values"
 
           # Generate foreground icons at each density
-          # Foreground should be 108dp - we scale up the icon to fill the circular mask
-          # mdpi: 108px, hdpi: 162px, xhdpi: 216px, xxhdpi: 324px, xxxhdpi: 432px
-          convert "$SOURCE_ICON" -resize 108x108 -gravity center -background none -extent 108x108 "$ANDROID_RES/mipmap-mdpi/ic_launcher_foreground.png"
-          convert "$SOURCE_ICON" -resize 162x162 -gravity center -background none -extent 162x162 "$ANDROID_RES/mipmap-hdpi/ic_launcher_foreground.png"
-          convert "$SOURCE_ICON" -resize 216x216 -gravity center -background none -extent 216x216 "$ANDROID_RES/mipmap-xhdpi/ic_launcher_foreground.png"
-          convert "$SOURCE_ICON" -resize 324x324 -gravity center -background none -extent 324x324 "$ANDROID_RES/mipmap-xxhdpi/ic_launcher_foreground.png"
-          convert "$SOURCE_ICON" -resize 432x432 -gravity center -background none -extent 432x432 "$ANDROID_RES/mipmap-xxxhdpi/ic_launcher_foreground.png"
+          # Scale the icon to 150% of canvas size so it completely fills any mask shape (circle, squircle, etc.)
+          # Then crop to the canvas size - this ensures no background is visible
+          # mdpi: 108px canvas -> 162px icon, hdpi: 162px -> 243px, etc.
+          convert "$SOURCE_ICON" -resize 162x162 -gravity center -background none -extent 108x108 "$ANDROID_RES/mipmap-mdpi/ic_launcher_foreground.png"
+          convert "$SOURCE_ICON" -resize 243x243 -gravity center -background none -extent 162x162 "$ANDROID_RES/mipmap-hdpi/ic_launcher_foreground.png"
+          convert "$SOURCE_ICON" -resize 324x324 -gravity center -background none -extent 216x216 "$ANDROID_RES/mipmap-xhdpi/ic_launcher_foreground.png"
+          convert "$SOURCE_ICON" -resize 486x486 -gravity center -background none -extent 324x324 "$ANDROID_RES/mipmap-xxhdpi/ic_launcher_foreground.png"
+          convert "$SOURCE_ICON" -resize 648x648 -gravity center -background none -extent 432x432 "$ANDROID_RES/mipmap-xxxhdpi/ic_launcher_foreground.png"
 
-          # Generate legacy launcher icons (for older Android)
+          # Generate legacy launcher icons (for older Android) - these can fill completely
           # mdpi: 48px, hdpi: 72px, xhdpi: 96px, xxhdpi: 144px, xxxhdpi: 192px
           convert "$SOURCE_ICON" -resize 48x48 "$ANDROID_RES/mipmap-mdpi/ic_launcher.png"
           convert "$SOURCE_ICON" -resize 72x72 "$ANDROID_RES/mipmap-hdpi/ic_launcher.png"
@@ -187,11 +190,13 @@ jobs:
           convert "$SOURCE_ICON" -resize 144x144 "$ANDROID_RES/mipmap-xxhdpi/ic_launcher_round.png"
           convert "$SOURCE_ICON" -resize 192x192 "$ANDROID_RES/mipmap-xxxhdpi/ic_launcher_round.png"
 
-          # Create/update the adaptive icon background color (transparent)
-          mkdir -p "$ANDROID_RES/values"
+          # Copy the adaptive icon XML configuration
+          cp src-tauri/icons/android/mipmap-anydpi-v26/ic_launcher.xml "$ANDROID_RES/mipmap-anydpi-v26/ic_launcher.xml"
+
+          # Background color won't be visible since icon fills the entire mask, but set it anyway
           echo '<?xml version="1.0" encoding="utf-8"?>' > "$ANDROID_RES/values/ic_launcher_background.xml"
           echo '<resources>' >> "$ANDROID_RES/values/ic_launcher_background.xml"
-          echo '    <color name="ic_launcher_background">#00000000</color>' >> "$ANDROID_RES/values/ic_launcher_background.xml"
+          echo '    <color name="ic_launcher_background">#000000</color>' >> "$ANDROID_RES/values/ic_launcher_background.xml"
           echo '</resources>' >> "$ANDROID_RES/values/ic_launcher_background.xml"
 
           echo "Generated Android icons from $SOURCE_ICON"
